@@ -1,0 +1,114 @@
+Malware Crypters – the Deceptive First Layer
+Recently, two suspects were arrested for selling Cryptex Reborn and other FUD tools (helping to install malware in a Fully UnDetectable way). Today, we will study some examples to make sure that everyone knows what this type of tools are and why they are dangerous. We will also present some example of identifying and unpacking a malware crypter.
+Crypters – what are they?
+Most modern malware samples, in addition to built-in defensive techniques, are protected by some packer or crypter. A crypter’s role is basically to be the first – and most complex – layer of defense for the malicious core. They try to deceive pattern-based or even behavior-based detection engines – often slowing down the analysis process by masquerading as a harmless program then unpacking/decrypting their malicious payload.
+They may also add some icons and metadata that make the sample look like a legitimate product.
+Underground crypters, created to defend malware against antivirus/anti-malware products, are sold in typical cybercriminal hangouts. Below, you can see examples of crypters being advertised on the black market and the tricks they use:
+
+These products are designed to cater to simple criminals, those who do not need (or want) a deep technical knowledge. That’s why authors provide a GUI to configure all the options in a very easy way. For example, it allows the configuration of the encryption method and key as well as where the payload should be injected.
+
+As you can see, a crypter is a completely independent module. Cybercriminals can use it to protect any malware that they want to deliver. That’s why knowing the crypter that is used does not help in identifying the malware family. As an example, I would like to present you several different malware samples packed by the same/similar crypter.
+Analyzed samples
+
+27b138e6bed7acfe72daa943762c9443 – a DLL delivered by Magnitude Exploit Kit (will be referred as: Magnitude.dll)
+
+carrying payload: d890bd08180d69ee6ee5f7658be33030
+
+bbcfb9db21299e9f3b248aaec0a702a5 – an executable captured under the name: makta.exe
+
+carrying payload: 3cf25fa56e8e8ececf90d8f2e8f123e8
+
+1afb93d482fd46b44a64c9e987c02a27 – an executable delivered by Blackhole Exploit Kit (will be referred as: blackhole.exe)
+
+carrying payload: 5a58395fda49c8f3f4571a007cf02f4d
+
+Identifying similarities
+Before we start unpacking, let’s have a look at similarities in the code that made me to believe that the above three samples (captured in different distribution campaigns) are all packed by the same tool.
+Tracing the flow of execution, we notice similarities. At the beginning of execution, all of the samples make some meaningless API calls (i.e. trying to read some random keys from the registry). Then, they call a function to allocate memory (VirtualAlloc or VirtualAllocEx). They unpack something into this memory and redirect execution there. After some time, execution comes back to the memory space of the original image. However, it now executes code that was not present before (the code images have been overwritten).
+We can guess that all of the samples use the RunPE technique to overwrite the image of the original file with the payload. It all happens with the shellcode that is first unpacked into allocated memory. Let’s set a breakpoint at VirtualAlloc/VirtualAllocEx and follow execution to see what is written into this newly allocated memory. Unpacking usually includes two stages: Some encrypted content is copied from the original image then stage 1 decryption is applied. After this, some of the shellcode is revealed. This same shellcode is responsible for decrypting the actual payload—this is now stage 2 decryption—and loading it into memory.
+This is how the content unpacked to the allocated memory looks for each respective samples (after the stage 1 decryption):
+Magnitude:
+
+Makta :
+
+Blackhole:
+
+The above content consists of the same elements in the same order. At the beginning, we can see a list of functions to be loaded. Next, we see an encrypted payload (independent PE file). Finally, we see the shellcode to be executed (loading the payload by the RunPE technique).
+Below is the encrypted payload on the left and its decrypted version on the right:
+
+Visual analysis
+The decrypting procedure is heavily obfuscated, but by having memory dumps made before and after each stage of decryption, we can try to get some hints of what is going on by comparing the changes.
+Visual analysis may help in discovering the algorithm by which the data is packed. I have decided to dump the allocated memory before each stage of decryption + the revealed payload (new PE file). You can see this stages on the first and second pictures in the row. At the third position, you can see the visualization of the dumped payload.
+Similar patterns are present in all three files:
+Magnitude.dll (encrypted, first stage decrypted, payload)
+
+makta.exe (encrypted, first stage decrypted, payload)
+
+blackhole.exe (encrypted, first stage decrypted, payload)
+
+What information can we get from such a visual dump? Look at this last case:
+The payload is tiny, that’s why we can see a lot of padding between the encrypted payload (that is at the beginning of the allocated memory) and the shellcode (that is at the end). The padding allows us to discover the encryption pattern.
+Looking at the regularities, we can guess that: the first stage, as well as the second stage, are both encrypted by XOR with some key (key length > 1). The key seems to be longer at the first stage and shorter at the second. Let’s look inside the memory dump.
+At first stage, the key is composed by some repetitive pattern:
+
+To verify if it is really XOR, we can do reverse XOR—input with output—and see if the result is a regular pattern. The experiment has given the following results:
+Blackhole:
+
+Magnitude:
+
+Makta:
+
+Looking at the visualization, we can guess that encryption is more than just plain XOR and that the key is probably modified during execution.
+At the second stage, the visual pattern is denser, so it suggest that the key may be shorter.
+Unpacking
+In each of the 3 files, the decoding functions are heavily obfuscated with lot of junk code and redundant API calls in between valuable instructions. Also, known tricks (i.e. PUSH-to-RET) are used in order to hide the real flow.
+After deobfuscating it, we can see that in each case the algorithm is exactly the same—for each three files and for both stages (only parameters differ).
+
+bool decode(DWORD *inbuf, //encrypted input
+DWORD *outbuf, //buffer to store the output
+size_t bufsize,
+const DWORD key,
+const size_t max_size = SIZE_MAX
+)
+{
+if (inbuf == NULL || outbuf == NULL) return false;
+
+for (size_t i = 0; i < bufsize; i++) {
+DWORD val = inbuf[i];
+DWORD step = i * sizeof(DWORD);
+if (step >= max_size) {
+outbuf[i] = val;
+continue;
+}
+outbuf[i] = (val + step) ^ (key + step);
+}
+return true;
+}
+
+As we have guessed by visual analysis, it is based on an XOR operation, and the key is modified as the decoding progress.
+Used parameters:
+stage#1
+
+makta.exe:        key = 0x57FC
+blackhole.exe:  key = 0x82A3, max_size = 0x19400
+Magnitude.dll:  key = 0x0A42
+
+stage#2
+
+all 3 files:  key = 0x03E9
+
+Writing Auto-unpacker
+The characteristics of this packer allows us to write an auto-unpacker. It can be done in the following steps:
+
+Find the encrypted chunks (by patterns) and glue them together
+Find the XOR key (by XOR with expected output)
+Use it to decrypt the memory fragment (stage#1)
+Decrypt stage#2
+Save the decrypted PE file (payload)
+
+Full code of static unpacker: decrypter1.cpp
+Unpacker in action:
+
+Conclusion
+Nowadays, malware is modular: there are crimeware kits helping to set up your own C&C (Command and Controll server) and prepare the payload like in the case of Pony or Neutrino Botnet Builder. Then crypters are used to pack the payload, and i.e. Exploit Kits are used to deliver it. Crypters are an important piece of this puzzle, but they still aren’t getting the same attention from researchers like exploit kits and payloads are getting. Partially, it is because of their ephemeral nature—in order to be effective, they must be changed often.
+The described crypter seems to be popular nowadays. However, it’s not any advanced tool. For example, there is no defense deployed against the debugger or virtual environment. The author puts a lot of effort in obfuscating code in order to hide the encryption method but looking at visualization, we can recognize that it is an XOR-based encryption and not even implemented well (encrypting DWORD size unit with WORD size key leads to visible artifacts). This is why we could easily write a static unpacker for the future use.

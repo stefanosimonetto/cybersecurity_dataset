@@ -1,0 +1,82 @@
+Improper separation of hosting accounts is putting customers at risk
+
+If you are hosting your site at Hostek.com, you are currently at a higher risk of being hacked. Why? Because they do not currently perform proper separation of accounts internally, so anyone can access the pages of everyone else.
+How do we know that? We were helping a friend with his site over there and when we checked their permissions, we found a big (BIG) security hole on Hostek. Every PHP script is executed with the permissions of the user “nobody” (used by Apache), and every site allows the user “nobody” to access its files.
+It means that any user can access the files from everyone else. Even worse, you can add and even modify the files under some circumstances.
+Analysis
+When we realized that the PHP scripts were being executed as the user nobody, we did a simple PHP script to verify that:
+<?
+echo “verify..n”;
+$myloc = `pwd`;
+echo “myloc: $mylocn”;
+$myid = `id`;
+echo “myid: $myidn
+“;
+We got this output:
+verify.. myloc: /home/XXX/public_html done
+myid: uid=99(nobody) gid=99(nobody) groups=99(nobody)
+Uh-oh, the PHP script is being executed as nobody. We also learned that probably every user has its own home directory at /home/[user] and their public web site is stored at /home/[user]/public_html.
+We tried an additional check after with this script:
+
+<? php
+$listofusers = `cat /etc/passwd`;
+echo "
+users:$listofusersn
+“;
+And yes, we got the list of all the users inside their shared server ( I won’t list the real users to protect them, but everyone had the home dir at /home/[user] and the shell /usr/local/cpanel/bin/noshell):
+…
+users:root:x:0:0:root:/root:/bin/bash
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+adm:x:3:4:adm:/var/adm:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+sync:x:5:0:sync:/sbin:/bin/sync
+shutdown:x:6:0:shutdown:/sbin:/sbin/shutdown
+halt:x:7:0:halt:/sbin:/sbin/halt
+mail:x:8:12:mail:/var/spool/mail:/sbin/nologin
+news:x:9:13:news:/etc/news:
+uucp:x:10:14:uucp:/var/spool/uucp:/sbin/nologin
+operator:x:11:0:operator:/root:/sbin/nologin
+games:x:12:100:games:/usr/games:/sbin/nologin
+gopher:x:13:30:gopher:/var/gopher:/sbin/nologin
+ftp:x:14:50:FTP User:/var/ftp:/sbin/nologin
+nobody:x:99:99:Nobody:/:/sbin/nologin
+dbus:x:81:81:System message bus:/:/sbin/nologin
+vcsa:x:69:69:virtual console memory owner:/dev:/sbin/nologin
+rpm:x:37:37::/var/lib/rpm:/sbin/nologin
+haldaemon:x:68:68:HAL daemon:/:/sbin/nologin
+netdump:x:34:34:Network Crash Dump user:/var/crash:/bin/bash
+nscd:x:28:28:NSCD Daemon:/:/sbin/nologin
+sshd:x:74:74:Privilege-separated SSH:/var/empty/sshd:/sbin/nologin
+rpc:x:32:32:Portmapper RPC user:/:/sbin/nologin
+rpcuser:x:29:29:RPC Service User:/var/lib/nfs:/sbin/nologin
+nfsnobody:x:65534:65534:Anonymous NFS User:/var/lib/nfs:/sbin/nologin
+mailnull:x:47:47::/var/spool/mqueue:/sbin/nologin
+smmsp:x:51:51::/var/spool/mqueue:/sbin/nologin
+pcap:x:77:77::/var/arpwatch:/sbin/nologin
+named:x:25:25:Named:/var/named:/sbin/nologin
+mysql:x:100:101:MySQL server:/var/lib/mysql:/bin/bash
+mailman:x:32001:32001::/usr/local/cpanel/3rdparty/mailman:/bin/bash
+cpanel:x:32002:32003::/usr/local/cpanel:/bin/bash
+..
+That’s not too bad. What else could we do? Well, we could list the files from everyone else (I won’t show how to do it):
+
+/home/userB/public_html
+total 1524
+drwxr-x— 24 userB nobody 4096 Oct 30 01:49 .
+drwx–x–x 15 userB actionin 4096 Apr 26 2009 ..
+-rw——- 1 userB actionin 16 Apr 11 03:57 .ftpquota
+-rw-r–r– 1 userB actionin 93 Feb 3 2009 LiveSearchSiteAuth.xml
+-rw-r–r– 1 userB actionin 3240 Feb 10 2009 about.php
+drwxr-xr-x 2 userB actionin 4096 Nov 30 2007 activate
+drwxr-xr-x 7 userB actionin 4096 Mar 10 2009 admin
+-rw-r–r– 1 userB actionin 6243 Feb 5 2009 change_password.php
+..
+As you can see, the group nobody has the permission to read and execute the public_html directory, so every user can read the files from everyone else.
+If that wasn’t bad enough, we were able to cat the passwords from wp-config.php (used by WordPress), configuration.php (used by Joomla) and even .htpasswd used to protect specific directories.
+
+Can it get worse?
+What is really bad is that some CMSs (specially Worpdress), have a directory to allow the user to upload files in there via the web. With WordPress it is inside wp-content/upload.
+The permissions of this directory allowed the user nobody to add and modify any file in there. So we were able to add files into other people’s site (see test.txt on the screenshot) and even modify anything they had uploaded. Really bad.
+
+And yes, we contacted them to let them know to fix the issue.

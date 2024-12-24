@@ -1,0 +1,72 @@
+zCrypt ransomware: under the hood
+Ransomware has become the new norm for cyber-criminals. Every week there are fresh ransomware threats with new functionalities and improvements.
+zCrypt ransomware has recently showed an interesting method of spreading not usually used by ransomware. zCrypt has an added functionality for propagating itself, after all more victims equals more profit for cyber-criminals.
+Like other ransomware, zCrypt has been distributed through Malspam. This distribution method is effective, but why stop there?
+A recent study by researchers from Google and the universities of Illinois and Michigan dropped nearly 300 USB sticks off at the University of Illinois Urbana-Champaign campus and measured how many of these were plugged into student machines. The study found that users picked up, plugged in, and clicked on files in 48 percent of the drives dropped. “They did so quickly: the first drive was connected in less than six minutes.” There is always a “curiosity” as to what is on a found USB.
+Sample analyzed: d1e75b274211a78d9c5d38c8ff2e1778
+Filename in the wild: invoice-order.exe
+The zCrypt ransom note details the decryption instructions, which includes a description about bitcoins, how to purchase them and how to make payment to the bitcoin address. There is also a four-day time limit to make the payment of 1.2 bitcoins ($500) or the price will increase to 5 bitcoins, and after 7 days your private key will be destroyed with no way to recover your files.
+
+Behavioral analysis:
+Upon execution zCrypt drops a copy of itself to C:\Users\current user\AppData\Roaming\zcrypt.exe along with the bitcoin address contained in btc.addr, the computer ID in CID.ztxt, and the public key in public.key. The files are dropped with hidden file attributes, more on that later.
+
+ZCrypt also drops the following files for displaying/launching upon startup in  C:\Users\current user\AppData\Roaming\Microsoft\Windows\StartMenu|Programs\Startup\
+How to decrypt files.html
+Zcrypt.lnk
+
+Some of the dropped files and their locations can be seen in the ProcDot screenshot.
+
+ZCrypt also adds a key to the Windows registry for running upon logon:
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run\
+Zcrypt = {path of executed malware}
+
+A closer look inside zCrypt:
+Observed strings provide some clues and help with the analysis process. As can be seen in the picture below, the autorun.inf string waves a flag to the inquisitive mind.
+
+zCrypt does come with a unique attack/propagation technique, where it uses the GetDriveType function to determine if any of the disk drives are removable, so we provided a USB drive to zCrypt (E:\).
+
+zCrypt locates a removable drive on E:\
+
+zCrypt targeted the connected USB device on E:\, zCrypt made a copy of itself under a new file name (system.exe) and also dropped the autorun.inf file to the connected USB device on E:\. The autorun.inf files were not functional and contained what appeared to be meaningless content, this could be an error/bug but the intent and idea is there for future versions.
+Furthermore zCrypt used the SetFileAttributes function to set the hidden file attributes of the dropped files, to hide itself from the user in file explorer.
+
+Dropped files to USB device on E:\
+
+Autorun.inf content:
+
+As mentioned earlier the files dropped by zCrypt to C:\Users\current user\AppData\Roaming\ have hidden file attributes, which are revealed below using the attrib command. zCrypt dropped these files with hidden file attributes to remain hidden from the user.
+
+ZCrypt targets files with the following extensions:
+
+Network communications:
+zCrypt contacts its command and control in order to download a RSA public key for a victim by providing a victim ID. As can be seen below zCrypt contacted its command and control (site went down during analysis) at poiuytrewq[.]ml/rsa/rsa.php?computerid={Computer_ID} where the {Computer_ID} is the entry found inside the dropped C:\Users\current user\AppData\Roaming\cid.txt.
+
+ENCRYPTION:
+zCrypt first attempts to download the RSA public key from its Command and Control (which became inaccessible during analysis), when it cannot do so it has a back-up plan, we discovered that it attempts to encrypt targeted content using the hidden public key it dropped in C:\Users\current user\AppData\Roaming\, if this were to succeed it would give zCrypt off-line capabilities, but the public key is invalid and zCrypt fails in completing its mission and terminates.
+Command and Control:
+
+zCrypt created the Imager_Lite_3.1.1.zip.zcrypt file, to store encrypted content from the original .zip file, nothing is stored as its public key is unable to encrypt and zCrypt terminates:
+
+zCrypt terminating after it is unable to encrypt targeted content:
+
+zCrypt displaying references to OpenSSL:
+
+Not many ransomware use statically linked OpenSSL, but it was a good initial theory given the references. We verified the theory by creating a public/private key-pair using OpenSSL, deleting the hidden and invalid public key dropped by zCrypt in C:\Users\current user\AppData\Roaming\ and replacing it with the newly created public key and running zCrypt.
+Upon running, zCrypt was able to use the newly created public key for encrypting targeted content off-line, thus verifying our theory. After zCrypt completed encrypting the targeted content, we placed the newly created private key in C:\Users\current user\AppData\Roaming\, which zCrypt used for decryption of the previously encrypted content.
+When provided with a private key zCrypt first conducts a test to see if it can decrypt or if it cannot, if it can, it proceeds to decrypt all previously encrypted content and if it cannot it proceeds by terminating. zCrypt conducts its testing by attempting to decrypt a test file in AppData\Local\Temp.
+
+Original test file:
+
+Encrypted test file:
+
+zCrypt is very slow while encrypting files as the files are encrypted by RSA (chunk by chunk), unlike other ransomware which encrypt by AES and encrypt the AES key with RSA.
+zCrypt reading chunks of file content:
+
+After zCrypt encrypts, it continues to check if the private key is released on the server (if payment has been made). After payment zCrypt automatically downloads the private key and starts decryption. Using this automated process there is no need for zCrypt to have a GUI. After it finishes decrypting, it deletes itself and both keys.
+
+Malwarebytes Anti-Malware detects zCrypt as Ransom.FileLocker. As with all ransomware, it is recommended to use a viable back-up solution. Furthermore users should use caution when receiving suspicious emails with links or attachments in them.
+Conclusion:
+zCrypt has shown some techniques not usually used by ransomware, it has also shown some weaknesses.
+That said, zCrypt is surely to be improved upon and re-launched in future campaigns with improved capabilities and bug fixes, as evidenced by past ransomware products like DMA Locker. I don’t think we have seen the last of zCrypt, and would not be surprised to see some of its techniques implemented by future ransomware versions or variants.
+Special thanks to Hasherezade (https://blog.malwarebytes.org/author/hasherezade/) for all the assistance provided with the analysis of zCrypt.
+MlwrHpstr

@@ -1,0 +1,107 @@
+Win32/Induc.C: getting noisier in the library
+2011-12-01
+
+Robert Lipovský
+ESET
+,
+Slovakia
+Editor:
+Helen
+
+Martin
+Abstract
+The Induc virus has been spreading successfully around the world since its first appearance in 2009, but back then it didn't contain a malicious payload. However, the latest variant contains a genuinely malicious payload and additional file-infecting and propagation capabilities. Robert Lipovský has the details.
+Copyright © 2011 Virus Bulletin
+
+The Delphi infector Win32/Induc is back, this time with a genuinely malicious payload and additional file-infecting and propagation capabilities.
+Classic file-infecting viruses are not as common as they were 15 years ago, but occasionally we do come across a ‘modern virus’. A good example of such a menace is the polymorphic file infector Win32/Sality [1].
+In 2009, the virus Win32/Induc.A [2], which infected Delphi files at compile-time, caught our attention [3]. Apart from the infection process itself, this variant did not contain any other malicious payload and was considered a proof of concept, or code in development (although it did actually infect real systems). One of its interesting features [4] was that it appeared to have been influenced by a classic 1984 paper that describes an infection implemented by planting a ‘bug’ into a C compiler [5].
+About two years later, in July 2011, a new version appeared. Win32/Induc.B featured some minor improvements, but was actually quite similar to the first variant. However, more dramatic changes appeared in August in the latest development of the virus, Win32/Induc.C. In this variant the infecting code had been modified and extended, and more malicious functionality had been added.
+In this article, we will first analyse Win32/Induc.C – the most complex variant to date. Afterwards, we will briefly describe Induc’s evolution by outlining the differences between this and the earlier versions of the virus.
+
+Analysis of Win32/Induc.C
+The fundamental characteristic of the Induc virus is that it infects a standard Delphi library, resulting in the infection of every application compiled in this modified Delphi development environment. In the case of Win32/Induc.C, the virus body (which the Delphi linker includes in all programs) is 52,736 bytes. (This does not include the malicious code inside the infected Delphi library, which drops and launches the virus body.)
+
+Delphi library infection
+Before analysing the virus body, let’s take a look at how the Delphi infection works. Delphi applications link to the file SysInit.dcu. This is a component of the Delphi/Kylix Cross-Platform Runtime Library, specifically the System Initialization Unit. As the name suggests, code from this library is included in the initialization part of every Delphi application, and this is the target of the Induc infection. SysInit.dcu contains object code (.dcu is a Delphi Compiled Unit) compiled from SysInit.pas. Induc modifies this source file and compiles it into the resulting SysInit.dcu file. (The virus actually compiles SysInit.dcu ‘indirectly’ by compiling System.dcu.)
+Figure 1. Malicious code is inserted into SysInit.pas.
+Only two lines of code are added to SysInit.pas, as the rest is taken care of by the file Defines.inc, which is dropped by Induc. The malicious CreateMyFile function (implemented in Defines.inc) is called in _InitExe just before the _StartExe function call.
+The method for launching the virus body is quite trivial. Defines.inc contains the virus body as a PE file as an array of 52,736 bytes and the CreateMyFile function simply drops the executable to the current directory with the name ‘~.exe’ and executes it.
+Figure 2. The virus body stored as an array of 52,736 bytes in Defines.inc.
+
+Second file infection method
+Win32/Induc.C features a method not present in the previous variants for infecting any .exe file, not just those compiled with Delphi. In this case, Induc acts as a prepender virus – upon infection it attaches the original executable under its body. The string ‘-=supernatural=-’ is used as a delimiter to mark the beginning of the original file, as well as a marker to signify that a file has been infected.
+Figure 3. Induc’s .exe file infection.
+Figure 4. Executable infected with Win32/Induc.C.
+Induc.C also uses a simple encryption algorithm for the original executable: xor 5, add 7. Our analysis (described in the next section) revealed that this second .exe infection vector is only used for infecting executables on removable drives. This fulfils the purpose of distributing the virus to other computers.
+
+Virus body analysis
+The malware code begins with a procedure containing some curious API function calls. There are a couple of multimedia functions (MCI Functions and PlaySoundA) about whose purpose we can only speculate. The virus executable tries to play a sound from its resources, called ‘my_global_sound’, and if it’s successful, the virus terminates its execution. The execution doesn’t take this path under normal circumstances, obviously, and the virus samples that we have analysed are fully functional. The first possible explanation that comes to mind is anti-emulation, or a way for the virus to defend itself from sandboxes. Another possibility is some residual debugging (or plain junk) code used by the author.
+The main payload function is shown in Figure 5.
+Figure 5. Main payload function of Induc.C.
+At the beginning of the function, there is a check as to whether the executable has been launched with the -autorun parameter, and one of two execution paths is chosen. The first execution of the virus is without the parameter. Two tasks are performed in this program branch:
+The virus ‘schedules’ itself to run with the -autorun parameter after the next system restart. It does so by copying itself to the Application Data\APMV\ directory with APMV.exe as its filename. Then a shortcut (.lnk file) is crafted, pointing to this file with the -autorun parameter, and placed in the Startup folder.
+Next, Induc.C checks whether there is another executable in the overlay (the original executable that has been infected, as explained in the previous section). The virus searches for the string ‘-=supernatural=-’ and then decrypts (sub 7, xor 5) the original PE file if it is present, and drops it into the current directory as ~.exe. Afterwards, Induc creates a shortcut to this file (~.lnk), executes it, deletes the shortcut, and when the original executable terminates, the ~.exe file is deleted as well. (This is accomplished by calling the DeleteFile API in a cycle until it is successful.)
+When executed with the -autorun parameter, the main payload is delivered: infecting Delphi, infecting executables on removable drives, and downloading other malware onto the system. There is even a very simple self-defence thread. Let’s take a closer look at these functions:
+There is one shared function for going through the directory structure that is used when infecting both Delphi and .exe files. Which task to carry out is determined by the value in the AL register. At the beginning of the function, there is a call to the GetLogicalDriveStrings API to enumerate the drives on the system and, for drives that satisfy specific conditions, Induc.C searches the directory structure for files to infect. When infecting Delphi, the drive type DRIVE_CDROM is excluded, and the System Volume Information folder must be present. For the .exe infections, the drive types must not be DRIVE_NO_ROOT_DIR, DRIVE_CDROM, or DRIVE_UNKNOWN and the System Volume Information folder must not be present. (USB sticks, for example, satisfy these conditions.) It is interesting that the author didn’t use the DRIVE_REMOVABLE drive type for this purpose.
+The directory structure is traversed recursively using the standard method of FindFirstFile and FindNextFile. In order to locate the Delphi installation folder, Induc.C searches for the following file paths:
+bin\dcc32.exe
+lib\sysinit.dcu
+rtl\sys\system.pas
+When they are found, the Defines.inc file is dropped, and the virus writes two lines to the rtl\sys\sysinit.pas source file:
+{$I Defines.inc}
+CreateMyFile(@my_array,sizeof(my_array),‘~.exe’);
+This is explained in the ‘Delphi library infection’ section.
+When the malicious modifications are made, Induc compiles the libraries using the following command:
+%Delphi_path%\bin\dcc32.exe –Q “%Delphi_path%\rtl\sys\system.pas” –M –Y –Z -$D- -0
+Afterwards the compiled .dcu files are moved to the correct directory and the SysInit.pas source file reverts to its original form.
+The infection of .exe files is implemented in a separate thread and repeats in a cycle every five seconds – so that when a USB stick is inserted into the computer, it will become infected. When traversing the directory structure, files with the .exe extension are first checked to see whether they have been infected already (by searching for the ‘-=supernatural=-’ string). The second condition for infection is that the file size must be between 100KB and 50MB.
+Figure 6. File size condition for infection.
+As described earlier, the virus appends the original executable to its body after encrypting it with xor 5, add 7. The virus also takes the icon of the executable.
+Another thread is dedicated to the downloader feature – the main payload of Induc.C. We’ll look at it more closely in the next section, as the techniques used are quite unusual.
+The last of the three CreateThread calls implements a very primitive self-defence mechanism. Every 0.5 seconds, the virus checks whether the Task Manager is running, and if it is, the virus terminates itself. This way, the user will not see the malicious process in the list of running processes. The method is very simple, and the author could instead have chosen rootkit techniques to hide the virus process from process listing. However, avoiding the use of rootkit techniques allows the malware to look a lot less suspicious and since this is a virus and will probably be executed again, this trick works (almost) as well. The API functions used for the process enumeration are the standard CreateToolhelp32Snapshot, Process32First, etc.
+
+The downloader
+The downloader thread contains a loop and a 15-minute sleep before it tries to download files from the Internet. The virus body contains three hard-coded URLs, which are also encrypted using the simple xor 5, add 7 ‘cipher’. The same encryption is also used for obfuscating the names of WinINet functions. Now things get really interesting. The URLs point to JPEG images – user avatars on three different discussion forums.
+You might be wondering: why on earth is a virus downloading avatars? This is a trick that the virus author uses to dynamically store the URLs of other malware to download and execute. If we take a look inside the JPEG file, this is what we see:
+Figure 7. Encrypted URL hidden in downloaded image.
+An encrypted URL is stored at the beginning of the JPEG file (where EXIF data is stored). The start of this field is indicated by the ‘x’ character. Following that is a WORD value which contains the length of the encrypted URL, and then the URL itself. The encryption algorithm is – you guessed it – xor 5, add 7, but the string is also encoded with Base64.
+The virus then downloads the executable at that address to a randomly named file in the Temp directory and executes it, deleting it after it terminates. One particular piece of malware that Induc.C downloads is a password stealer that ESET detects as Win32/PSW.Delf.NQS. This has the capability to extract passwords from various applications, including FTP clients.
+A couple of additional details on the downloader procedure:
+In the main cycle with the 15-minute delay, the virus attempts to download a file from the first URL and tries the other URLs if that one fails.
+Before downloading the JPEG file, Induc first checks its timestamp and compares it with the one it has recorded before. This way, the virus avoids downloading the same malware repeatedly.
+Induc verifies that the downloaded avatar is really a JPEG file:
+Figure 8. JPEG file type check.
+When downloading the avatar, the following URL parameter string is added to the HTTP request:
+?uid=%id%&l=%random%
+This simple feature enables the virus operator to track the infected computers – effectively creating a botnet.
+Induc.C uses three supporting files:
+%virus_filename%.id – stores a (random) ID of the infected computer
+%virus_filename%.dat – stores an encrypted timestamp of the avatar
+%virus_filename%.flag – marks that Delphi has already been infected.
+
+Differences in Induc.A
+There are several major differences between the first variant of the Induc virus and its latest iteration:
+The Delphi infection didn’t take place in the SysInit.pas library, but in SysConst.pas.
+Delphi versions 4 to 7 were affected.
+The Delphi installation directory was read from the Windows registry, not by searching the hard drive.
+All the virus code was in plain Delphi and was written to the infected SysConst.pas, and was clearly visible for analysis (after some beautification).
+There was no payload at all, apart from the Delphi infection itself. Induc.A didn’t contain the .exe infection capability introduced by Induc.C.
+Even though Induc.A received a lot of attention two years ago, it is now apparent that it was only an Alpha version of the virus.
+
+Differences in Induc.B
+Induc.B appears to have been an improved version of Induc.A. The functionality was the same as before – there was no payload, only the infection of Delphi through SysConst.pas. However, a few anti-debugging tricks were added in this version, and the author made the code slightly harder to analyse by encrypting it. Some unused functions were also present – apparently the virus writer was experimenting.
+
+Conclusion
+The Induc virus has been spreading successfully around the world since its first appearance in 2009 [4], even though at that time it did not contain a malicious payload. Now, however, the author appears to have passed the Alpha testing stage and the virus poses a real threat to computer users – even though it is not polymorphic and its code is rather simple. Following the trend of modern malware, it acts as a vector to download and execute more malicious code on the infected system, and incorporates botnet capabilities. I
+I wonder what Induc.D will look like…
+(ESET’s detection statistics for the Induc family can be found in [6] and a technical write-up of Induc.C is given in [7].)
+
+Bibliography
+[1] ESET. Global Threat Report August 2011. http://go.eset.com/us/resources/threat-trends/Global_Threat_Trends_August_2011.pdf.
+[2] ESET Threat Encyclopaedia: Win32/Induc.A. http://www.eset.eu/encyclopaedia/win32-induc-a-virus?lng=en.
+[3] Abrams, R. The Retro Virus. ESET Threat Blog August 2009. http://blog.eset.com/2009/08/19/the-retro-virus.
+[4] Bortnik, S.; Borghello, C.; Harley, D. W32/Induc.A FAQ. ESET Threat Blog. August 2009. http://blog.eset.com/2009/08/23/w32induc-a-faq.
+[5] Thompson, K. Reflections on Trusting Trust (1984). Communications of the ACM Vol. 27, No. 8.
+[6] Lipovský, R. The Induc Virus is back! ESET Threat Blog. September 2011. http://blog.eset.com/2011/09/14/the-induc-virus-is-back.
+[7] ESET Threat Encyclopaedia: Win32/Induc.C. http://www.eset.eu/encyclopaedia/win32-induc-c-virus-lg-2?lng=en.

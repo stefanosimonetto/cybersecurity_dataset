@@ -1,0 +1,64 @@
+SCUPing Shockwave
+
+Posted by Roger on 18 November 2010, 1:07 pm
+
+At the risk of stepping on the Queen of SCUP’s toes, I’m going to write-up how I deployed Shockwave with System Center Updates Publisher (SCUP).  For the prologue on what SCUP and SCCM are see last weeks post on SCUPing Flash.
+Shockwave is part of our standard config.   I’m not really sure why.   Is it actually used for anything besides basic online games.   Since pushing out a mass uninstall of Shockwave isn’t in the cards, we need to patch it since we deployed it.   Shockwave doesn’t have security updates as often as Flash but it is still necessary to keep on top of.    Since I switched to using SCUP for depoying most software updates, I’ve deployed Shockwave twice.
+The following instructions assume that SCUP is installed and working.
+Open the SCUP console.
+1.  Right Click System Center Updates Publisher and select Create Update.
+UPDATE INFORMATION
+Update Title : Shockwave 11.5.9
+Description: Generally I take this from the security bulletin.   I pasted:
+Critical vulnerabilities have been identified in Adobe Shockwave Player 11.5.8.612 and earlier versions on the Windows and Macintosh operating systems. These vulnerabilities, including CVE-2010-3653, referenced in Security Advisory APSA10-04, could allow an attacker, who successfully exploits these vulnerabilities, to run malicious code on the affected system. Adobe recommends users of Adobe Shockwave Player 11.5.8.612 and earlier versions update to Adobe Shockwave Player 11.5.9.615.
+Classification : Security Updates
+Bulletin ID : APSB10-25
+Vendor: Adobe Systems, Inc.
+(if you’ve deployed any Adobe updates you’ll have this in a pull down list)
+Product: Shockwave
+(personally I put Shockwave 11 but having a product version in product number is not considered best practice)
+EXTENDED PROPERTIES
+Article ID: APSB10-25
+CVE ID: CVE-2010-2581, CVE-2010-2582 (these are obtained from the Adobe security bulletin)
+Severity: Critical (obtained from security bulletin, or your personal evaluation)
+Support URL: http://get.adobe.com/shockwave
+More Info URL:  http://www.adobe.com/support/security/bulletins/apsb10-25.html
+Impact: Normal
+Reboot Behavior: Never Reboots
+Oddly enough, Jason Lewis recently wrote that this setting doesn’t actually tell SCCM what switches to use, it tells the admin what the expected patch behavior is.   That is surprising to me.   I expected “never reboots” to add a reallysuppress type of command line switch automatically.
+PREREQUISITE RULES
+Windows Version
+Comparison – Greater Than or Equal To
+Major Version = 5
+Minor Version = 1
+SP Major Version = 2
+SP Minor Version = 0
+Build Number = Blank
+Product Type = Workstation
+I’m doing this based on the system requirements for Shockwave.  Also I’m only deploying to workstations, not servers.
+SELECT PACKAGE
+Installer Type : Windows Installer  File (MSI)
+Update Package Source / Download URL.   These should be identical.   You need to download the Shockwave MSI from Adobe and store it locally on a server.
+Binary Language: english
+Command Line : Blank
+APPLICABILITY RULES
+When you add a MSI to SCUP, the applicability rules automatically contain a single applicability rule of Product ID not installed.   This rule would install Shockwave on all computers.   We only care to upgrade Shockwave where needed rather than install on all computers.   This sort of limitation could be performed in a collection within SCCM.    I prefer to build the applicability here.
+I’ve found that “file version less than” rules don’t always work by themselves.   You need to check for the file existing and the file less than.   If your environment has 64 bit computers that needs to be accounted for as well.   I tend to do file version checks rather than registry checks.    I think I get more accurate results.
+The applicability rule we’re building is something like this:
+(File Exists, Common Paths = Windows; Path = system32\adobe\Director\swdir.dll
+AND
+File Version; Common Paths = Windows; Path = system32\adobe\Director\swdir.dll; Less Than 11.5.9.615
+)
+OR
+(
+File Exists; Common Paths = Windows ; Path = SysWOW64\adobe\Director\swdir.dll
+AND
+File Version ; Common Paths = Windows ; Path = SysWOW64\adobe\Director\swdir.dll ; Less Than 11.5.9.615
+))
+
+It is a serious pain to get these parenthesis correct.   I believe the trick was selecting the entire row.
+INSTALLED RULES
+The default Product installed rule works.
+After that its just like any other SCUP update.    Hit the publish button (publishes to WSUS).   Synchronise into SCCM.   Deploy
+Download CAB file
+This CAB file is provided as an example without warranty.   You’d need to import it into SCUP, add your own MSI and publish.

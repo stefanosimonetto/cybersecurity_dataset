@@ -1,0 +1,65 @@
+MTR in Real-Time: Exchange ProxyLogon Edition
+
+Written by
+Michael Heller
+
+March 17, 2021
+
+Security Operations cryptominer DearCry Exchange Server Exchange vulnerability Hafnium Microsoft Exchange ProxyLogon Ransomware Web shells
+
+The recently reported collection of Microsoft Exchange Server zero-day vulnerabilities has rocked the infosec world, impacting tens of thousands of organizations around the world, with some estimates exceeding 100,000 and growing by the day.
+The exploitations seen in the wild were first attributed to a nation state actor dubbed Hafnium, but the vulnerabilities and attacks have colloquially become known as “ProxyLogon” in reference to the main vulnerability of the zero-days involved.
+The common form of ProxyLogon attacks seen so far includes vulnerable Exchange Servers being exploited and web shells dropped on those servers. However, as the news of the zero-days spread, opportunistic malicious actors have begun scanning for those web shells because finding one can be a shortcut to deploying ransomware or cryptominers, or launching other attacks, all without needing to go through the trouble of finding a way into a network.
+“These web shells are dangerous because they can be activated at any time after they’ve been installed, even on a subsequently patched system,” said Mat Gangwer senior director of Sophos Managed Threat Response (MTR). “Even more concerning is that anybody can come along and use them. It doesn’t just have to be the original attacker who put it there. It might initially have been a nation-state adversary, but it’s not anymore.”
+Although MTR customers have not seen attacks progress to the level of ransomware or cryptominers, Microsoft has reported a new ransomware threat – DearCry – targeting vulnerable Exchange servers and the web shells left behind after successful Exchange attacks.
+Patch first
+While the web shells placed on victim devices could be the source of any further attacks that occur, the first step is still to ensure all Exchange Servers are patched against the original zero-day vulnerabilities. There are four zero-day vulnerabilities that must be patched: CVE-2021-26855, also known as “ProxyLogon,” is a server-side request forgery flaw that can be chained together with CVE-2021-27065, a post-authentication arbitrary file write bug, for an attacker to achieve remote code execution. Additionally, CVE-2021-26857 and CVE-2021-26858 have been used in Exchange server attacks.
+Microsoft released out-of-band patches for Exchange Server 2013, 2016, and 2019, as well as a defense-in-depth update for Exchange Server 2010 because that version is only vulnerable to CVE-2021-26857.
+Microsoft said Exchange Server 2003 and 2007 are not vulnerable.
+If an organization cannot patch immediately, Microsoft released an Exchange Mitigations script that can temporarily provide protection until full patches can be applied.
+Investigate to determine next steps
+Once the patches have been applied, the next step is to look for web shells, any activity that might have been performed by those web shells, and when that activity occurred.
+Microsoft has multiple tools and scripts available for customers to help determine if they have been impacted and how. There is the ProxyLogon Powershell script that will check Exchange and IIS logs to determine if an exploit was attempted, although it will not provide information on further impact.
+Microsoft released an update to its Safety Scanner tool (MSERT) so it can be used to scan for and remove web shells on potentially affected servers.
+For those susceptible to ProxyLogon attacks, Sophos provides a number of protections against variants of observed malicious web shells. Intercept X will provide alerts if web shell activity is detected and manual queries can be run in Sophos EDR to check for web shells. However, “just to be safe” Gangwer suggests Sophos customers use the MSERT tool to double check for web shells. “You owe it to yourself to do that,” he said.
+/* Query for known web shell names */
+SELECT
+datetime(btime,'unixepoch') AS created_time,
+filename,
+directory,
+size AS fileSize,
+datetime(atime, 'unixepoch') AS access_time,
+datetime(mtime, 'unixepoch') AS modified_time
+FROM file
+WHERE
+(path LIKE 'C:\inetpub\wwwroot\aspnet_client\%' OR path LIKE 'C:\inetpub\wwwroot\aspnet_client\system_web\%' OR path LIKE 'C:\Program Files\Microsoft\Exchange Server\V15\FrontEnd\HttpProxy\owa\auth\%')
+AND filename IN ('web.aspx','help.aspx','document.aspx','errorEE.aspx','errorEEE.aspx','errorEW.aspx','errorFF.aspx','web.aspx','healthcheck.aspx','aspnet_www.aspx','aspnet_client.aspx','xx.aspx','shell.aspx','aspnet_iisstart.aspx','one.aspx','errorcheck.aspx','t.aspx','discover.aspx','aspnettest.aspx','error.aspx','RedirSuiteServerProxy.aspx','shellex.aspx','supp0rt.aspx','HttpProxy.aspx','system_web.aspx','OutlookEN.aspx','TimeoutLogout.aspx','Logout.aspx','OutlookJP.aspx','MultiUp.aspx','OutlookRU.aspx');
+
+/* Query for web shells with randomized 8 character names */
+SELECT
+datetime(btime,'unixepoch') AS created_time,
+regex_match(filename, '[0-9a-zA-Z]{8}.aspx', 0) AS filename,
+directory,
+size AS fileSize,
+datetime(atime, 'unixepoch') AS access_time,
+datetime(mtime, 'unixepoch') AS modified_time
+FROM file
+WHERE (path LIKE 'C:\inetpub\wwwroot\aspnet_client\%' OR path LIKE 'C:\inetpub\wwwroot\aspnet_client\system_web\%' OR path LIKE 'C:\Program Files\Microsoft\Exchange Server\V15\FrontEnd\HttpProxy\owa\auth\%');
+These queries are based on currently known intelligence, and will be kept up to date on sophos.com/hafnium
+Dealing with a known attack
+Once these checks have been performed, the MTR team has noticed organizations fall into three general buckets:
+
+Those who do not find evidence of web shells. In this case, if the customer has patched all potentially vulnerable Exchange Servers, it presents less risk, but each organization should do their due diligence based on their risk thresholds.
+Those who found web shells, but all malicious activity occurred towards the end of February or later. In this case, it is likely the malicious actor was an opportunist taking advantage of the Hafnium news and the web shells left on victim devices. In this instance determining what commands were issued through the web shell is the critical next step to determining impact.
+Those who found web shells with malicious activity occurring before the end of February. In this case, the organization may be dealing with a targeted attack and should treat it accordingly by enacting their incident response process.
+
+Once an organization determines they have been impacted by a ProxyLogon attack, the next step is to determine when the attack occurred and what malicious activity can be seen. In some cases, organizations may have been impacted, had a web shell dropped, and no other malicious activity, but other organizations may have been hit with targeted attacks, cryptominers, or even ransomware like DearCry.
+Another script released by Microsoft could help with determining what impact an attacker had. The CompareExchangeHashes.ps1 script will go through file-by-file to compare the known good hashes of baseline Exchange directories to what is on an organization’s server to establish the extent of impact. This script will result in more false positives, according to Gangwer, but it would be “a more comprehensive way of knowing if there’s something going on and organizations will be aware they are being exhaustive in their investigation.”
+Gangwer said that in many cases MTR has found web shells that didn’t perform any activity or where such activity was general recon, but attacks could be far more involved.
+“If you see web shells and review the commands to find further credential access, lateral movement, or data exfiltration, you should immediately initiate your incident response plan,” Gangwer said. “Think about Rapid Response or some other incident response service because you need a thorough investigation at that point.”
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

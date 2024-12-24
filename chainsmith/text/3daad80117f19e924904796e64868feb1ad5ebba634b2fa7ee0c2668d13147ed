@@ -1,0 +1,40 @@
+Throwback Threat Thursday: JCE Vulnerability
+
+Throwback Threat Thursday is a series of posts where we recall older vulnerabilities that have since been patched by their developers. In the past, these vulnerabilities caused significant impacts to the security of website owners. Some vulnerable sites may be still be found in wild.
+
+Despite WordPress’ market share completely overshadowing other CMS’, Joomla (previously known as Mambo) has still managed to retain its position as the second most popular CMS.
+In fact, even with a decreasing market share in the overall CMS landscape, there are still well over a million live websites using Joomla to manage their digital content.
+Joomla’s market share, according to W3Tech’s data
+As a result, this large installation size makes Joomla an attractive target when it comes to malicious users targeting vulnerabilities.
+The problem only becomes compounded when you examine the many complaints about Joomla’s less-than-friendly interface. It’s also notoriously difficult to perform certain major upgrades: for example, upgrading version 1.5.x to 2.5.x. These major version changes are so significant that Joomla doesn’t even consider them a normal version upgrade, but rather a migration.
+Path Manipulation & Function Flaws in JCE
+One of the more serious security vulnerabilities that I have witnessed for Joomla websites involves a popular extension—JCE.
+JCE component (com_jce) is an extension module for Joomla. It’s used to make a variety of tasks easier within Joomla’s administrator panel, but for this post we’ll focus on the image editing features of com_jce:
+Upload, rename, delete, cut/copy/paste images and insert them into your articles using an intuitive and familiar interface.
+In 2011, a security vulnerability was publicly released targeting com_jce versions 2.0.10 and lower. While a security update was quickly provided by the developers, website owners can be slow to update.
+The following specific vulnerabilities were targeted:
+Path Manipulation Flaws
+Path Manipulation in “Image Manager“, “Media Manager“, “Template Manager“, “File Manager” sections allow attackers to delete any file or upload files to all the directories of the server.
+Unsafe Function Flaws
+The unsafe function “folderRename” can be used to change image type extensions (.jpg, .gif, .png & etc.) to any extension (including .htaccess or .php) from the “Image Manager“, “Media Manager“, “Template Manager” and “File Manager” sections.
+Backdoors Concealed in Forged Files
+The security vulnerabilities found in JCE allow hackers to upload backdoors hidden within a forged .gif. While JCE interprets these backdoors as an image file, the gif actually contains malicious code. A .gif extension is most commonly used in these attacks, since these files typically have a larger file size than most static images.
+To accomplish their malicious uploads, attackers add a .gif file header “GIF89aG” to the top of the backdoor file’s code, which allows com_jce to accept the malicious file. Attackers then submit a crafted POST request to perform the actual upload.
+The final step of the exploit requires a modification of the uploaded backdoor with a final POST request to change the .gif file extension to .php. After the upload and file name change is complete, a GET request is usually sent to the backdoor to verify its availability.
+192.168.2.1 - - [14/Mar/2014:12:26:54 -0500] "POST /index.php?option=com_jce&task=plugin&plugin=imgmanager&file=imgmanager&method=form&cid=20&6bc427c8a7981f4fe1f5ac65c1246b5f=cf6dd3cf1923c950586d0dd595c8e20b HTTP/1.0" 200 302 "-" "BOT/0.1 (BOT for JCE)"
+
+192.168.2.1 - - [14/Mar/2014:12:26:55 -0500] "POST /index.php?option=com_jce&task=plugin&plugin=imgmanager&file=imgmanager&method=form&cid=20 HTTP/1.0" 200 329 "-" "BOT/0.1 (BOT for JCE)"
+
+192.168.2.1 - - [14/Mar/2014:12:26:55 -0500] "GET /images/stories/0day.php HTTP/1.0" 200 469 "-" "BOT/0.1 (BOT for JCE)"
+
+The default directory for file uploads is ./images/stories/. PHP files should not typically exist in this directory.
+Since the JCE extension failed to properly validate or sanitize user input, attackers were able to leverage the exploit to upload arbitrary files from unauthenticated users.
+Scale & Persistence of JCE Attacks
+Despite the fact that JCE’s vulnerability was released back in 2011, attacks leveraging these vulnerabilities slowly grew as automated tools were developed and became widely distributed among bad actors. In 2014, we wrote a post about how we continued to see these vulnerabilities were being exploited in the wild—and even today we continue to see automated HTTP requests attempting to exploit this ~8 year old vulnerability.
+20.188.40.71 - - [07/Oct/2019:11:02:03 -0400] "POST /index.php?option=com_jce&task=plugin&plugin=imgmanager&file=imgmanager&method=form HTTP/1.1" 403 2439 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0" "PROXYBLOCKID:EXPVP5" "CACHES:-" "CIP: 127.0.0.1" cloudproxy10000
+In fact, from January to September, 2019 roughly ~1.3% of the blocked requests for our firewall were related to this com_jce vulnerability. So, why do we continue to see such attacks almost 8 years later? One reason is because vulnerable websites still exist.
+Our Incident Response Team has worked on 234 websites running vulnerable versions of the JCE component so far this year. Of those websites, 38 had infections that resembled the final payload signature (php.backdoor.fakeJPG.001) commonly found with this attack.
+./images/stories/im8233n.php - php.backdoor.fakeJPG.001
+As these attacks scaled, it became common for hackers to use the backdoored websites to run email spam campaigns. This became a problem for some dedicated hosting servers, who ended up with email queues in the millions as a result of a hosted vulnerable website being exploited and malicious PHP mailers added to it. With a mail queue this size, transfer services must be stopped (effectively stopping any email activity) or cleared of the spam, otherwise the hosting server may run out of memory or disk space.
+Conclusion: A Diminishing Attack Surface
+The good news is, we likely won’t see too much more from this exploit. As Joomla users continue to update or move to an alternative CMS, the available attack surface has gradually diminished. Although this JCE attack has persisted for the past 8 years, Sucuri’s web application firewall kept users safe by blocking exploit attempts for Joomla sites with this vulnerable extension.

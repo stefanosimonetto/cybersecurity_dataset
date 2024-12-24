@@ -1,0 +1,64 @@
+Server Security: OSSEC Updated With GeoIP Support
+
+We leverage OSSEC extensively to help monitor and protect our servers. If you are not familiar with OSSEC, it is an open source Host-Based Intrusion Detection System (HIDS); it has a powerful correlation and analysis engine that integrates log analysis, file integrity monitoring, centralized policy enforcement, rootkit detection, real-time alerting, and active response.
+It provides a pretty complete coverage if you are looking for endpoint (server) monitoring.
+If you have not used OSSEC before, I recommend reading my guide to get started:
+http://dcid.me/texts/my-ossec-setup-manual.html
+Note that it requires root access to your servers and is meant for network and server administrators with Linux skills.
+OSSEC With GeoIP
+We recently made an improvement to OSSEC with the integration of the MaxMind GeoIP database (that maps an IP to a country and/or a city). This update was important to us, as it makes it a lot easier to monitor logs and understand what is going inside your network.
+
+Here is a very quick example of how much easier things look:
+Src IP: IP ADDRESS / USA / New Jersey
+User: daniel
+Dec 6 13:28:26 support sshd[22031]: Accepted publickey for daniel from ..
+Compared to the original without GeoIP:
+Src IP: IP ADDRESS
+User: daniel
+Dec 6 13:28:26 support sshd[22031]: Accepted publickey for daniel from ..
+See the difference? It adds the country (and city) to the alerts, instead of just displaying the IP address. It also affects ossec-reported which now displays the geo information. This might feel rudimentary, but for anyone monitoring the logs this small change can make a lot of difference.
+Installing GeoIP
+Let’s get started with the installation process. You must first download the latest versions of OSSEC and GeoIP.
+We’ll start with OSSEC:
+# wget https://github.com/maxmind/geoip-api-c/releases/download/v1.6.7/GeoIP-1.6.7.tar.gz
+# wget https://bitbucket.org/dcid/ossec-hids/get/tip.tar.gz
+
+Then install GeoIP:
+# tar -zxvf GeoIP-1.6.7.tar.gz
+# cd GeoIP-1.6.7
+# ./configure; make; make install
+
+Once the installation is completed, you should see GeoIP installed inside /usr/local/lib:
+# ls -la /usr/local/lib/libGeoIP.so
+lrwxrwxrwx 1 root root 17 Dec 6 13:17 /usr/local/lib/libGeoIP.so -> libGeoIP.so.1.6.7
+
+If you do not have /usr/local/lib inside your library loading path, you can add it by modifying /etc/ld.so.conf:
+# echo "/usr/local/lib" >> /etc/ld.so.conf
+# ldconfig
+
+Or just set LD_PRELOAD before starting OSSEC:
+# export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
+Once completed, you need to download the latest GeoLiteCity database directly from MaxMind and copy it to /usr/share/GeoIP:
+# wget http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz
+# gunzip -d GeoLiteCity.dat.gz
+# mkdir /usr/share/GeoIP/
+# mv GeoLiteCity.dat /usr/share/GeoIP/
+
+Install OSSEC
+Once GeoIP is installed, you are ready to install OSSEC. You can follow the instructions from the step-by-step link above or just run these 3 commands that will guide you into the right direction:
+$ wget https://bitbucket.org/dcid/ossec-hids/get/tip.tar.gz
+$ tar -zxvf tip.tar.gz
+$ cd dcid-ossec-hids-*
+$ ./install.sh
+
+Installing OSSEC is fairly straight forward and will give you a lot of value out of the box, with minimal changes. If you have used OSSEC before, you will now see the Country/City in addition to the IP address in every alert log.
+Example:
+** Alert 1449426506.153: mail – syslog,fts,authentication_success
+2015 Dec 06 13:28:26 support->/var/log/secure
+Rule: 10100 (level 4) -> ‘First time user logged in.’
+Src IP: [IPADDRESS] / USA / New Jersey
+User: daniel
+Dec 6 13:28:26 support sshd[22031]: Accepted publickey for daniel from [IPADDRESS] port 44848 ssh2
+Note GeoIP support is only available in the repository I provided in this post. If you are using OSSEC already, try it out.
+If you are responsible for managing a dedicated server (or VPS), I also recommend adding it to your arsenal to know what is going on with your servers. An early warning system in case of a compromise can make a difference between a successful or a failed response.

@@ -1,0 +1,141 @@
+Unusual Exploit Kit Targets Chinese Users (Part 2)
+Recently, our researchers identified a strange exploit kit targeting Chinese domains. In that writeup, we talked about how the exploit kit operates in great detail, to include infection vectors, the delivered payload executables, and how the kit will stop in its tracks if the Chinese AV Qihoo 360 is detected.
+This article will discuss the malware delivered from that exploit kit. The malware, which has been identified by many vendors on VirusTotal, has been labeled by our researchers as Trojan.Chinad or just “Chinad” as an alternative (short) label.
+Observed Chinad Malware Files:
+notepad.exe (MD5: 5a454c795eccf94bf6213fcc4ee65e6d)
+pic.jpg (MD5: 4e8639378d7a302c7474b5e4406dd7b4)
+image.png (MD5: 55c447191d9566c7442e25c4caf0d2fe)
+5003.tmp (MD5: d6ce4b6db8407ca80193ede96d812bb7) – Real Name, “Module_UacBypass.dll”
+Notepad.exe (Chinad)
+Summary
+Notepad.exe (“Chinad”) behaves much like a typical bot client. This binary, along with image.png, is the main component of the Chinad malware.
+The Chinad bot sends network requests to a remote server where it will then receive commands to carry out various tasks on the victim’s computer. Some of this functionality includes injecting arbitrary shellcode into itself, although the primary purpose of the bot appears to be for DoS attacks.
+Delivery of this Chinad malware executable has been observed via FTP and after successful exploitation of CVE-2014-6332 in Microsoft Internet Explorer.
+Technical Analysis
+The executable has been compressed with UPX to reduce its size, making network transfers to potential victims more efficient.
+
+And underneath the UPX compression is a rather clean Microsoft Visual C++ executable.
+
+Chinad first creates a mutex with the hardcoded name “Global\3672a9586a5f342b2ca070851e425db6” and copies itself into the users’ System folder if Admin privileges are found, and into the Appdata folder if not:
+%windir%\System\Init\wininit.exe
+("C:\Windows" being a typical value for %windir%)
+%appdata%\Microsoft\System\wininit.exe
+("C:\Users\\Roaming" being a typical value for %appdata%)
+It remains persistent on the victim’s system using either a traditional “runkey” registry method or by using the Windows task scheduler, the commandline for which can be observed below:
+C:\Windows\system32\schtasks.exe /create /F /sc onstart /tn Microsoft\Windows\Shell\Init /tr \C:\Windows\System\Init\wininit.exe\ /ru system
+This will also launch Chinad as a system user, the account having the highest level of privileges within Windows.
+Before contacting any related malware servers, Chinad will first perform a simple Internet connectivity test, first trying to contact www.baidu.com.
+
+Chinad will sleep if it has not active Internet connection; otherwise, it will continue to retrieve commands.
+Receiving Commands
+Receiving commands to execute is done by retrieving a file called “bootstrap.min.css” from a remote server (hardcoded IP address by default). An example of this request can be seen in the image below.
+
+However, before Chinad can read any commands, it must first decrypt the retrieved file, which has been encrypted with the Salsa20 cipher, identified by the string “expand 32-byte k” and similar decompiled source code.
+
+Commands accepted by Chinad include:
+update - Store current cnc and report server info in a encrypted file. Then, download and execute an updated version of the malware, and delete the old copy.
+syntax: <command>,<url>,<param_1>,<param_2>,<param_3>;
+cnc - Specify address of cnc server to contact for commands.
+syntax: <command>,<url>;
+cnc_reset - Reset address of CNC server to the default value.
+syntax: <command>;
+report - Specify address of reporting server.
+syntax: <command>,<url>;
+report_reset - Reset address of reporting server to default value.
+syntax: <command>;
+attack - Attack a target IP over either a TCP or UDP socket using generated data.
+syntax: <command>,<udp|tcp>,<target IP>,<start_time>,<stop_time>,<sleep>;
+attack_reset - Reset address of the attack target.
+syntax: <command>;
+url_exec - Download a file from a specified url and execute it using WinExec
+syntax: <command>,<url>,<param_1>;
+shellcode_exec - Create a suspended process and inject shellcode into it. Then, resume the process.
+syntax:<command>,<shellcode>;
+The first command typically received by Chinad from the C&C server is the “update” command, which contains a parameter with a download url for the updated malware binary. In this case, it is image.png, a slightly more robust version of the bot.
+Commands appear to be separated by a semicolon, the same syntax used in many modern programming languages, such as C. It appears that multiple commands can be issued at a time, as the “attack_reset” command is issued next. An example of a full command is seen below:
+timestamp,1431270567;
+update,http:///image.png?13572v44,44,1,5b7e022f5009004985b34cf091d06752c765a25b445a46050eef51a17be8267d;
+attack_reset;
+The timestamp keyword is not actually a command, but has a value that represents a decimal-formatted FILETIME structure that will be compared with the system’s time. It seems this is used to ensure the malware only executes commands during times the botmaster wishes, and allows the botmsater to control when a bot will “expire”.
+In the case of the update command, Chinad does something special before updating the malware, in that it first stores its current configuration information in a Salsa20-encrypted file. If the user has Admin privileges, this file will be stored at:
+%windir%\Logs\WMI\Event\SystemEvent.evt
+If no Admin privileges are available, the file is stored at:
+%appdata%\Microsoft\System\wow64.dll
+When the updated malware is executed, it will first open this file and decrypt its contents to retrieve the last-known address of both the C&C and reporting server.
+Reporting Information
+Sending report information is another feature of Chinad, although it is not well understood at this point in time. Chinad will first make a call to GetAdaptersInfo, which retrieves information about the victim’s network adapter, like the name and IP address. Next, it will then execute an algorithm to generate a special value.
+At the time of this writing, we could not ascertain the meaning of this value. In addition, the report server always responds to the request with “AAA”.
+
+One theory is our samples of Chinad have “expired” (invalid timestamp values), and thus the reporting function is not working properly. It may also be that the report server used during analysis was simply not working properly.
+Regardless, the values included in the request must have a special meaning that only the report server understands. We will update this section if more information becomes available.
+Attacking Targets
+As mentioned earlier, Chinad can receive attack commands, where it will be instructed to attack a specified IP address. Attacks can be carried out over either TCP or UDP sockets. The purpose of this appears to be carrying out Distributed Denial of Service attacks, oftentimes abbreviated as DDoS attacks.
+
+Once the attack thread is created, Chinad will continuously send data to the target, sleeping after it sends data for a time specified by the attacker.
+It will not stop attacking a target unless it has been issued another attack command or the attack_reset command. Below is an example of data sent to a target over a UDP socket.
+
+To generate this data, Chinad retrieves the address of the thread’s tiddata block using the CRT function __getptd. It will then mangle returned data somewhat before sending it to the target.
+Pic.jpg
+Summary
+As mentioned in our previous blog, we have observed this Chinad malware being delivered through both Flash and Java exploits.
+Pic.jpg is a Dll and requires a parent module (a loader) of either a web browser or java to run it. Like other parts of the Chinad set, pic.jpg aims to get the main bot component, image.png, installed on to the victim’s computer. This is its sole purpose, and can be achieved in several ways, to include exploiting the victim once again.
+Technical Analysis
+On the exterior, pic.jpg is rather plain and straightforward. The file has no obfuscation applied and no additional exported functions.
+
+First, pic.jpg first performs a simple check of the full path for the loader process on disk. For example, if the exploit occurred using Flash in a browser, the loader might be at C:\Program Files (x86)\Internet Explorer\iexplore.exe, which is a standard path to Microsft Internet Explorer. Pic.jpg looks for the following strings in the path of the loader:
+\java
+\iexplore.exe
+\mshtml.dll (checks if loaded in memory)
+\chrome.exe
+\firefox.exe
+\safari.exe
+\opera.exe
+If pic.jpg does not find at least one of these strings in the loader process, it will terminate, likely assuming it’s being analyzed. This can sometimes bypass automated analysis systems, like sandboxes.
+Pic.jpg will then attempt to exploit the TS WebProxy component of Microsoft Windows, a vulnerability documented as CVE-2015-0016. This privilege escalation attack (detailed description from Trend Micro here) allows an attacker to launch an arbitrary process. In this case, pic.jpg executes a powershell command in a hidden window. Parameters to the powershell command are seen below, where a base64 encoded gzip archive is first decompressed; this archive contains a script, located in variable $s that is then executed.
+
+The decompressed script contains shellcode (also base64 encoded) that is place in new memory (VirtualAlloc) and executed as a thread.
+
+Once the shellcode executes, it retrieves image.png from a remote server, names it desktop.ini.exe, and executes it.
+In the event that the TS WebProxy exploit does not work, pic.jpg will also trying downloading image.png from a remote server, either directly using UrlDownloadToFile or through a Visual Basic script that’s dropped in a Temp directory.
+Image.png (Protected Chinad)
+Summary
+Delivery of this Chinad malware executable has been observed via FTP and after successful exploitation of CVE-2014-6332 in Microsoft Internet Explorer.
+Image.png is another variant of the Chinad bot and is nearly identical to notepad.exe in terms of functionality. However, it has a few extra functions and has much stronger anti-analysis capabilities.
+Technical Analysis
+Unlike notepad.exe, attackers have chosen to protect image.png by using the powerful Themida protector, a commercial product from Oreans.
+
+Themida has a lengthy reputation of being a strong protector for executable files. The protector has an extensive feature set, to include capabilities such as VM and forensic tool detection.
+In addition, Themida also offers different (mutable) protection code which changes drastically as different features are enabled, making it even harder to automate the process of unpacking.
+Interestingly, it seems that it was an odd decision for the attackers to have obfuscated image.png and not notepad.exe, as notepad.exe is much easier to analyze and is essentially the same bot.
+One major difference is noted in image.png, where a special Dll is dropped to disk in the user’s Temp directory before retrieving commands from the C&C server.
+This Dll, known by its real name as “Module_UacBypass.dll” (the file name on disk is a temporary file name) will be used to establish persistence and bypass User Account Control (UAC) for non-Windows XP systems. More details on this Dll are noted in the section below.
+
+Besides this, no other major differences have been observed in image.png. It still retains all of the functionality of its related binary, notepad.exe. As future versions of the bot are developed, it seems likely it will be delivered in a protected form, perhaps still using Themida.
+5003.tmp (“Module_UacBypass.dll”)
+Summary
+Module_UacBypass.dll (“Uac_bypass.dll”) is a module seen used by the protected version of the Chinad bot (image.png). It’s main purpose is maintaining persistence for Non-Admin users who are running Windows Vista and later. Persistence is done using non-traditional methods, which involve hijacking a Windows SQL server Dll to bypass UAC and maintain a footprint on the victim’s computer.
+Technical Analysis
+Uac_Bypass.dll has two exported functions, Func1 and Func2, along with some interesting string artifacts, to include the real name of the Dll, “Module_UacBypass.dll”.
+
+It is interesting that the authors chose to prefix the name seen with “Module,” suggesting that more modules might be planned for the Chinad bot, or perhaps already in circulation.
+Uac_Bypass.dll is primarily used to establish persistance of the Chinad bot for Non-Admin users (for Admin users, persistence is achieved using the schtasks.exe method seen under the analysis of notepad.exe). The module also bypasses UAC, a security feature added in Windows Vista to help prevent execution of malicious programs. Since UAC is not available on Windows XP, this Dll will not execute on systems running the OS.
+First, Uac_bypass.dll will make a copy of itself in the temp directory called NTWDBLIB.dll, and then makes that file into a cabinet archive. NTWDBLIB.dll is the name of a library used for Microsoft SQL server.
+
+The purpose of this is to use this cabinet along with wusa.exe to update the NTWDBLIB.dll (if it exists) with a copy of Uac_Bypass.dll, thereby hijacking the Dll. Wusa.exe is an abbreviated name for Windows Update Standalone Installer, which allows Windows updates to be applied using a supplied cabinet.
+
+Uac_Bypass.dll also writes a special registry key to:
+HKCU\Software\Microsoft\Windows NT\CurrentVersion\UacCompat
+This key value contains the path to the Chinad bot.
+Then, Uac_Bypass.dll executes cliconfig.exe, which loads the new, malicious NTWDBLIB.dll into memory and points to the DllMain function.
+
+Inside of DllMain, Uac_Bypass.dll check to see if the string “\cliconfig.dll” is in the calling process name. If it is, it will retrieve the path of the Chinad bot in the registry key above and run it with CreateProcess.
+This bypass method has been talked about before here, and has been seen in malware as early as 2013.
+Conclusion
+The Chinad bot appears to have been designed mainly for the purpose of carrying out DDoS attacks using mostly Chinese victim computers.
+Thus far, infected webpages that deliver Chinad have only been spotted on Chinese domains (hence the bot name), while the Exploit kit itself that delivers the malware has been spotted on servers in both Malaysia and Singapore.
+Our research teams have not yet seen Chinad outside of Asia, and other clues, such as testing internet connectivity using both baidu.com and qq.com, suggest the bot has a primary focus in the Asian world.
+While it doesn’t offer anything revolutionary, we believe the Chinad bot is still in it’s infancy, as some mistakes appear to have been made by the developers. This includes not applying a packer or protector to notepad.exe, a variant of the Chinad bot, as well as leaving many relevant strings, such as the name of “Module_UacBypass.dll” in plain sight.
+These things lead us to believe that Chinad was not the work of a seasoned professional, and not likely the work of a group with large resources, such as a nation-state. It will be interesting to see if Chinad offers more improvements with time, along with added functionality.
+Contributing analysts:
+@joshcannell
+@hasherezade

@@ -1,0 +1,77 @@
+WordPress Redirect Hack via Test0.com/Default7.com
+
+Malicious redirect is a type of hack where website visitors are automatically redirected to some third-party website: usually it’s some malicious resource, scam site or a commercial site that buys traffic from cyber criminals (e.g. counterfeit drugs or replica merchandise).
+Types of Malicious Redirects
+There are two major types of malicious redirects: server-side redirects and client-side redirects.
+Server-side redirects take place before a visitor even loads a page. The most common techniques used by server-side redirect hacks are “rewrite” rules in Apache .htaccess files or PHP code injected into legitimate files.
+Client-side redirects are initiated by visitors’ browsers after they load infected web pages. The most common client-side redirects are implemented via injected JavaScript code (unwanted ads or redirects to scam sites) or via the HTML “meta refresh” instruction (typical for phishing pages).
+Most malicious redirects are conditional. It means that redirection only occurs when a certain condition is met. For example, search traffic redirects only take place when visitors come from Google search results or from some other search engine. Other common redirect conditions are:
+
+Type of web browser – The malware exploits a vulnerability in a certain browser, and hackers are not interested in visitors that use other types of browsers.
+Mobile or not – Only mobile traffic may be redirected.
+First visit or not – Malware usually lurks on subsequent visits to make it harder to detect and troubleshoot.
+Default browser language – For example, some spam campaigns redirect only visitors whose browsers report Japanese or Korean as their preferred language.
+
+Example of a WordPress Redirect Hack
+The following case from 2016 is a typical example of a conditional server-side WordPress redirect. Although the attack is not active for the last three years, it shows the most common techniques used by hackers: malware in theme’s header.php, conditions on the first visit and type of the browser. In addition, it shows how hackers make redirects random, which hinders detection.
+We’ve been working on a few WordPress sites with the same infection that randomly redirects visitors to malicious sites via the default7 .com / test0 .com / test246 .com domains. In this post, we’ll provide you with a review of this attack, investigated by our malware analyst, John Castro.
+Header.php Injection
+In all cases, the malware injects 10-12 lines of code at the top of the header.php file of the current WordPress theme:
+Malicious injection in header.php
+When decoded, you see this main part of the malware:
+Decoded malware
+The logic is simple. It redirects visitors to default7. com if it’s their first visit to this site after the infection, then it sets the 896diC9OFnqeAcKGN7fW cookie for one year to track returning visitors. If they are not search engine crawlers, it checks the user agent header.
+Random WordPress Redirects
+Even for eligible visitors, the redirects are random. The chances of the redirect are specified in the $chance variable, which is currently set to 15%.
+Default7 .com is not the final redirect destination. Depending on the IP and the browser, the visitor gets redirected further. We detected the following domains were used in the redirect chains:
+
+default7 .com
+test246 .com
+test0 .com
+distinctfestive .com
+ableoccassion .com
+
+Fake Updates for Internet Explorer Users
+The most interesting scenario is when you use Internet Explorer. In this case the redirect chain may look like this:
+default7 .com
+
+-> advertisementexample .com/d/p/test246.com?k=e88965c228fb1da3ff5ecff0d3034e7a.1462363771.823.1&r=
+
+-> maintainpc .soft2update .xyz/vtrescs?tyercv=5qe5FetFrItyco5HNTadzxMu9Nwdv__MlK_dmzyotoo.&subid=102860_bebd063b36f47778fce4592efccae37a&v_id=e5tsIAwpqr6ffJ2kShbqE1F3WXTIU4auGIx7jpVqifk.
+
+-> intva31 .saturnlibrary .info/dl-pure/1202331/31254524/?bc=1202331&checksum=31254524&ephemeral=1&filename=adobe_flash_player.exe&cb=-1388370582&hashstring=oZy9K7h7eaHC&usefilename=true&executableroutePath=1202245&stub=true
+This leads to websites that push fake Flash and Java updates:
+
+The above redirect chain ended with downloading of the adobe_flash_player-31254524.exe file which was recognized as malware by 27 antivirus vendors on VirusTotal.
+Facebook Side Effect
+There is an interesting side effect that may help reveal this infection. When you post a link to an infected site on Facebook, you may see (or may not since the redirects are random) a snippet from another site – e.g. test0 .com.
+test0 .com redirect when sharing an infecting site on Facebook
+When you clean the site, the Facebook link will keep redirecting to test0. com when people click on the link. Why? Because of the shared cache. It should be reset here.
+Bugs in Malware
+There are other side effects of this malware caused by obvious bugs in the malicious code.
+For example, in the decoded version you can see this line #9:
+if ($_GET['6FoNxbvo73BHOjhxokW3'] !== NULL) {
+For some reason the malware checks for the 6FoNxbvo73BHOjhxokW3 parameter, but does nothing if a GET requests contains it. It’s not a problem though. The problem is that the code doesn’t make sure such a parameter exists before checking its value. In PHP, this causes a notice like this:
+Notice: Undefined index: 6FoNxbvo73BHOjhxokW3 in /home/account/public_html/wp-content/themes/currenttheme/header.php(8) : eval()’d code on line 9
+Many servers turn off PHP notices, so it’s not a big problem. Some still show them, and you can find infected sites just by Googling: “Notice: Undefined index: 6FoNxbvo73BHOjhxokW3”. For me, Google returns 6420 results for this query.
+Footer.php
+If you check the results for the above query, you’ll see that most of them also mention errors in the theme’s footer.php file:
+Fatal error: Cannot redeclare enc() (previously declared in /home/account/public_html/wp-content/themes/currenttheme/header.php(8) : eval()’d code:56) in /home/account/public_html/wp-content/themes/currenttheme/footer.php(9) : eval()’d code on line 2
+The reason for this is that this attack previously infected footer.php files where it injected similar obfuscated code at the top. That code declared functions with the same names as the malware in header.php.  As a result, once the attack switched to header.php (in April) and reinfected a site that already had those injections in footer.php, the PHP engine started to show errors about redeclared functions. In essence, both header.php and footer.php were being executed in the same context.
+The footer.php variation of the malware was more sophisticated. It injected JavaScript code that would redirect visitors or create popups. It stored the encrypted redirect URL in the .SIc7CYwgY (or .SIc7CYwgY1) file in the site root, or in /var/tmp/.SIc7CYwgY if the site root was not writable. It could also update the stored redirect URL using requests to an infected site that included 8Yx5AefYpBp07TEocRmv as a GET parameter. Nonetheless, they used the same default7 .com domain (encrypted as: IyUOPGlbfjUHCiwgXwZ1aRIpFA==) for the redirects.
+Joomla variant
+The same search results show as this attack also affects Joomla sites where it injects the same code into the administrator/includes/help.php file.
+Infection Vector
+In most cases, the infected sites had multiple vulnerabilities. The infection itself was part of a number of other infections in the environment (it wasn’t an isolated event). In some cases, the infection was the only infection and found within the active theme’s header.php file. This is a typical infection scenario when attackers have access to WordPress admin interface and can edit the current theme’s files directly from there.
+Log analysis has proved this hypothesis:
+203.116.84.253 - - [07/Apr/2016:13:01:35 -0400] "POST /wp-admin/theme-editor.php HTTP/1.1" 302 268 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.130 Safari/537.36"
+
+203.116.84.253 - - [07/Apr/2016:13:01:36 -0400] "GET /wp-admin/theme-editor.php?file=header.php&theme=Chameleon&scrollto=0&updated=true HTTP/1.1" 200 49057 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.130 Safari/537.36"
+
+203.116.84.253 - - [07/Apr/2016:13:01:39 -0400] "GET /?6FoNxbvo73BHOjhxokW3=1&url=http%3A%2F%2Fdefault7.com&chance=7 HTTP/1.1" 200 22 "-" "curl/7.19.7 (x86_64-redhat-linux-gnu) libcurl/7.19.7 NSS/3.15.3 zlib/1.2.3 libidn/1.18 libssh2/1.4.2"
+For example, this log excerpt shows how someone with a Singapore IP logged into the site and went directly to the theme editor to modify the header.php file. Then, just a few seconds later the same person used curl to verify the injection using the 6FoNxbvo73BHOjhxokW3 parameter, which is only known to the attacker.
+A simple way to address this is to disable the a users ability to edit PHP files via wp-admin (Good source on WPBeginner). You can do this by adjusting your wp-config.php file with the following code snippet:
+# Disable Theme Editing
+
+define( 'DISALLOW_FILE_EDIT', true );
+That’s why after you remove the malware, it’s important to change all passwords, check for rogue admin accounts, and of course, make sure WordPress and all third-party themes and plugins are up to date. We have a more complete list of steps you can take post-compromise, and you can also find specific post-hack steps in the post-hack section of our free WordPress security guide. If your website is hacked, we can clean it and protect it for you.

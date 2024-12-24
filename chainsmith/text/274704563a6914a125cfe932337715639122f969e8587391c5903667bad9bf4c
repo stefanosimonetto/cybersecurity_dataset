@@ -1,0 +1,46 @@
+Miner Madness!
+Over the past few weeks, I am certain that you have heard your fair share about Bitcoin and not just from us but from news outlets and probably in passing conversation. Today’s news is all about how real malware tactics are being used to steal your system resources via miners.
+Bitcoin has skyrocketed  in its value over the last few months and bounced around a bit (last week it was worth over $1,200 USD and today it’s at around $750 USD). This kind of attention has unfortunately made it difficult to use as a trading standard since the amount you obtain in BTC from customers could be worth half that in a few days.
+The attention has also resulted in the side effect of having bitcoin/litecoin/bitshare/protoshare miners popping up not only on willing participant systems but also unsuspecting home computers.  A couple of weeks ago, I blogged about some Potentially Unwanted Programs that were installing Bitcoin miners and a few days ago my colleague Chris Boyd wrote about a miner that was installed by a fake flash player.
+This post is similar in that I am going to talk about malware with the similar goals, making money via the BTC market, however unlike the others, this one knows how to hide and it’s ability to steal your system resources is just as strong, if not stronger.
+CoolBird
+The appli…malware calls itself CoolBird based on the file properties.  I have no idea what it’s advertised purpose is, however it is bundled with additional potentially unwanted software so it’s probably something to do with “Search Optimization.”  I got this sample from our Research team because it modifies folder properties and makes it difficult to remove only with an MBAM scan.
+
+Upon execution of the file, I discovered that it made the original executable hidden and copied itself to
+
+C:\ProgramData\{$3846-5431-7124-6958$}
+
+Although my analysis was done on an x86 Win 7 VM, notes from other analysts on a x64 system said it created a new folder in :
+
+C:\Windows\SysWOW64\{$3846-5431-7124-6958$}
+
+So that changes based on the processor being used however the folder name: {$3846-5431-7124-6958$} seems to be static.
+CoolBird only works on more modern versions of Windows as it wouldn’t even bother to execute on Win XP.
+Coolbird changes its name to msconfig.exe and executes itself as such, for anyone who doesn’t know ‘msconfig.exe’ is a system configuration tool built into Windows, this move was probably to help avoid serious concern when somebody noticed msconfig.exe taking up all their system resources.
+Coolbird beacons out continuously, looking for a certain file belonging to a .pw domain (something similar to what Chris Boyd talked about in his fake Flash player blog), specifically a folder/file named ‘/plasma/miner.files.’ I wonder what that could belong to?
+
+Unfortunately, my first attempts at observing the miner failed since it seemed like the files no longer existed. I left it running to see if there was any additional functionality and a few hours later I hit pay dirt when I noticed a new process running under msconfig.exe.
+
+Turns out msconfig.exe hijacked a common windows process called cvtres.exe. I made sure to check out the binary for the application, where it was located, even compared hashes to a previous version before I ever started running CoolBird.  This was the legitimate file, however the command line parameters provided in the process properties didn’t make sense.
+
+The command line for the running cvtres.exe was:
+
+-a scrypt -o stratum+tcp://lts.coiner.in:8333 -O sd2xd.1:x -t6
+
+However the actual valid commands for running this application from the command line don’t allow these types of options.
+
+So my suspicions were nearly proven and I just wanted to check one more thing to be certain that this was a process injection scenario.  If application A had injected something into application B, the injected code would be in the same memory space as application A, which means that if I were to look  at the strings associated with the process memory, not the binary itself, I should find a clue to what is happening.  So I looked, and then I smiled ….
+Bingo! Caught red handed!
+CoolBird had injected code for MinerD aka CPUMiner, a popular, open source Mining application that uses the CPU rather than the GPU and is highly efficient.
+Additional traffic analysis revealed that the miner was in fact running and communicating with a remote server to do what miners do, communicating to port 4240.
+
+Although in reality, the traffic analysis was really just additional proof since anyone monitoring their system resources would have a heart attack as soon as they saw this:
+
+So there you have it, the story of the miner that wanted to be malware. Of course CPUminer is not liable for this injustice to users, they simply made an effective tool to help real world miners make some additional cash on their own systems and scammers decided to use that tool to hurt innocent people. Think of it as a hammer, in the hands of someone building something for their own purposes, it’s a wonderful and effective tool. However, in the hands of a psychopath it’s a deadly weapon.
+As mentioned in previous blogs, the increased stress put on a processor or graphics card by a miner can cause it to become damaged and might even overload the system, frying it.  At that point the innocent user would have to buy another system, hopefully they don’t depend much on their “Search Optimizer” so they re-download the bundled software responsible and end up in the same situation.
+The employment by cyber-criminals and PUP-Peddlers of Bitcoin miners seems to be growing as the currency becomes more and more valuable. It’s likely that this trend will continue into the next year and it makes even more sense to scan and remove any Potentially Unwanted Programs on your system; you never know when they might decide to nuke your processor just to make a few thousandths of a BTC.
+Malwarebytes Anti-Malware detects this threat as Trojan.MSIL and Trojan.Agent and we have a complete guide on removing the threat on our forums, care of our threat removal guru Metallica.
+A special thanks to Dave Nelson, Pieter Arntz and Ade Gill for their research and assistance.
+Thanks for reading and safe surfing! DFTBA!
+————————————————————————————————-
+To keep up with Adam Kujawa’s unique observations, follow him on Twitter @Kujman5000

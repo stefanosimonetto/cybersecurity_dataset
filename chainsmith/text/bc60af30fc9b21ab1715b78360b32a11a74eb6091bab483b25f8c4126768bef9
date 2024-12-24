@@ -1,0 +1,87 @@
+Neutrino EK: fingerprinting in a Flash
+Since the disappearance of Angler EK, exploit kit activity is at one of its lowest it has been in a long time. The focus is therefore on Neutrino EK, which has somewhat picked up the pieces, although at a much lower rate.
+On June 13th, @BelchSpeak tweeted something that caught my attention because it had to do with local iframes searching for installed software. This immediately made me think of the fingerprinting technique, an information disclosure vulnerability we have described many times on this blog. The purpose of fingerprinting in the case of exploit kits or malvertising campaigns is to avoid unnecessary attention by checking for undesirable users (researchers, honeypots, etc) and not serving them the exploits and malware payload.
+Neutrino EK has used various tricks before to check for debuggers and operating systems and appears to now be adding another layer of evasion with the res:// variant onload technique which had supposedly been addressed by Microsoft with security bulletin MS14-052.
+Fingerprinting evidence
+Replaying Neutrino EK with Process Monitor confirms some checks for security and virtualization software taking place. If the value returned is “PATH NOT FOUND”, that means the software it is looking for is not installed at that particular (default) location. For example, we see below that Neutrino is checking for the presence of Fiddler, a commonly used web debugger, or also for VMware and VirtualBox, two popular virtualization pieces of software.
+
+What this means is that the victim is most likely genuine since they are not using some monitoring tools or testing the exploit kit inside of a Virtual Machine, therefore making them a good candidate for the exploitation and infection phases that follow up.
+Finding the source
+The strange thing with this particular fingerprinting is that Neutrino’s landing page is notorious for being extremely simple, and only used to launch Flash exploits, devoid of other code that other EKs typically run before firing exploits:
+
+It only seemed logical to look into the Flash exploit to find some clues. We can use Sulo to dump a cleaner version of the malicious SWF, which allows us to glance at the ActionScript3 code and spot an interestingly named script most likely responsible for this fingerprinting:
+4_res_js_rc4$9d60ea8c42cd5afde749de7143478f03135771611
+
+Timeline
+Up until June 9th, the malicious SWF used by Neutrino looked more or less like this (note the absence of the res_js script):
+
+However, on June 10th, a new version of the Flash exploit contains it (original URL: umwlyov.inconfirmug.top/ministry/1896384/slide-bounce-attach-shaft-bomb-herself-bosom.swf).
+
+Static SWF analysis
+To examine this new artifact, we can use JPEXS and extract the binary data associated with res_js:
+
+That binary data is encoded and requires RC4 decryption with a key stored in the SWF file, before finally getting the resulting bytes decompressed into readable text.
+
+A quick glance at the (truncated) code below shows a very suspicious blurb preceded by __flash__toXML. This technique of stuffing JavaScript code into a Flash file and starting it via the ExternalInterface.call has been documented before.
+
+The v variable is actually an array containing the fingerprinting elements later used as iframes via the res:// call.
+[ "debug",
+"maxParallelCheck",
+"frameName",
+"myFrame",
+"name",
+"VirtualBox Guest Additions",
+"res",
+"res://C:\\Program Files\\Oracle\\VirtualBox Guest Additions\\DIFxAPI.dll/#24/123",
+"type",
+"vm",
+"VMware Tools",
+"res://C:\\Program Files\\VMware\\VMware Tools\\VMToolsHook.dll/#24/2",
+"Fiddler2",
+"res://C:\\Program Files (x86)\\Fiddler2\\uninst.exe/#24/1",
+"tool",
+"Wireshark",
+"res://C:\\Program Files (x86)\\Wireshark\\wireshark.exe/#24/1",
+"FFDec",
+"res://C:\\Program Files (x86)\\FFDec\\Uninstall.exe/#24/1",
+"ESET NOD32 Antivirus",
+"res://C:\\Program Files\\ESET\\ESET NOD32 Antivirus\\egui.exe/#24/1",
+"av",
+"Bitdefender 2016",
+"res://C:\\Program Files\\Bitdefender Agent\\ProductAgentService.exe/#24/1",
+"length", "[START] checking process ...",
+"Software for checking: ",
+"getTime",
+"successCallback",
+"failCallback",
+"pop",
+"=== Checking element:
+", ", on iframe: ",
+{truncated} ]
+iframes and XMLDOM
+What the browser ends up loading is a series of iframes checking for specific installed software on the local disk:
+
+Neutrino EK, in keeping consistent with its focus on Flash exploits and a minimal landing page is killing two birds with one stone. The malicious Flash fingerprints the system using CVE-2013-7331 and then exploits a recently patched Flash (Flash Player up to 21.0.0.213) with CVE-2016-4117 if the system passes the test.
+Running Neutrino EK on a fully patched Windows 10 machine with the Edge browser, we can see the fingerprinting is still working and detecting that we are running VirtualBox:
+
+We informed the Microsoft Security Response Center (MSRC) and quickly received a reply: “We are aware of this issue and are currently engaged in working towards a resolution.”
+Malwarebytes Anti-Exploit detects and blocks this information disclosure bug/feature as a fingerprinting event when it tries to check for Malwarebytes software.
+Special thanks to @Ledtech3 and Microsoft Edge engineer @jonathansampson for their help in decoding some parts of the SWF and JS code.
+Further reading
+Luis Rocha, Neutrino Exploit Kit Analysis and Threat Indicators
+IOCs
+
+Flash exploit for June 9th
+
+Original: ad7873f7e241a51090d70b95cdc0c2646884cb61c3a564bd1062848b7a860f25
+Dumped: 68f10d5e1054002775b73967c28f1c043cd77f55152ee9ecd3c00f0727adcb6f
+
+Flash exploit for June 10th
+
+Original: 6b9be2361f19070198b3bdc9372c8cb436ddc2d344ee77f10d27f597b68679a7
+Dumped: e716b1f5c5598d6d1bb89c7dcfa46017d0416b0da5b4c9c952b2ec5d383792c1
+
+Flash exploit analyzed
+
+Original: 8627d6ac05e868557a3ef796ae91c85648a3348f7a8428760e6771966d871fc9
+Dumped: a7c238b0c1984703aacea4582975104e3254b7d01b017bd4b07258d4b1ab0d40

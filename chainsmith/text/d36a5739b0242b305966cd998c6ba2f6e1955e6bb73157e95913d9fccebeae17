@@ -1,0 +1,89 @@
+Linux Based SSHD Rootkit Floating The Interwebs
+
+For the past couple of days we have been a lot of discussion on a number of forums about a potential kernel rootkit making its rounds on the net. Interesting enough when we wrote about the case it wasn’t being picked up by anyone, today however it’s being picked up my an number of AV’s .
+In case you don’t see it, a month and change ago it was at 0 detections of 46 and today it’s 20+ detections of 46. Nice!
+That being said, what we found a month ago and what is being discussed today are two different things.
+The Discussion
+What is important to understand is the differentiating factor between what we found and what is being reported, is that in our case it was a full modification of SSHD. In this case, a module is being injected to modify the libraries used by SSHD.
+
+The SANS Institute Internet Storm Center (ISC) put out a post yesterday describing what it’s doing.
+
+The main activity of the rootkit consists in collection of credentials of authenticated users. Notice that the rootkit can steal username and password pairs… -SANS ISC
+
+It is important to note that it appears to have a stealth component to it:
+
+The hooking of audit_log* functions was done to allow the attacker to stay as low profile as possible – if the attacker uses the hardcoded backdoor password to issue any commands to the rootkit, no logs will be created. – SANS ISC
+
+How to Detect It
+There are currently a number of ways to tell if you’re being impacted by this specific SSHD rootkit. Here is a compilation of the various options:
+Parrells came out with this recommendation today:
+
+In order to check whether the server is infected or not run this script:
+# wget -qq -O - http://www.cloudlinux.com/sshd-hack/check.sh |/bin/bash
+
+There is a script which changes links back to the original state:
+# wget -qq -O - http://www.cloudlinux.com/sshd-hack/clean.sh |/bin/bash
+
+But we highly caution you against this approach. You should never be running bash on content downloaded directly from a site, the number of compromises going on today tell us that every environment should be treated as unsafe. Better yet, if you download the script, you can see what they are looking for is this:
+
+LIB64=/lib64/libkeyutils.so.1.9
+LIB64_1=/lib64/libkeyutils-1.2.so.2
+LIB32=/lib/libkeyutils.so.1.9
+LIB32_1=/lib/libkeyutils-1.2.so.2
+
+You’re best just searching for that manually by doing any of the following:
+
+ls -la /lib*/libkeyutils-1.2.so.2
+ls -la /lib*/libkeyutils.so.1.9
+.....
+
+Or
+Using the recommendation below with Find.
+SANS ISC is recommending this:
+
+# rpm -Vv keyutils-libs-1.2-1.el5
+
+They also make a very good recommendation to scan the entire box to make sure the module hasn’t been hidden in an otherwise benign location:
+
+# find / -name libkeyutils*
+
+For us, when we came across the issue, we were able to capture it by doing the following:
+
+# rpm -qf /lib64/*
+# rpm -qf /usr/lib/*
+# rpm -qf /etc/httpd/modules/*
+
+and
+
+rpm -Va
+
+How to Protect Against It
+These are both similar activities to what we saw in our elf binary. What we did to stop the attacker from gaining access was to rearchitect the entire environment such that passwords were never used again. You can do this in your SSHD configuration file, default installs place the file here: /etc/ssh/sshd_config
+Here we’ll cover a number of things you should do, some are applicable to this specific rootkit, others are just good things to do and if you’re in there making changes might as well continue making a few more. I do caution you to verify access via keys work before disabling password authentication. Not doing so can prove to be a very problematic for you.
+Turn this from no to yes and remove the #:
+
+PasswordAuthentication yes = > PasswordAuthentication no
+
+You also want to enable authentication via your public key:
+
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+
+Note you can change the “authorized_keys” to anything you want. Just be sure the file exists in your .ssh directory.
+Lastly, as a good measure disable root access to your box:
+
+PermitRootLogin no
+
+And for good measure change the default port to something else. Granted, any skilled attacker will simply map your ports but it’ll deter most bots and script kiddies, if you’re up tight about the noise on your box this is a good way to reduce it greatly and avoid using up valuable resources with noise:
+
+Port 22 = > Port ######
+
+Finally reload SSHD:
+
+/etc/init.d/ssh reload
+
+- or -
+
+service sshd restart
+
+If you find yourself suffering multiple compromises and can’t get your head around it, it might be time to look deeper on your server. If you need help, give us a shout at info@sucuri.net.

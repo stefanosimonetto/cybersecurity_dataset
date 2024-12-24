@@ -1,0 +1,113 @@
+Ask Sucuri: How Did My WordPress Website Get Hacked? – A Tutorial
+
+With the proliferation of Infrastructure and Platform as a Service providers, it is no surprise that a majority of today’s websites are hosting in the proverbial cloud. This is great because it allows organizations and individuals alike to quickly deploy their websites, with relatively little overhead on their own infrastructure/systems. While there are so many positive attributes associated with hosting in cloud, there are also limitations, specifically when it comes to security and what you as a website owner are allowed to do (it depends on the host and what features you have enabled, learn more on how hosts manage your website security).
+For example, this comes in to play with retention and collection of vital information in the form of logs, specifically, audit/security logs.
+Over the past few months we have shared a number of articles on how websites get hacked and the impacts of said hacks. Last year, we spent some time dissecting how to clean a WordPress hack using our free WordPress Security plugin. Today, I want to dig a bit further into the world of Incident Response, specifically, forensics – or the art figuring out what happened.
+
+In my experience, I can count on one hand the number of website/environments that have had effective auditing in place for their various preventive tools like Firewalls, Intrusion Detection Systems (IDS), etc. In many instances, the tools are configured but logs are either a.) not being collected or b.) collected, but not being monitored or analyzed. Regardless, it is a sad state of affairs because the impacts to the incident response is too great.
+Fortunately, what we can often count on are website access logs. We use the word count very loosely, because in most often we have no more than 24 hours, with a best cases scenario of 7 days. Some would say this is good, however,  for what we do it is only ok and often not good enough to get the full story. It is definitely something to start working with though. If there is one thing you should know about me, it is that I love logs; it is actually why I started the OSSEC project many years ago and why I encourage everyone to employ it in their networks as a Host Intrusion Detection System (HIDS).
+Website Access Logs and Forensics – Understanding How Your Website Was Hacked
+Below, I will provide a guide to hopefully help you understand and appreciate the impact and importance of your access logs and, more importantly, how to make sense of what you are seeing.
+Step 1: Finding Your Website Logs
+Before we can even start, you have to find your access logs. Unfortunately, this can be different for every host, however, it is supposed to be the easy part. If you are unsure where it is stored, contact your host and they should be able to quickly identify and point you in the right direction. The most important questions to ask are:
+
+Are you collecting the access logs for my website traffic?
+If not, can you?
+How long are you collecting the logs for?
+Do I have access to those logs?
+Where do I find those logs?
+
+While you are at it, you might want to go ahead and ask them for your FTP / SFTP logs too.
+Shared Hosts
+Shared hosts can be extremely difficult. cPanel based servers have the logs inside the ~/access-log directory in your home folder, however, some providers restrict the logs to 24 hours.
+If you visit the ~/access-log directory, you should see the access-log and error-log files. If there is only one file in there, you are likely out of luck as your provider only stores the log for 1 day.
+If you see multiple compressed (gzip) files, this means you have more days of logs available.
+VPS or Dedicated servers
+These are generally much better to work with as the default Linux settings keep logs for a bit longer, however, not every host is the same. If you navigate to /var/log/httpd (or /var/log/nginx or /var/log/apache), you can likely find logs for at least 7-10 days.
+This will be enough data to hopefully get a good appreciation for what has occurred.
+Step 2: Understanding the Logs
+You now have your logs and have downloaded them, that is great news! Now we have to figure out what they mean. I recommend saving them in a separate location so you can do your analysis without disturbing your server, as even the more experienced sysadmins can make mistakes.
+The next step is to understand how your logs look. Most web servers, including Apache and Nginx store their logs in Common log format, also known as the NCSA Common Log format. It is divided into a few parts:
+IP_ADDRESS - - [Date_Time Timezone] "HTTPMETHOD /URL HTTP_VERSION" HTTP_RESPONSE_CODE HTTP_LENGHT "REFERER" "USER AGENT"
+This will give you almost all the information you need to know regarding the requests to your website including, Where it came from (IP_ADDRESS), the time and date, the URL, size, the browser and how your server responded (HTTP_RESPONSE_CODE).
+It is a very standard log format and quite easy to understand and synthesize.
+Let’s take the following example into consideration:
+66.249.75.219 - - [30/Jun/2015:09:17:42 -0400] "GET / HTTP/1.1" 200 255 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+We can see that the IP address 66.249.75.219 from Google visited the URL “/” at 9am in the morning June 30th, 2015. The server returned a “200” (success), meaning the page existed and no errors were generated on the request.
+If you are not familiar with this log format, I recommend spending some time reading this great introduction to the various log formats. I also recommend looking at your logs more often, as they can provide a lot of visibility to what is happening with your website.
+Step 3: Parse Your Logs
+You found your logs and you understand what they look like, perfect!
+The question now becomes, how do you make sense of all the data? This is especially concerning because, unlike the example above where we had one log line, if you open your log file you’re likely to find thousands to even millions of requests in one file. This is enough to dissuade even the mightiest of forensic analysts. Therefore, we have to learn how to parse and analyze the data in order to siphon the information we require in an actionable way.
+We have to search what matters, remove the noise and try to identify partners that will give us a hint to what happened.
+Restrict
+Because of the noise, we have to filter out all the stuff that does not apply. Regardless of what we think, almost every website has a similar pattern that can help us build a profile of things to ignore and things to focus on.
+For instance, requests to “/”, or the top of the page. Every visitor is likely to hit that, and the more traffic you have you can just imagine how many of those lines you’ll find in your logs. So we want to strip things like that, or things like CSS or JS files being loaded on every request. This is all, mostly noise and easy enough to filter. If you are a terminal geek, you can use commands like grep to see your logs by removing these unnecessary entries:
+$ cat access-log |grep -Ev "\.(js|css|png|jpg|jpeg) HTTP/1"| more
+In the example above, we stripped all .js, .css, .png, .jpg and .jpeg file types from displaying. On an average site, it will cut the number of lines to inspect by more than 60%. You can also strip simple visits to your main pages, cutting the number of lines by more than 80%:
+$ cat access-log |grep -Ev "\.(js|css|png|jpg|jpeg) HTTP/1" |grep -Ev " GET (/|/contact|/signup) HTTP/1"| more
+In this example, I ignored the “/” requests, the /contact and the /signup pages. Depending on your site, you will have just a few hundred log lines to go through, definitely a lot better than what you originally started with.
+If for some reason you still have thousands of requests, then we want to start making some assumptions and adjusting our filters. It might be better to filter your requests to certain activities that you know deserve inspection, including;
+
+POST requests.
+Requests to admin pages.
+Requests to non-standard locations.
+
+That can easily be done by modifying our grep command above to only show requests to “wp-admin|wp-login|POST /”:
+$ cat access-log |grep -E "wp-admin|wp-login|POST /" | more
+That generally cuts the number of lines by 1/200th, making a lot easier to analyze. If you know the IP addresses of the administrators of the site, you can remove them as well (we used 1.2.3.4 and 1.2.3.5 as examples):
+$ cat access-log |grep -E "wp-admin|wp-login|POST /" |grep -v "^1.2.3.4|1.2.3.5" | more
+A Real-World Example
+Above we shared a few steps to help you understand and parse through your data. However, how do we apply this and make it insightful?
+We want to share with you a recent exercise we went through with one of our customers. The customer was on WordPress, they were compromised and they had the same question everyone has; How did I get hacked? The following will likely be a bit more technical and will require some command line knowledge, but it shouldn’t be too bad for the technically inclined. For those that are not, have no worries, that why you have us.
+The first thing we did was aggregate all the logs into one file, for our sanity:
+# cat /var/log/httpd/*.access.log* > /tmp/all-logs
+$ wc -l /tmp/all-logs
+1071201
+This rendered 1,071,201 lines of logs, as displayed by wc; this means we would have to leverage the parsing tricks above to make it through this data by Christmas.
+First, we looked for POST requests to wp-login:
+$ cat /tmp/all-logs |grep wp-login|grep "POST /" |grep -v "^CLIENTIP"
+188.163.91.92 - - [24/Jun/2015:14:00:40 -0500] "POST /wp-login.php HTTP/1.1" 302 - "-" "Mozilla/5.0 (Windows; U; Windows NT 6.0; rv:15.0) Gecko/20121011 Firefox/15.0.2"
+We removed our client IP address and the results were actually just one line of log from 188.163.91.92 (an Ukranian IP address).
+$ whois 188.163.91.92
+route: 188.163.64.0/18
+descr: Kyivstar GSM, Kiev, Ukraine
+origin: AS15895
+mnt-by: KYIVSTAR-MNT
+Naturally, it could have been a false positive or a brute force attempt, but if the user visited wp-admin after the wp-login, it means his login succeeded:
+$ cat /tmp/all-logs |grep ^188.163.91.92 |grep wp-admin | head -n 3
+188.163.91.92 - - [24/Jun/2015:14:00:41 -0500] "GET /wp-admin/ HTTP/1.1" 200 49913 "-" "Mozilla/5.0 (Windows; U; Windows NT 6.0; rv:15.0) Gecko/20121011 Firefox/15.0.2"
+188.163.91.92 - - [24/Jun/2015:14:00:44 -0500] "GET /wp-admin/ HTTP/1.1" 200 49913 "-" "Mozilla/5.0 (Windows; U; Windows NT 6.0; rv:15.0) Gecko/20121011 Firefox/15.0.2"
+188.163.91.92 - - [24/Jun/2015:14:00:45 -0500] "GET /wp-admin/theme-editor.php HTTP/1.1" 200 49286 "-" "Mozilla/5.0 (Windows; U; Windows NT 6.0; rv:15.0) Gecko/20121011 Firefox/15.0.2"
+Wait a second! I think we found something here. That IP from Ukraine actually accessed wp-admin after logging in and went straight to the theme editor. That’s a big red flag for us, and is an apparent indicator worth paying attention to, especially as the website owner lives in the US and has no remote contributors. We need to dig deeper though. Now we can mix our grep with the cut command to see in an easier way all URL’s that IP accessed:
+$ cat /tmp/all-logs |grep ^188.163.91.92 | cut -d " " -f 1,6,7
+188.163.91.92 "GET /wp-login.php
+188.163.91.92 "GET /wp-login.php
+188.163.91.92 "POST /wp-login.php
+188.163.91.92 "GET /wp-admin/
+188.163.91.92 "GET /wp-admin/
+188.163.91.92 "GET /wp-admin/theme-editor.php
+188.163.91.92 "GET /wp-admin/theme-editor.php?file=404.php&theme=aphrodite
+188.163.91.92 "POST /wp-admin/theme-editor.php
+188.163.91.92 "GET /theme-editor.php?file=404.php&theme=aphrodite&scrollto=0&updated=true
+188.163.91.92 "POST /wp-content/themes/aphrodite/404.php
+188.163.91.92 "GET /wp-content/themes/aphrodite/was-wp.php
+188.163.91.92 "GET /wp-admin/theme-editor.php
+188.163.91.92 "GET /wp-admin/theme-editor.php?file=404.php&theme=aphrodite
+188.163.91.92 "POST /wp-admin/theme-editor.php
+188.163.91.92 "GET /wp-content/themes/was-wp.php
+188.163.91.92 "GET /wp-admin/plugin-install.php?tab=upload
+188.163.91.92 "POST /wp-admin/update.php?action=upload-plugin
+188.163.91.92 "GET /wp-content/uploads/2015/06/maink.php
+188.163.91.92 "POST /wp-content/uploads/2015/06/maink.php
+188.163.91.92 "POST /wp-content/uploads/2015/06/maink.php
+188.163.91.92 "GET /wp-content/uploads/was-wp.php
+My goodness, do you see the timeline of events?
+The attacker logged into the website via wp-login, went to the theme editor and modified the 404.php file:
+188.163.91.92 "GET /theme-editor.php?file=404.php&theme=aphrodite&scrollto=0&updated=true
+After that, he visited the 404 file directly:
+188.163.91.92 "POST /wp-content/themes/aphrodite/404.php
+Which is likely a PHP backdoor (it was). He used that file to create another backdoor was-wp.php, which you can see he visited later as well. Another example of how the attackers not only compromise the environment, but then look to retain access and control to ensure that if you update your access controls they can still retain access.
+With this, we had enough to say with a high degree of confidence that the customers username and password were compromised, giving the attacker what she needed. The attacker then made use of their Theme editor to modify files, allowing them to inject backdoors, giving them full control even after they updated their credentials.
+What these logs didn’t show however is how they got the password. We went back a few days, and saw constant attempts to access the environment but it’s difficult to say if that was the cause or not, or if this attacker was just lucky.
+This should hopefully give you a very small, simple, view in the world of forensics and what it takes. This should not be confused with attribution though, or the world of identifying WHO hacked you. That is a different process all together.
+While we use WordPress as an example above, the same things can be applied to other website technologies as well.

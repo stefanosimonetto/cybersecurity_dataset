@@ -1,0 +1,69 @@
+Fake browser update seeks to compromise more MikroTik routers
+This blog post was authored by @hasherezade and Jérôme Segura.
+MikroTik, a Latvian company that makes routers and ISP wireless systems, has been dealing with several vulnerabilities affecting its products’ operating system over the past few months. Ever since a critical flaw in RouterOS was identified in late April 2018, attacks have been going on at an alarming rate, made worse when a newly-found exploitation technique for CVE-2018-14847 was identified.
+The problem is that a large number of MikroTik routers remain unpatched and are prey for automated attacks, despite security fixes made available by the vendor. Criminals were quick to leverage Proof of Concept code to compromise hundreds of thousands of devices in a short time frame. Last summer, researchers at SpiderLabs discovered what was perhaps the biggest malicious Coinhive campaign via hacked MikroTik devices, which has evolved into a much wider problem now.
+With this latest trick, users behind compromised routers are served a fake browser update page. When they run this malicious update, it unpacks code onto their computer that scans the Internet for other vulnerable routers and tries to exploit them.
+Suspicious browser update
+Security researcher @VriesHd first spotted a new campaign attempting to further compromise vulnerable routers using a typical social engineering technique. Internet providers that operate infected MikroTik routers will serve this malicious redirect about an “old version of the browser” to their end users:
+
+According to a search via Censys, there are about 11,000 compromised MikroTik devices hosting this fake download page:
+
+The alleged browser update is suspiciously downloaded from an FTP server, as seen below:
+
+Interestingly, this IP address is also listed as a free and open web proxy. Proxies are often used by those who wish to bypass certain country limitations (i.e. watching the American version of Netflix if you are not in the US) or simply as a way to mask their IP address.
+
+Payload analysis
+Behavioral analysis
+The payload follows the theme of pretending to be an installer named upd_browser.
+
+When we deploy it, it pops up an error:
+
+However, if we capture the network traffic, we can see that in the background it scans various IP addresses, trying to connect on port 8291 (a default port for managing MicroTik routers via Winbox application):
+
+Unpacking
+The dropped payload is a relatively big executable (7.25 MB) with a huge overlay. The sections’ headers and their visualizations are given below:
+
+As we can recognize by looking at the sections names, it comes packed by a popular, simple packer: UPX. The size of overlay suggests that there is something more to be extracted. After further examination, we find out that it unpacks a Python DLL and other related files into the %TEMP% folder, and then loads them. At this point, it is easy to guess that this EXE is in reality a wrapped Python script. We can unpack it following the same procedure as the one described here.
+
+The Entry Point is in the script named upd_browser. After decompiling and following the scripts, we find out that the malware’s core consists of two Python scripts: upd_browser.py and ups.py.
+Inside the scripts
+The main function of the module is pretty simple:
+
+As we can see, the error pop-up is hardcoded: It does not alert about any actual error, but is used as a decoy.
+After that, the malware logs the IP address of the victim by querying a hardcoded address of a tracker made using a legitimate service, IP Logger. The tracker takes the form of a one pixel–sized image:
+
+Later, this address is queried repeatedly in a defined time interval.
+The most important actions are performed in the function named “scan” that is deployed in several parallel threads (the maximum number of threads is defined as thmax = 600). The function “scan” generates pseudo-random IP addresses and tries to connect to each of them on the aforementioned port 8291. When the attempt of connecting is successful, it tries another connection, this time on a random port from a range of 56778 to 56887. When this one fails, it proceeds with the exploitation:
+
+The function “poc” is meant to infect the router using known vulnerabilities. It starts by attempting to retrieve credentials leveraging the path traversal vulnerability (CVE-2018-14847):
+
+The user.dat file is expected to be in M2 format, so the script comes with a built-in parser (function load_file):
+
+If retrieving the password from user.dat file is successful, it decodes the credentials and uses them to create a backdoor: an account with a randomly-generated password. It also sets a scheduled task to be executed by the router.
+The script that is set in the scheduler is generated from a hardcoded template (cleaned version available here). Its role is to manipulate the router’s settings and set up an error page loading a CoinHive miner.
+The error page can be dropped in two locations: “webproxy/error.html” or “flash/webproxy/error.html” .
+
+Such a page is displayed to users whenever they try to view a URL to which the access is denied. But the malicious script configured in the router in such a way that basically any HTTP request leads to the error. Yet, the error page is crafted to spoof the original traffic, displaying the requested page as an iframe. So, users may browse most of the web as usual, without noticing the change. Example:
+
+The CoinHive miner is embedded, so during the time this time their machines are used for mining purposes.
+Mitigations
+MikroTik users are urged to patch their routers as soon as possible and should assume that their authentication credentials have been compromised if they are running an outdated version. MikroTik’s download page explains how to perform an upgrade to RouterOS.
+A blog post from the company about CVE-2018-14847 also advises users to restrict access to Winbox via the Firewall and make sure the configuration file is clean (this is usually where scripts or proxies would be injected).
+Awareness that these vulnerabilities exist and are easy to exploit is important considering that patching a router is not something many people are used to doing. However, in many cases users will not be able to do so unless their Internet Service Provider does it for them upstream.
+With this latest social engineering scheme, we saw how criminals are trying to infect regular users and leverage their computer to scan the Internet for vulnerable routers. This technique is clever because such an effort requires time and resources to be efficient.
+Malwarebytes business customers and Premium consumer users are protected from this threat, as our anti-malware engine detects and blocks this fake browser update in real time:
+Malwarebytes Endpoint Protection blocks the malicious executable disguised as a browser update.
+Indicators of compromise
+Sample hash
+57EB8C673FC6A351B8C15310E507233860876BA813ED6AC633E9AF329A0BBAA0
+Coinhive site keys
+oiKAGEslcNfjfgxTMrxKGMJvh436ypIM
+5zHUikiwJT4MLzQ9PLbU11gEz8TLCcYx
+5ROof564mEBQsYzCqee0M2LplLBEApCv
+qKoXV8jXlcUaIt0LGcMJIHw7yLJEyyVO
+ZsyeL0FvutbhhdLTVEYe3WOnyd3BU1fK
+ByMzv397Mzjcm4Tvr3dOzD6toK0LOqgf
+joy1MQSiGgGHos78FarfEGIuM5Ig7l8h
+ryZ1Dl4QYuDlQBMchMFviBXPL1E1bbGs
+jh0GD0ZETDOfypDbwjTNWXWIuvUlwtsF
+BcdFFhSoV7WkHiz9nLmIbHgil0BHI0Ma

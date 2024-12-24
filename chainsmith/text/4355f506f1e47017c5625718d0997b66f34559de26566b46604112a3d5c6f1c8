@@ -1,0 +1,135 @@
+Annoying DNS Issues in Mozilla
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+February 06, 2004
+
+I've finally figured out why visits to some Web sites take forever.  I've maintained for years that "if something works, but takes a long time, blame DNS."  Sure enough, a combination of Mozilla's behavior and uncooperative DNS servers are conspiring against Web users.
+
+Here's how Mozilla resolves a host name when the remote DNS server cooperates.  First Mozilla causes a DNS query for an AAAA record.  This is an IPv6 record.  The name server (here a forwarding name server) replies that it doesn't know an AAAA record for xlonhcld.xlontech.net.  Mozilla promptly asks for the A record, which is returned in the last packet.  So far so good.
+
+18:24:04.604363 192.168.2.5.49203 > 172.27.20.1.53:  56494+ AAAA? xlonhcld.xlontech.net. (39)
+18:24:04.611197 172.27.20.1.53 > 192.168.2.5.49203:  56494 0/1/0 (104)
+18:24:04.611474 192.168.2.5.49204 > 172.27.20.1.53:  56495+ A? xlonhcld.xlontech.net. (39)
+18:24:04.619886 172.27.20.1.53 > 192.168.2.5.49204:  56495 18/7/0 A[|domain]
+
+This is what happens with sites that don't answer AAAA queries properly.  Mozilla asks for the AAAA record four times
+
+18:20:11.292864 192.168.2.5.49188 > 172.27.20.1.53:  4329+ AAAA? dclkcorp.rpts.net. (35)
+18:20:16.304730 192.168.2.5.49189 > 172.27.20.1.53:  4329+ AAAA? dclkcorp.rpts.net. (35)
+18:20:26.319837 192.168.2.5.49190 > 172.27.20.1.53:  4329+ AAAA? dclkcorp.rpts.net. (35)
+18:20:46.334627 192.168.2.5.49191 > 172.27.20.1.53:  4329+ AAAA? dclkcorp.rpts.net. (35)
+
+After 75 seconds it gives up and asks for the A record.  The name server promptly responds and the page loads.
+
+18:21:26.345147 192.168.2.5.49192 > 172.27.20.1.53:  4330+ A? dclkcorp.rpts.net. (35)
+18:21:26.378344 172.27.20.1.53 > 192.168.2.5.49192:  4330 2/6/6[|domain]
+
+Here are the replies for the AAAA record requests.  I haven't figured out the purpose of the ICMP port unreachable messages.
+
+18:21:59.533098 172.27.20.1.53 > 192.168.2.5.49190:  4329 ServFail 0/0/0 (35)
+18:21:59.533170 192.168.2.5 > 172.27.20.1: icmp: 192.168.2.5 udp port 49190 unreachable
+18:22:00.197621 172.27.20.1.53 > 192.168.2.5.49189:  4329 ServFail 0/0/0 (35)
+18:22:00.197688 192.168.2.5 > 172.27.20.1: icmp: 192.168.2.5 udp port 49189 unreachable
+18:22:11.193955 172.27.20.1.53 > 192.168.2.5.49188:  4329 ServFail 0/0/0 (35)
+18:22:11.194029 192.168.2.5 > 172.27.20.1: icmp: 192.168.2.5 udp port 49188 unreachable
+18:22:44.194926 172.27.20.1.53 > 192.168.2.5.49191:  4329 ServFail 0/0/0 (35)
+18:22:44.195000 192.168.2.5 > 172.27.20.1: icmp: 192.168.2.5 udp port 49191 unreachable
+
+The Mozilla team has had this bug report open for a long time.  Unfortunately, the remote name servers are to blame, as shown by this Internet draft.  The issue was also discussed on freebsd-current.
+
+For sites that don't answer AAA requests properly, like doubleclick, entries like these in /etc/hosts might work:
+
+::0                     ad.doubleclick.com
+::0                     ad.doubleclick.net
+
+::1 is also an option, which is localhost.
+
+The Mozilla bug report offered this code to check IPv6 resolutions using gethostbyname2:
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <string.h>
+
+int main(int argc, char *argv[])
+{
+struct hostent *hent;
+char addrstr[64];
+int i;
+
+if (argc != 2) {
+fprintf(stderr, "Usage: %s \n", argv[0]);
+exit(1);
+}
+
+hent = gethostbyname2(argv[1], AF_INET6);
+if (hent == NULL) {
+fprintf(stderr, "gethostbyname2 failed: %d\n", h_errno);
+exit(1);
+}
+printf("h_name = %s\n", hent->h_name);
+if (hent->h_aliases) {
+for (i = 0; hent->h_aliases[i]; i++) {
+printf("h_aliases[%d] = %s\n", i, hent->h_aliases[i]);
+}
+}
+if (hent->h_addrtype == AF_INET) {
+printf("h_addrtype = AF_INET\n");
+} else if (hent->h_addrtype == AF_INET6) {
+printf("h_addrtype = AF_INET6\n");
+} else {
+printf("h_addrtype = %d\n", hent->h_addrtype);
+}
+printf("h_length = %d\n", hent->h_length);
+if (hent->h_addr_list) {
+for (i = 0; hent->h_addr_list[i]; i++) {
+printf("h_addr_list[%d] = %s\n", i,
+inet_ntop(hent->h_addrtype, hent->h_addr_list[i],
+addrstr, sizeof(addrstr)));
+}
+}
+return 0;
+}
+
+It compiles fine on FreeBSD 5.2 REL and shows how different sites respond.  Here's a site that responds with an IPv6 address:
+
+orr# ./gethost2 www.netbsd.org
+h_name = www.netbsd.org
+h_addrtype = AF_INET6
+h_length = 16
+h_addr_list[0] = 2001:4f8:4:7:290:27ff:feab:19a7
+
+Here's a site with no IPv6 address:
+
+orr# ./gethost2 www.bejtlich.net
+gethostbyname2 failed: 4
+
+Here's what happens when I query for a site with an entry in /etc/hosts:
+
+orr# ./gethost2 ad.doubleclick.net
+h_name = ad.doubleclick.net
+h_addrtype = AF_INET6
+h_length = 16
+h_addr_list[0] = ::
+
+This is how a site with a broken respond behaves.  The program times out after waiting for a minute and 15 seconds.
+
+orr# time ./gethost2 www.apcc.com
+gethostbyname2 failed: 2
+0.000u 0.004s 1:15.04 0.0%      0+0k 0+0io 0pf+0w
+
+Watching the Mozilla bug report, a fix appears to be in the works.

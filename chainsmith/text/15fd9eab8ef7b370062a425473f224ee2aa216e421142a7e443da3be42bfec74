@@ -1,0 +1,84 @@
+Fake FreeDNS Used to Redirect Traffic to Malicious Sites
+
+During the last couple of days, we performed a few similar cleanup requests where sites occasionally redirected visitors to malicious sites that displayed ads, spam, and malicious downloads. One of our security analysts, Andrey Kucherov, did some research in conjunction with our research team to find out what was going on. In all cases, the redirect was via the 213.184.126.163 IP address. After the redirect, visitors land on fake clones of the real site with ww2 subdomains – i.e., www.example.com redirects to ww2.example.com
+We didn’t find any problems on servers of those sites. The next step was to check DNS records.
+When we checked how the domain names resolved from various locations around the world, we noticed that some servers resolved the IPs correctly, while others resolved to 213.184.126.163:
+
+When checking the name servers, we discovered that all of the affected sites used the NameCheap’s FreeDNS service. However, different servers reported different name servers for the same domain:
+Different name servers for single domain
+As you can see, while some servers saw normal looking name servers like freedns1.registrar-servers.com through freedns5.registrar-servers.com, others reported weird looking .biz domains whose first part looked like the normal name server domain and the trailing part was some random string:
+freedns1.registrar-serversv67eds0q[.]biz
+freedns2.registrar-serversc86eewyj[.]biz
+freedns4.registrar-serversjr5115ey[.]biz
+freedns5.registrar-serversi65ekkdo[.]biz
+That was really suspicious, so we decided to check whether these domains really belonged to NameCheap. It appeared that they were indeed registered by NameCheap just this week. For example:
+Variant:                           REGISTRAR-SERVERS50EWZ0EL.BIZ
+Registrant ID:                     NAMESUPP2FD71451
+Registrant Name:                   NameCheap.com NameCheap.com
+Registrant Organization:           NameCheap, Inc
+Registrant Address1:               11400 W. Olympic Blvd. Suite 200
+Registrant City:                   Los Angeles
+Registrant State/Province:         CA
+Registrant Postal Code:            90064
+Registrant Country:                United States
+Registrant Country Code:           US
+Registrant Phone Number:           +1.6613102107
+Registrant Facsimile Number:       +1.6613102107
+Registrant Email:                  support @ namecheap.com
+…
+Domain Registration Date:          Sun Jul 24 19:18:26 GMT 2016
+Domain Expiration Date:            Sun Jul 23 23:59:59 GMT 2017
+Moreover, they pointed to the same IPs as the normal registrar-servers.com domains. All but one.
+FREEDNS1.REGISTRAR-SERVERSV67EDS0Q[.]BIZ
+The freedns1.registrar-serversv67eds0q[.]biz domain was registered by a person in Shanghai, China just two days ago:
+Domain Name:                           REGISTRAR-SERVERSV67EDS0Q.BIZ
+Domain ID:                             D71011229-BIZ
+Sponsoring Registrar:                  VAUTRON RECHENZENTRUM AG
+Sponsoring Registrar IANA ID:          1443
+Registrar URL (registration services): http://www.antagus.de
+Domain Status:                         serverDeleteProhibited
+Domain Status:                         serverHold
+Domain Status:                         serverUpdateProhibited
+Variant:                               REGISTRAR-SERVERSV67EDS0Q.BIZ
+Registrant ID:                         WAJIA0005-ANT
+Registrant Name:                       Wang Jim
+Registrant Organization:               PRIVATE
+Registrant Address1:                   210008 33
+Registrant City:                       Shanghai
+Registrant State/Province:             Shanghai
+Registrant Postal Code:                NanYang Lu
+Registrant Country:                    China
+Registrant Country Code:               CN
+Registrant Phone Number:               +86.1395833289
+Registrant Facsimile Number:           +86.1395833289
+Registrant Email:                      s @ netcom.cm
+..
+Domain Registration Date:              Wed Jul 27 20:27:47 GMT 2016
+Domain Expiration Date:                Wed Jul 26 23:59:59 GMT 2017
+And this server resolved to 213 .184 .126. 163 – the IP from the redirects.
+I don’t know why NameCheap decided to register those strange .biz domains for name servers (if the WHOIS is not spoofed) but a few days later someone registered a similar looking domain (which was very easy, given the random trailing part) with an obvious purpose  – to change DNS settings of domains that use the FreeDNS server.
+That’s not the only target.
+We can see the following domains that previously pointed to the 213 .184 .126. 163 server.
+
+1dnsdotnet[.]com – registered on 2016-03-27
+brobdns[.]com – registered on 2012-02-03
+mycpdns[.]com – registered on 2016-06-06
+
+The names suggest that they were registered as DNS or name severs, most likely in similar attacks.
+At this point, it’s not clear what happened. Either someone hacked into the domain name registrar accounts and changed the name servers or someone compromised the FreeDNS service and replaced one of their name servers.
+At this point, I can see the 213 .184 .126. 163  server seems to be down and the name servers returned back to normal. However, because of the cached DNS, in some locations the affected domains still redirect to the malicious server (which means that the sites won’t load at all).
+DomainersChoice
+When checking domain names that pointed to the 213 .184 .126. 163  IP, I noticed that most of them had a strong connection to the Chinese DomainersChoice[.]com service. They were either registered by them or (as with the fake FreeDNS name server domain REGISTRAR-SERVERSV67EDS0Q[.]BIZ ) used their name servers (888DNS.NET).
+Conficker Sinkholed Domains
+One more interesting fact about the 213 .184 .126. 163  IP.  If you check domains that resolved to this IP on VirusTotal, you will see that lots of domains like acawarkfegq[.]info, ahpamj[.]org, amfcsbetu[.]info, etc. pointed there. All of these domains are Conficker sinkholed domains registered either by Microsoft or by Afilias (both parts of the Conficker Cabal).
+If you don’t remember, Conficker is a nasty virus that infected millions of computers worldwide back in 2008 and 2009.  To stop the infection, the so-called Conficker Cabal included Microsoft, top TLD name providers, and ISPs. They blocked or sinkholed thousands of domains used by Conficker.
+It is not clear why the sinkholed domains were pointing to 213 .184 .126. 163  IP. It belongs to the network of Israeli Ness Ziona Net-style Atarim Ltd.
+Verify Your DNS Settings and Domain Account
+If you use the FreeDNS service or have domain names registered via NameCheap, I strongly suggest that you:
+
+Check your current name servers at your registrar site.
+Check your DNS settings at your DNS provider site (in many cases these two will be the same, but not always).
+Change passwords for your registrar and DNS provider accounts.
+
+Even if you use none of these services, it’s still a good idea to check the DNS settings of your domains and change the passwords. We see many other attacks that change DNS settings for legitimate domains. For example, they might create additional subdomains that point to malicious servers. This is why we provide DNS and WHOIS monitoring service for clients using our Website Antivirus. If someone changes the settings (e.g. new domain owner, contact details, or new name servers), our clients are automatically notified about the changes so that they can verify them and take action as soon as possible.
+Let us know if your domain was affected by this DNS attack, or if you have any thoughts about how the name servers were changed and why NameCheap used those strange domains for their name servers.

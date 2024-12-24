@@ -1,0 +1,84 @@
+IM_a nuisance – W32.Imav.A
+2006-03-01
+
+John Canavan
+Symantec Security Response
+,
+Ireland
+Editor:
+Helen
+
+Martin
+Abstract
+Two years after its emergence the Beagle family is still one of the most pervasive families of Internet worms. John Canavan takes a close look at one variant that has made the surprising switch from email to ICQ as its major infection vector.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+Two years after its emergence, the Beagle family is still one of the most pervasive Internet worms.
+Leading the way in the new modular malware model, the Beagle family of threats has thrived by breaking its functionality down into separate basic components. Its associated downloaders, email address harvesters and many other Trojan parts have flourished, growing their network ever further and making their venture a profitable one.
+The first variants of the Beagle family were seen in January 2004, and from the outset it used some interesting techniques that had not typically been seen in mass-mailers.
+The initial mass-mailing samples opened a backdoor on infected machines, listening on TCP port 6777. This allowed a file to be downloaded and executed on the system when a trigger string was sent to the backdoor. It also ran a notification thread which contacted a remote website announcing the presence of a newly infected system. This notification would prove to be a key technique which the authors used to keep track of their infected network and to seed new variants and components.
+Later variants of the worm terminated security-related processes by deleting their associated registry keys and files, and stopped and removed system services. They overwrote host files to prevent access to security-related websites and even uninstalled previous Beagle variants. They did most of this while injected in explorer.exe.
+For a period, the Beagle authors engaged in viral warfare against the authors of the Netsky family. Beagle variants would terminate Netsky-related processes automatically and delete their registry keys, then create their mutexes to prevent re-infection. Most of these features and the design methods employed focused on keeping control of the infected machine – allowing easy installation of updates, hiding the presence of the infection of the system and making disinfection more difficult.
+Given this background, it is hard to imagine the motivation behind what appeared to be a major change in focus in one of the latest variants of the family to surface: the switch to ICQ as its major infection vector.
+
+W32.Imav.A
+First sighted on 26 January 2006 at known Beagle Trojan download URLs, W32.Imav.A appeared at first to be just another Beagle Trojan.
+Downloaded with the filename my_foto.zip, Imav's first course of action was to display a candid photograph of a flame-haired, freckle-skinned girl in a green bikini hanging out by a lighthouse.
+It then set about copying itself to %System% and dropping its associated dll file alongside it.
+MD5
+Size
+FileName
+960dddec022cc846a0a0075b98906c7b
+33,745
+im_1.exe
+e2562b406a7cdf53ed50adfcf2f9fcd9
+17,886
+im_2.exe
+When executing from %System%, Imav adds the value “im_autorn” = “%System%\im_1.exe” to the registry Run key. It then starts up the usual Beagle Trojan routines, proceeding to kill a list of security-related processes, polling another list of URLs for a file to download, disabling a list of security-related services, renaming or deleting a long list of filenames from security-related products and some associated registry entries. All pretty standard fare.
+On a little further inspection, however, it became evident that Imav had more to offer.
+
+ICQ
+Since Eric Chien and Neal Hindocha presented their paper 'Malicious threats and vulnerabilities in instant messaging', at VB2003, anti-virus analysts have awaited the emergence of a rapidly spreading IM worm. Until now we have seen attempts to propagate via instant messaging from Kelvir, Bropia, Funner, Bisex, various IRC bots and many more, but none have succeeded to a level comparable with the classic mass-mailing email worm. So, perhaps when one of the most successful of the classic email worms turns to IM, we should be worried.
+Throughout its history Beagle has adopted new techniques designed to increase its effectiveness and ability to spread. It makes sense that its authors would attempt to make use of whatever infection vectors are available, and therefore the inclusion of an IM module is not a surprise.
+What is strange is the particular means of IM propagation Beagle's authors chose. By restricting themselves to ICQ they immediately lost a huge section of potential users, but they cut their potential infection pool yet further by making use of a password-stealing technique which is unique to ICQ Lite/2003 versions of the software. Not only that, but if the Public Mode of these versions of ICQ is chosen on install, the password will not be stored in the registry and thus the worm rendered impotent.
+These choices appear even more curious when we look at PWSteal.LdPinch. A variant of this Beagle-related Trojan was downloaded by versions of the Mitglieder Trojan in early 2004. It logged keystrokes and sent system information on to a remote address, but interestingly also had the ability to steal ICQ passwords. LdPinch had the ability to steal passwords from client versions ICQ99b-2003a/Lite/ICQ2003Pro, reading and decrypting each ICQ profile's MainLocation value from the registry, but could also retrieve passwords stored in the .dat file used by older versions of ICQ and it even stole passwords from alternative ICQ clients Trillian, Miranda and &RQ.
+W32.Imav.A iterates through ICQ profiles stored in the registry at:
+HKEY_CURRENT_USER\Software\Mirabilis\ICQ\NewOwners\<UIN>\
+HKEY_LOCAL_MACHINE\Software\Mirabilis\ICQ\NewOwners\<UIN>\
+A number of versions of ICQ store the user's password here in the value MainLocation. This value is encoded based on the volume serial number of the system; however decryption techniques are well-known and have been used by several other malware authors (Bizex, Ldpinch) to date.
+
+Hungry? Have a SNAC
+What is particularly noteworthy is that Imav.A communicates directly with login.icq.com, logging itself in as a client. Imav builds its own FLAP packets of SNAC data. (SNAC is the basic communication unit that is exchanged between clients and servers - the SNAC communication layer sites on top of the FLAP layer.)
+To log into the server Imav needs to re-encrypt the password it has just decrypted from the registry. This is done with a simple byte-for-byte xor with the following array:
+0xF3, 0x26, 0x81, 0xC4, 0x39, 0x86, 0xDB, 0x92, 0x71, 0xA3, 0xB9, 0xE6,
+0x53, 0x7A, 0x95, 0x7C
+The FLAC login packet is constructed as below, with the Type-Length-Values specified.
+4 BYTE   0x00 0x00  0x00 0x01
+TLV(1)  STRING     UIN/ICQ Number
+TLV(2)  STRING     Encrypted password
+TLV(3)  STRING     Client Version, “ICQBasic”
+TLV(16) WORD       unk, 0x010A
+TLV(17) WORD       major version, 0x0014
+TLV(18) WORD       minor version, 0x0020
+TLV(19) WORD       lesser version, 0x0000
+TLV(1A) WORD       build version, 0x090B
+TLV(14) DWORD      version, 0x0000043D
+TLV(0F) STRING     language, 2 chars, “en”
+TLV(0E) STRING     country, 2 chars, “us”
+
+Once authenticated, Imav connects to the BOS server, using the host/port information and auth-cookie from the login.icq.com's initial reply, and completes the protocol negotiation stage.
+When the login process is complete, Imav attempts to send messages to random users containing the string 'my foto' and a link to my_foto.zip located on a remote server.
+
+IP filtering
+Another interesting routine used by Imav is its blocking of security-related websites. Older variants of Beagle made use of a technique that is commonly seen in the malware world. They added a list of the hosts they wanted excluded to the windows hosts file %System%\drivers\etc\hosts. Although effective against the average home user, this was easily spotted and could be rectified simply by checking the contents of that file.
+In Windows 2000, Microsoft introduced an API to implement packet filtering functionality. The API allows for similar functionality to that included in the TCP/IP properties of a network adapter.
+To impede the user further in removing it from their machine, Beagle now makes use of this Packet Filtering API to drop packets destined for a pre-defined list of websites.
+GetAdaptersInfo() returns a linked list of completed IP_ADAPTER_INFO structs, from which the worm can get the current IP address assigned to all active interfaces (PIP_ADDR_STRING CurrentIpAddress;).
+PfCreateInterface() creates a new filter interface. This new interface will be used to control the adding and deleting of filters from the adapters retrieved from GetAdaptersInfo(). The filter is created with the default PF_ACTION_FORWARD attributes for its inAction and outAction.
+The new filter interface is then associated with each of the active network adapters using PfBindInterfaceToIpaddress(). At this point the packet filter is active and in place, but not set to filter anything.
+Imav performs a DNS lookup on each site to be blocked and creates an associated PF_FILTER_DESCRIPTOR struct for each result. This struct defines the packet filter containing details of the source and destination to filter on.
+PfAddFiltersToInterface() then adds the filter to the previously created filter interface. The filter reverses the default processing rule for the interface, that is, the rule that was specified during the call to PfCreateInterface(). So, in this case traffic to hosts matched by a filter rule will be dropped. Imav sets both input and output filters for the PF_FILTER_DESCRIPTORS generated.
+
+Conclusion
+Although the impact of this variant in the wild was minimal, its use of new techniques reminds us that the Beagle authors will continue to be a threat as they pursue new means of propagation. As they embrace this experimentation, we must keep a close watch on developments.

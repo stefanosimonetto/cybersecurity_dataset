@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: VB2015 paper: It's A File Infector... It’s Ransomware... It's Virlock</title>
+<meta name="description" content="Win32.Virlock, with all its variations, is both a new kind of file infector and a piece of ransomware (screen-locker) at the same time. In this paper, we aim to cover the techniques used by this virus and discuss methods that can be used to detect and disinfect systems affected by it. Virlock uses several techniques, including code obfuscation, staged unpacking, random API calls and large/redundant areas of decrypted code, to make it difficult to analyse. It also protects its code by decrypting only the sequences that are going to be executed. After a sequence of code is executed, Virlock encrypts it again. By staggering the decryption/encryption process, it ensures that a memory dump at a certain point will not reveal its features but only the piece of code that is being executed at that time. There is also a moment in its first execution when it shifts its shape by changing certain instructions and encryption keys so that new generations will look different. Each new infection is different from any other, mostly because of the timestamps that play an important role in computing the encryption keys. Having these protection methods will also make any clean-up attempt quite a challenge. The disinfection process for this virus involves searching inside malware code for specific instruction arrangements.
+We will present some ideas that could help in detecting and disinfecting a Virlock-infected system." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 235;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/remo_expand/blocks/remo_expand/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.color.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/remo.expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<h1>VB2015 paper: It's A File Infector... It’s Ransomware... It's Virlock</h1>
+<h3>Vlad Craciun, Andrei Nacu &amp; Mihail Andronic</h3>
+<p>Bitdefender, Romania</p>
+<p><em>Copyright © 2015 Virus Bulletin</em></p>
+<hr />
+<p> </p>
+<div class="ccm-remo-expand">
+<div id="ccm-remo-expand-title-541" class="ccm-remo-expand-title ccm-remo-expand-closed" data-expander-speed="500">Table of contents</div><div id="ccm-remo-expand-content-541" class="ccm-remo-expand-content"><p><a class="toc-level2" href="#h2-abstract">Abstract</a><br /><a class="toc-level2" href="#h2-introduction">Introduction</a><br /><a class="toc-level2" href="#h2-1-ransomware-and-file-infector-evolution">1. Ransomware and file infector evolution</a><br /><a class="toc-level3" href="#h3-11-old-file-infectors-behaviour-and-purpose">1.1 Old file infectors, behaviour and purpose</a><br /><a class="toc-level4" href="#h4-purpose">Purpose:</a><br /><a class="toc-level4" href="#h4-behaviour">Behaviour:</a><br /><a class="toc-level3" href="#h3-12-old-screen-lockers-behaviour-and-purpose">1.2 Old screen-lockers: behaviour and purpose</a><br /><a class="toc-level4" href="#h4-purpose">Purpose:</a><br /><a class="toc-level4" href="#h4-behaviour">Behaviour:</a><br /><a class="toc-level2" href="#h2-2-analysing-virlock-refining-behaviour-combining-purpose">2. Analysing Virlock, Refining Behaviour, Combining Purpose</a><br /><a class="toc-level3" href="#h3-21-analysing-virlock--refining-behaviour">2.1 Analysing Virlock – refining behaviour</a><br /><a class="toc-level4" href="#h4-211-not-embedding-malware-code-but-embedding-a-clean-file">2.1.1 Not embedding malware code, but embedding a clean file</a><br /><a class="toc-level4" href="#h4-212-anti-analysing-techniques">2.1.2 Anti-analysing techniques</a><br /><a class="toc-level5" href="#h5-2121-code-obfuscation">2.1.2.1 Code obfuscation</a><br /><a class="toc-level5" href="#h5-2122-anti-debugger">2.1.2.2 Anti-debugger</a><br /><a class="toc-level5" href="#h5-multi-staged-unpack">Multi-staged unpack</a><br /><a class="toc-level5" href="#h5-staged-unpacknbsp">Staged unpack </a><br /><a class="toc-level5" href="#h5-checking-for-the-presence-of-a-debugger">Checking for the presence of a debugger</a><br /><a class="toc-level5" href="#h5-rooting-inside-the-execution-environment">Rooting inside the execution environment</a><br /><a class="toc-level5" href="#h5-2123-anti-emulation">2.1.2.3 Anti-emulation</a><br /><a class="toc-level5" href="#h5-randomly-chosen-api-calls">Randomly chosen API calls</a><br /><a class="toc-level5" href="#h5-increasing-the-number-of-executed-instructions">Increasing the number of executed instructions</a><br /><a class="toc-level4" href="#h4-213-cheating-users">2.1.3 Cheating users</a><br /><a class="toc-level4" href="#h4-214-polymorphic-engine">2.1.4 Polymorphic engine</a><br /><a class="toc-level3" href="#h3-22-analysing-virlock--combining-purpose">2.2 Analysing Virlock – Combining purpose</a><br /><a class="toc-level4" href="#h4-221-file-infector-and-screen-locker">2.2.1 File infector and screen-locker</a><br /><a class="toc-level2" href="#h2-3-getting-to-the-core-of-virlock">3. Getting to the Core of Virlock</a><br /><a class="toc-level3" href="#h3-31-revealing-the-core-inside-different-malware-versions">3.1 Revealing the core, inside different malware versions</a><br /><a class="toc-level3" href="#h3-32-searching-for-a-matchnbsp">3.2 Searching for a match </a><br /><a class="toc-level3" href="#h3-33-cleaning-infected-files">3.3 Cleaning infected files</a><br /><a class="toc-level2" href="#h2-4-statistics">4. Statistics</a><br /><a class="toc-level2" href="#h2-5-conclusions">5. Conclusions</a><br /><a class="toc-level2" href="#h2-acknowledgements">Acknowledgements</a></p>
+<p> </p></div></div><h2><a class="chapter" name="h2-abstract"></a>Abstract</h2>
+<p>Win32.Virlock, with all its variations, is both a new kind of file infector and a piece of ransomware (screen-locker) at the same time. In this paper, we aim to cover the techniques used by this virus and discuss methods that can be used to detect and disinfect systems affected by it.</p>
+<p>Virlock uses several techniques, including code obfuscation, staged unpacking, random API calls and large/redundant areas of decrypted code, to make it difficult to analyse. It also protects its code by decrypting only the sequences that are going to be executed. After a sequence of code is executed, Virlock encrypts it again. By staggering the decryption/encryption process, it ensures that a memory dump at a certain point will not reveal its features but only the piece of code that is being executed at that time.</p>
+<p>There is also a moment in its first execution when it shifts its shape by changing certain instructions and encryption keys so that new generations will look different. Each new infection is different from any other, mostly because of the timestamps that play an important role in computing the encryption keys. Having these protection methods will also make any clean-up attempt quite a challenge. The disinfection process for this virus involves searching inside malware code for specific instruction arrangements.</p>
+<p>We will present some ideas that could help in detecting and disinfecting a Virlock-infected system.</p>
+<h2><a class="chapter" name="h2-introduction"></a>Introduction</h2>
+<p>Malware has grown significantly in the last decade, both in prevalence and complexity. It has developed from innocent bad jokes and simple trojans to advanced polymorphic file infectors, rootkits and ransomware. While security companies have studied all the types of malware and built specific categories for them, it can be difficult, today, to categorize a malicious application as a trojan, a piece of spyware, or even a file infector, as they tend to be more complex and to embed several different kinds of behaviour at once.</p>
+<p>Security vendors have been forced to develop different kinds of engines to reach faster conclusions in malware analysis, be it static or dynamic, but security products by definition are usually a step behind the malware creators, even if we try to minimize that time-interval. The security industry had tried to figure out better solutions and better engines to prevent malware execution in advance by using artificial intelligence, but no matter how hard we try, or how much time we invest in research, there is always something new which doesn’t get caught. There are many cases in which we reach the conclusion that an engine is not doing the best to protect against a new piece of malware, or that making a small improvement will slow down the entire product. In some cases we reach the conclusion that a particular detection method is simply not adequate for a specific piece of malware.</p>
+<h2><a class="chapter" name="h2-1-ransomware-and-file-infector-evolution"></a>1. Ransomware and file infector evolution</h2>
+<h3><a class="chapter" name="h3-11-old-file-infectors-behaviour-and-purpose"></a>1.1 Old file infectors, behaviour and purpose</h3>
+<p>Known categories: appenders, prependers, EPO, polymorphic, interleaved.</p>
+<h4><a class="chapter" name="h4-purpose"></a>Purpose:</h4>
+<p>The first file infectors were just bad jokes or proofs of concept. The earlier ones interleaved malicious code with original application code or prepended malware code to a clean application. By prepending the malicous code to a clean application, the authors increased the time needed for analysis, and also gained time for their malware to spread while users were searching for solutions. This is also a safe way to expose users’ computers to hackers; file infectors act like agents, collecting confidential user data, or continuously delivering other kinds of malware to the infected system.</p>
+<h4><a class="chapter" name="h4-behaviour"></a>Behaviour:</h4>
+<p>Malicious code is executed first, infecting the system or ensuring it is running within another process or thread and eventually deploying any missing files, then it executes the original application. When a portion of the clean application is executed, the malware will also be executed at some point, this being triggered by a patched API import or by malicious code insertion. After the malicious code has finished running, the clean application’s code continues to be executed from where it was left off.</p>
+<p class="centered"><a class="zoom-img" title="Figure 1: Example of a common file infector (appended code to clean application)." href="/files/7814/5201/3430/Virlock-1.jpg"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/01b855486abdcc7f5326c55f1d931997_f69.jpg" alt="Virlock-1.jpg" width="847" height="507" /></a></p>
+<p class="centered-caption">Figure 1: Example of a common file infector (appended code to clean application).</p>
+<h3><a class="chapter" name="h3-12-old-screen-lockers-behaviour-and-purpose"></a>1.2 Old screen-lockers: behaviour and purpose</h3>
+<h4><a class="chapter" name="h4-purpose"></a>Purpose:</h4>
+<p>An easy way to get money from users by blocking access to their working environment. (Childish play for grownups!!!)</p>
+<h4><a class="chapter" name="h4-behaviour"></a>Behaviour:</h4>
+<p>This kind of malware creates an additional desktop and switches to the new environment, just as if another user had logged on. Some of them may encrypt user files, but most of them don’t. The ones that do encrypt user files, like some CryptoLockers, do not lock the user’s screen, because the damage is already at a stage where the user might wonder where the backup is, or whether a decryption tool is worth paying for.</p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/4914/5201/3450/Virlock-2.jpg" alt="Virlock-2.jpg" width="600" height="532" />Figure 2: Ransomware blocking user screen and requesting payment.</p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/4214/5201/3530/Virlock-3.jpg" alt="Virlock-3.jpg" width="700" height="501" />Figure 3: RSA1024 CryptoLocker displaying message to user.</p>
+<p>Let us mention some of the well known pieces of ransomware among both families:</p>
+<ul>
+<li><span style="line-height: 1.42857;">ACCDFISA, PornoBlocker, Rannoh, IcePol, CryptoWall, CoinVault.</span></li>
+</ul>
+<p>In the following chapters we will uncover the main features and components of Virlock; however we are not going to focus on the infection process. This type of malware has the vaccine within itself, but only applies it for each infected file at runtime. We will focus mainly on its design and its abilities to sneak past some security solutions.</p>
+<h2><a class="chapter" name="h2-2-analysing-virlock-refining-behaviour-combining-purpose"></a>2. Analysing Virlock, Refining Behaviour, Combining Purpose</h2>
+<p>Virlock combines the technology of file infection with the screen-locking features of regular screen-lockers. The authors embed both infection and disinfection tools, throwing away the management system to bind infected users to some private decryption keys. Their remaining concern is about users who are willing to pay their fee rated in bitcoins.</p>
+<p>The screen-locking picture is very similar to that of those pieces of ransomware that pretend to be some higher authority with full rights to request certain amounts of money from home-users – for example as fines (see <a href="#figure4">Figure 4</a>). Most texts appearing on the locked screen are trying to scare the users, for example threatening them with prison for up to five years or more if they do not pay the money. <a class=" anchor" name="figure4"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/7814/5201/3550/Virlock-4.jpg" alt="Virlock-4.jpg" width="780" height="576" />Figure 4: Virlock screen lock.</p>
+<h3><a class="chapter" name="h3-21-analysing-virlock--refining-behaviour"></a>2.1 Analysing Virlock – refining behaviour</h3>
+<p>Virlock is changing the way in which the infection process takes place:</p>
+<ul>
+<li><span style="line-height: 1.42857;">It has an ingenious polymorphic engine (most file infectors don’t come with such an engine), making the detection process more difficult with each infected system.</span></li>
+<li><span style="line-height: 1.42857;">It doesn’t just insert a piece of code into the clean application as most file infectors do, but the entire clean application becomes a small piece of the malware itself (similar to Morto/Sality/ACCDFISA).</span></li>
+<li><span style="line-height: 1.42857;">It uses techniques to cheat users at first glance (seen in a few other pieces of malware), to bypass users’ doubts that an infected file is really malicious.</span></li>
+<li><span style="line-height: 1.42857;">It has a lot of features (not new, but different) that make the reverse-engineering process more difficult, overload the analysts and annoy them.</span></li>
+<li><span style="line-height: 1.42857;">It has screen-locking (borrowed from screen-lockers) to increase the time taken to get to an infected sample – most home-users prefer to reinstall their operating system rather than trying to remove the malware. </span></li>
+<li><span style="line-height: 1.42857;">It uses multi-threading and rooting into the environment to get full control over the infected systems without the need for drivers, and to execute different paths inside the same application, but from different points of view (running processes/services/threads).</span></li>
+</ul>
+<h4><a class="chapter" name="h4-211-not-embedding-malware-code-but-embedding-a-clean-file"></a>2.1.1 Not embedding malware code, but embedding a clean file</h4>
+<p>The infection process is somewhat different from the infection process of other known file infectors. However, there are small similarities between Virlock and both the Sality file infector and the ACCDFISA ransomware:</p>
+<ul>
+<li><span style="line-height: 1.42857;">Virlock and Sality: both replace the clean application with the malware which contains the original application packed or modified.</span></li>
+<li><span style="line-height: 1.42857;">Virlock and ACCDFISA: ACCDFISA uses the RAR archiver to make all the infections self-extractable – this is very similar to Virlock’s behaviour but with the small difference that Virlock uses its own techniques to accomplish the same behaviour. </span></li>
+</ul>
+<h4><a class="chapter" name="h4-212-anti-analysing-techniques"></a>2.1.2 Anti-analysing techniques</h4>
+<p>At the moment we know about five different Virlock versions. They’re not too different but they do differ in such a way that some simple checks will not catch them all.</p>
+<h5><a class="chapter" name="h5-2121-code-obfuscation"></a>2.1.2.1 Code obfuscation</h5>
+<p>One of the main techniques used to harden the reverse engineering and analysis process is obfuscation.</p>
+<p>Obfuscation is present in all five versions and is similar between some and different between others. However, while obfuscation may contribute to detection, it is not a key-point in doing that.</p>
+<p><a href="#figure5">Figure 5</a> shows some screenshots of obfuscated code from four different versions. <a class=" anchor" name="figure5"></a></p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 5: Obfuscated code inside four different Virlock versions." href="/files/6214/5201/3569/Virlock-5.jpg"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/642e9249a975a0306445239f6ebe97c2_f73.jpg" alt="Virlock-5.jpg" width="847" height="303" /></a>Figure 5: Obfuscated code inside four different Virlock versions.</p>
+<p>If we are going to trace the entropy of those pieces of code, or count the number of some target instructions which repeat excessively, we can create some checkpoint conditions that Virlock infections will not pass. Code can be obfuscated in lots of configurations, but some of them are built based on some basic principles. It is not too difficult to observe the criteria with which an obfuscation engine was built.</p>
+<p>We could also de-obfuscate some instruction blocks by following the true aim of an obfuscated piece of code. However, de-obfuscation becomes irrelevant when one can look at the execution traces. They are still a plus when building documents to reveal the true meaning of some code.</p>
+<p>Obfuscation also contributes to making the static analysis procedure more difficult.</p>
+<h5><a class="chapter" name="h5-2122-anti-debugger"></a>2.1.2.2 Anti-debugger</h5>
+<p>There are lots of anti-debugger techniques, and usually, malware creators combine those features with techniques to detect virtual machines, emulators or supervisor tools like <em>PIN</em> from <em>Intel</em> (which allows one to instrument an executed application), or API loggers which inject tracing modules or pieces of code into a target process.</p>
+<p>Virlock does not combine all of these, but it uses the strongest of them all, in order to bring the analyst to a point where he/she could easily give up.</p>
+<h5><a class="chapter" name="h5-multi-staged-unpack"></a>Multi-staged unpack</h5>
+<p>This is a known technique for making the reverse engineering procedures harder, for both static and dynamic analysis. If a piece of code is unpacked piece by piece, one at a time, while it is executed, then performing a static analysis could be very difficult. Following the modifications inside a debugger might also be tricky, as some debuggers simply refuse to disassemble the code at the point where they think that there is no code in the first place. If we add to that the fact that code might re-encrypt the previously executed code, then things get really interesting.</p>
+<p><a class="zoom-img" title="Figure 6: Short example of execution flow, following the chunk encryption/decryption template." href="/files/8914/5201/3588/Virlock-6.jpg"><img class="centered-caption" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/181f734b6ca4fb5d4c14f58608fe70ed_f74.jpg" alt="Virlock-6.jpg" width="847" height="341" /></a><span class="centered-caption">Figure 6: Short example of execution flow, following the chunk encryption/decryption template.</span></p>
+<h5><a class="chapter" name="h5-staged-unpacknbsp"></a>Staged unpack </h5>
+<p>Staged unpack is a feature which minimizes the ‘area’ of ‘plain-text’ code at any time. There is a piece of code, more like a template, which repeats itself along the execution of the malware, and at each step:</p>
+<ul>
+<li><span style="line-height: 1.42857;">It hashes the buffer to be unpacked</span></li>
+<li><span style="line-height: 1.42857;">It decrypts the next piece of code, only if the hashes match</span></li>
+<li><span style="line-height: 1.42857;">It executes the code inside the decrypted chunk (possible more function-templates)</span></li>
+<li><span style="line-height: 1.42857;">It rehashes the unpacked code and alters the hash, inside the code</span></li>
+<li><span style="line-height: 1.42857;">It re-encrypts the previously decrypted code.</span></li>
+</ul>
+<p>The template follows the data structure of a linear linked list, where each node is itself a linear linked list of many possible function calls. We are seeing linked lists inside linked lists mainly because each function call inside such a code-chunk calls another unpack-execute-repack template.</p>
+<p><a href="#figure7">Figure 7</a> shows the code template for the mentioned trick inside a particular infection, which starts by checking the integrity of the packed chunk-code at 40193F, decrypts the buffer at 4019C0, jumps to unpacked code at 401A7E, and finally rebuilds the HASH for the unpacked code which it overwrites at the beginning of the code template and re-encrypts the entire code starting at 401A7E. <a class=" anchor" name="figure7"></a></p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 7: Template-code for staged unpack (yellow square -&gt; unpacked code)." href="/files/5814/5201/3609/Virlock-7.jpg"><img src="/files/cache/505c1cdb7a1e17a27279c659ea0a73fd_f75.jpg" alt="Virlock-7.jpg" width="847" height="433" /></a>Figure 7: Template-code for staged unpack (yellow square -&gt; unpacked code).</p>
+<p>If someone is trying to make some process-dumps to have a look at the code inside the malware while it’s executing, they might be surprised to find that the malware is almost fully packed, just as it was in the first place. The surprise gets bigger, as one is thinking that the malware might have some running threads which did not get dumped at the time of the process dump and while trying to grab all the memory pieces, one will obtain nothing more than the first process dump.</p>
+<h5><a class="chapter" name="h5-checking-for-the-presence-of-a-debugger"></a>Checking for the presence of a debugger</h5>
+<p>Every infected sample checks for the presence of a debugger at some point. There is a standard way to do that, which is by querying a flag inside PEB, called isDebuggerPresent at [fs:[30h]+2], bit 0 (see <a href="#figure8">Figure 8</a>). <a class=" anchor" name="figure8"></a></p>
+<p><img class="centered-caption" src="/files/9914/5201/3628/Virlock-8.jpg" alt="Virlock-8.jpg" width="600" height="185" /><span class="centered-caption">Figure 8: Anti-debugger checking inside PEB.</span></p>
+<p>In our example, if it’s being debugged, the code jumps to 0x495A2D . If we are taking a closer look we can see in <a href="#figure9">Figure 9</a> that the code is being executed in those conditions. <a class=" anchor" name="figure9"></a></p>
+<p><img class="centered-caption" src="/files/2614/5201/3650/Virlock-9.jpg" alt="Virlock-9.jpg" width="600" height="283" /><span class="centered-caption">Figure 9: Code executed when debugger is found.</span></p>
+<p>Eventually we find a piece of code looping on itself and calling Sleep.</p>
+<p>Most of the time, we can trick the application by changing the condition flags; and thus the condition itself or the value being compared. However, the time spent getting one’s hands on that piece of code is sometimes too much to continue with the dynamic analysis that way.</p>
+<h5><a class="chapter" name="h5-rooting-inside-the-execution-environment"></a>Rooting inside the execution environment</h5>
+<p>We mentioned earlier that the malware does not use all known methods to harden the analysis procedure, but it uses the strongest of all methods gathered together to at least discourage analysts or to create problems for automated tools.</p>
+<p>The technique described in this section does not refer to a behaviour that rootkits are using, but rather to a behaviour which spreads the infection inside the infected system, making self-copies and additional processes or services, each of them with a couple of threads. If the malware gets to execute inside such a configuration, then the synchronization policies between processes and threads will enable it to do its main job, otherwise one will not get anything useful from it.</p>
+<p>At the beginning of the execution, an infected sample will first create two copies (of the original infection core – morphed) inside hidden folders with random names but constant length (eight characters), one located in <span style="line-height: 1.42857;">%AllUsersProfile% and one inside %UserProfile%:</span></p>
+<p>[%UserProfile%\[a-zA-Z]{8}\[a-zA-Z]{8}.exe]</p>
+<p>[%AllUsersProfile%\[a-zA-Z]{8}\[a-zA-Z]{8}.exe]</p>
+<p>The copy located in the %UserProfile% folder is executed first using CreateProcess and it is also set as a starting point inside the startup key:</p>
+<p>[HKCU\Software\Microsoft\Windows\CurrentVersion\Run].</p>
+<p>Second and (in some cases) third copies are written in the %AllUserProfile% folder inside different subfolders. One of them is executed like the first copy in order to work together with it (one of the copies ensures that the other is not killed, and if that happens then it just recreates it), and the other is created as a service to supervise some tasks and gain privileged access to operating system components.</p>
+<p>It is important at that point to note that the malware copies are not only different from the first one (using a polymorphic packer), but also have some key-flags changed. The changing of flags will enable, for example, one of the copies to execute a slightly different path inside the malware just like a switch-case block. For example, the malware self-disinfects the file inside it, only if a certain flag located at a hard-coded address says that this can be done.</p>
+<p>A series of batch-files and VBS scripts are written on the disk temporarily to help the malware infect files by first making a backup and then overwriting the target file. Scripts are also used to change security policies inside the registry, in order to hide the malware or to disable default security features.</p>
+<p>The following is a list of commands altering registry entries:</p>
+<p>reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced /f /v HideFileExt /t REG_DWORD /d 1</p>
+<p>reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced /f /v Hidden /t REG_DWORD /d 2</p>
+<p>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v EnableLUA /d 0 /t REG_DWORD /f</p>
+<p>Straight after the installation, the malware tries to brute-force the user logon account password with at least a few thousand common password templates, and straight after that creates a new user with a random name and full administrator rights.</p>
+<p><img class="centered-caption" src="/files/8114/5201/3671/Virlock-10.jpg" alt="Virlock-10.jpg" width="594" height="184" /><span class="centered-caption">Figure 10: New account created by Virlock after successfully brute-forcing the administrator password.</span></p>
+<p> The following are just a few examples of passwords that had been tried by the malware:</p>
+<p>password, <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="80d0c0f3f3f7b0f2e4">[email&#160;protected]</a>, 1234, Password1, 123456, admin, 12345, Passw0rd, <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a1d1e1d2d2d691d3c5">[email&#160;protected]</a>, Pa$$w0rd, !QAZ2wsx, test, sunshine, <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="aafaead9d9ddc5d8ce">[email&#160;protected]</a>, <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="360747574c7661656e">[email&#160;protected]</a>, 123456789, 12345678, abc123, qwerty, letmein, changeme, master, Password!, passw0rd, 1q2w3e4r, Password01, password1, hunter, qazwsx, welcome, Welcome123, secret, orig_Administrator, princess, dragon, pussy, baseball, football, monkey, 696969, operator123, N0th1n9, <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="715000100b31060209">[email&#160;protected]</a>, 1q2w3e4r5t6y7u8i, abcd12345, 7654321, Administrator, q1w2e3r4, q1w2e3r4t5.</p>
+<p>A process created with the following command line will discard any possible API-tracer or debugger following the process execution. However, we can still trick such behaviours by altering the code at the entry-point and forcing a debugger to enter first, modifying the parameters for CreateProcess, or using some advanced environment emulators:</p>
+<pre>CreateProcessW("%TEMP%\AccMwMEs.bat", " "%TEMP%\AccMwMEs.bat" "C:\samples\virlock.exe" ", …………)<br /><strong>[AccMwMEs.bat]</strong><br />echo WScript.Sleep(50)&gt;%TEMP%/file.vbs<br />cscript %TEMP%/file.vbs<br />del /F /Q file.js<br />del /F /Q %1<br />del /F /Q %0</pre>
+<p>When an infected sample gets to execute on a clean system, we say that the sample is the original one which is the primary cause of the infection. This sample is almost like any other fresh infected sample, which was not executed after the infection. There are some flags hard-coded into the malware so that it knows, at runtime, whether the sample being executed is a fresh infection that has not been executed before, or a drop made by malware targeted as a service or a malicious process running on the user’s system. <a href="#figure11">Figures 11</a> and <a href="#figure12">12</a> illustrate that behaviour.</p>
+<table class="table table-striped" border="0">
+<tbody>
+<tr>
+<td>Hard-coded value</td>
+<td>Meaning</td>
+</tr>
+<tr>
+<td>0</td>
+<td>Installed malware process, usually two synchronized processes</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Original sample, installs malware components</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Intermediate actions (while rooting into environment), brute-force user account password</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Multithreading and synchronization (screen-locking, online payment)</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Sample is running as service</td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 1: Associations between hard-coded values and their meaning. <a class=" anchor" name="figure11"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/6714/5201/3692/Virlock-11.jpg" alt="Virlock-11.jpg" width="750" height="291" />Figure 11: First context switching actions. <a class=" anchor" name="figure12"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/1014/5201/3713/Virlock-12.jpg" alt="Virlock-12.jpg" width="680" height="582" />Figure 12: Last context switching actions.</p>
+<h5><a class="chapter" name="h5-2123-anti-emulation"></a>2.1.2.3 Anti-emulation</h5>
+<p>Most malware creators integrate into their applications techniques to escape emulation and/or virtual machines. There are a number of known methods to accomplish that, we won’t discuss all of them, but mainly those used by Virlock.</p>
+<p>Among all the techniques which can cause emulators not to work, there are time constraints and unimplemented emulated API calls. Some emulators which are at the beginning, might have problems overcoming both of these, others might give up over time constraints (mainly because authors consider this a performance hit), and other advanced emulators could solve all of these in more efficient ways. However, most emulators are somewhere in the middle most of the time. We have to consider the possibility that from time to time malware creators reverse our engines and create malware which might target some of these security engines. If that is the case, then no matter how strongly an emulator is built, it might become useless if it’s being targeted by malware.</p>
+<h5><a class="chapter" name="h5-randomly-chosen-api-calls"></a>Randomly chosen API calls</h5>
+<p>In an attempt to morph itself, Virlock rebuilds itself inside each infection, decorating the core of functionalities with things like random API calls from randomly chosen modules. The malware uses some tables, meaning that it does not choose from a huge set of possibilities but from a finite set. It chooses a random number of libraries which the future infection will import, and from those libraries, some random APIs inside each of them are chosen as imports.</p>
+<p>If emulators are only emulating a certain set of APIs, then that might impede their ability to continue at the point of an unknown API call, or an API call not implemented accordingly (<a href="#figure13">Figure 13</a>). <a class=" anchor" name="figure13"></a></p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 13: Consecutive blocks of random API calls, trying to escape emulators from the beginning." href="/files/7014/5201/3737/Virlock-13.jpg"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/0aa26f01fb295c5ece4e33b7bb55ea56_f81.jpg" alt="Virlock-13.jpg" width="847" height="278" /></a>Figure 13: Consecutive blocks of random API calls, trying to escape emulators from the beginning.</p>
+<h5><a class="chapter" name="h5-increasing-the-number-of-executed-instructions"></a>Increasing the number of executed instructions</h5>
+<p>Most malware, be it packed or unpacked, does not require more than a few million instructions to be executed. At that point there are optimizations such as binary translation, which tries to improve performance over emulated loops like decryption blocks which get to be executed by the real processor and not by the emulator. Binary translation is sometimes combined with file-read operations – the best emulators will try to reduce the number of read operations and at the same time the maximum number of instructions allowed to be executed.</p>
+<p>All versions of Virlock have a first stage decryption. Without it, any further code execution is basically impossible. There is currently no version that executes fewer than 60M instructions for that purpose, and the number of instructions increases for bigger files and larger obfuscated loops, to hundreds of millions of instructions. Some infections also spread the obfuscated loops over a large area of the infected file, thus passing to emulators the pain of consecutive file reads, which also is a hit for performance. <br />There are many cases where the binary translation for loops is almost impossible if we are not first going to de-obfuscate the code being executed by the loop. <a href="#figure14">Figure 14</a> shows such a case where just three calls to load more than 180 APIs from different modules is taking at least 500k instructions. <a class=" anchor" name="figure14"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/7014/5201/3764/Virlock-14.jpg" alt="Virlock-14.jpg" width="600" height="135" />Figure 14: Loading some APIs (calling is based on templates discussed in 2.1.2.2).</p>
+<h4><a class="chapter" name="h4-213-cheating-users"></a>2.1.3 Cheating users</h4>
+<p>Very rarely seen in other pieces of malware of this kind (which embed the clean file into a totally different file), Virlock tries to cheat users into thinking that an infected file is actually what its icon claims it to be. There is a stage in the infection process where the malware searches inside the registry for the application associated with an extension type, in order to get to the file containing the icon of the associated application. This is a primary step for grabbing the icon and embedding it into the final infected file as an icon-resource. At a first glance, there is no difference between the original file and the infected one.</p>
+<p>Straight after the infection, the malware will set a registry setting to hide extensions for known filenames. That way users will see their original files with their relevant icons and no EXE extension, so no one will ever doubt the actions of the file.</p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/7814/5201/3783/Virlock-15.jpg" alt="Virlock-15.jpg" width="691" height="659" />Figure 15: Infected files with extensions revealed.</p>
+<h4><a class="chapter" name="h4-214-polymorphic-engine"></a>2.1.4 Polymorphic engine</h4>
+<p>The thing that makes Virlock so special is that it has a polymorphic engine which mutates its shape in future infections. In this section we reveal the techniques used by the malware to accomplish this task.</p>
+<p>Straight after the API-loading process, the malware allocates two buffers (one of them big enough to hold the core of the malware) to prepare the morphing process for the infections to come. The core of the malware is somewhere inside the infected application, but only visible after a few stages of successive decryption procedures. <a href="#figure16">Figure 16</a> shows the schematics of the core, which resides packed, layered inside any infected file. <a class=" anchor" name="figure16"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/1614/5201/3856/Virlock-16.jpg" alt="Virlock-16.jpg" width="553" height="344" />Figure 16: Virlock core with embedded clean application.</p>
+<p>A polymorphic engine is located in our example at 0x45E636 and it is called several times during the installation of the malware into the newly infected system. Each new malware copy will also have modified the flags discussed previously, accordingly.</p>
+<p><img class="centered-caption" src="/files/9914/5201/3882/Virlock-17.jpg" alt="Virlock-17.jpg" width="545" height="431" /><span class="centered-caption">Figure 17: Code calling the polymorphic engine.</span></p>
+<p>The process of shape-changing is accomplished in two steps, for each of the two dropped files which are going to do the real infection. <a href="#figure18">Figure 18</a> shows the preparation for the reshaping of a self-copy. <a class=" anchor" name="figure18"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/9314/5201/3899/Virlock-18.jpg" alt="Virlock-18.jpg" width="680" height="382" />Figure 18: Preparing the reshape of a self-copy.</p>
+<p> </p>
+<p>The first stage consists of preparing random file names, some random seeds, and the buffers involved in the morphing procedure (see <a href="#table2">Table 2</a>). <a class=" anchor" name="table2"></a></p>
+<table class="table table-striped" border="0">
+<tbody>
+<tr>
+<td>Buffer alias</td>
+<td>Buffer size</td>
+<td>Buffer ptr</td>
+<td>Description</td>
+</tr>
+<tr>
+<td>TAB1</td>
+<td>0x200</td>
+<td>0x970000</td>
+<td>Randomization table 1</td>
+</tr>
+<tr>
+<td>TAB2</td>
+<td>0x2300000</td>
+<td>0x1100000</td>
+<td>Working buffer for reshaping procedure</td>
+</tr>
+<tr>
+<td>TAB3</td>
+<td>0x10000</td>
+<td>0x9A0000</td>
+<td>Intermediate table 1</td>
+</tr>
+<tr>
+<td>TAB4</td>
+<td>0x10000</td>
+<td>0xAA0000</td>
+<td>Intermediate table 2</td>
+</tr>
+<tr>
+<td>TAB5</td>
+<td>0x200</td>
+<td>0x980000</td>
+<td>Randomization table 2</td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 2: Buffers involved in the morphing procedure.</p>
+<p>We also see at this step the creation of two different MZPE file headers, originally packed inside the malware (see <a href="#figure19">Figure 19</a>). Their purpose is to fulfil the creation of the processes which will actually carry out the infection. <a class=" anchor" name="figure19"></a></p>
+<p><a class="zoom-img" title="Figure 19: Preparing headers for the files to be constructed." href="/files/9814/5201/3919/Virlock-19.jpg"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/ab12ea538bb0ca80161cab7e56c7e528_f88.jpg" alt="Virlock-19.jpg" width="847" height="253" /></a><span class="centered-caption">Figure 19: Preparing headers for the files to be constructed.</span></p>
+<p>In the beginning of the second stage, the malware creates a custom import table, also based on time seeds (see <a href="#figure20">Figure 20</a>). The RDTSC instruction, which provides those time-seeds, is called very frequently, not only to randomize stuff, but also for choosing random locations in the target application, where relevant data regarding decryption keys, buffer pointers, etc., will be placed. <a class=" anchor" name="figure20"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/2814/5201/3945/Virlock-20.jpg" alt="Virlock-20.jpg" width="600" height="258" />Figure 20: Building a customized import table.</p>
+<p>In <a href="#figure21">Figure 21</a>, we can see a sequence of instructions which progressively builds the decoration of the new infection. <a class=" anchor" name="figure21"></a></p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 21: Reshaping a new infection." href="/files/7914/5201/3973/Virlock-21.jpg"><img src="/files/cache/34c3186e1ebed1634dd83660fe34dce7_f90.jpg" alt="Virlock-21.jpg" width="847" height="514" /></a>Figure 21: Reshaping a new infection.</p>
+<p>All the steps required for a full file creations are called in a sequence of three consecutive calls, as shown in <a href="#figure22">Figure 22</a> {reshape / append / recrypt}. <a class=" anchor" name="figure22"></a></p>
+<p class="centered-caption"><span class="anchor"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/5514/5201/4016/Virlock-22.jpg" alt="Virlock-22.jpg" width="750" height="224" />Figure 22: Main reshape steps for self-copies.</span></p>
+<h3><a class="chapter" name="h3-22-analysing-virlock--combining-purpose"></a>2.2 Analysing Virlock – Combining purpose</h3>
+<p><span style="line-height: 1.42857;">We have seen lots of malware categories that combine their powers with other malware categories. The results of those combinations have, most of the time, been some kind of surprise for security products. Not only do malware authors learn from security products how to improve their performance, but we also learn from malware authors that there is always something which we have not taken into account in the first place. This sounds like an evolving loop, where security products try to nullify malware actions, while on the other hand malware authors try to nullify security products’ actions. Well, at least the loop is more like a three-dimensional spiral, otherwise we would not exist at this moment in time. </span></p>
+<p>The following is a brief history of combined malware actions including Virlock, which we find as a reference for this case:</p>
+<ul>
+<li><span style="line-height: 1.42857;">Viking / Jadtre – rootkit and file infector</span></li>
+<li><span style="line-height: 1.42857;">CBDoorK – rootkit and backdoor</span></li>
+<li><span style="line-height: 1.42857;">Sality – file infector, botnet, worm</span></li>
+<li><span style="line-height: 1.42857;">Virlock – ransomware, file infector.</span></li>
+</ul>
+<h4><a class="chapter" name="h4-221-file-infector-and-screen-locker"></a>2.2.1 File infector and screen-locker</h4>
+<p>Until Virlock, no other malware combined these features. Malware authors who write ransomware are doing it for the money – they say as much in their readme files appearing on the infected computers. For example, a piece of ransomware using the Bitlocker feature from <em>Windows</em> tells the infected users that ‘This is just how business works, pay and you’ll get your data back.’</p>
+<p>Early versions of ransomware only locked users’ accounts, hoping that some of them would fall into their trap – and they succeeded, but there is always room for improvement. Some of the next versions tried to encrypt users’ files with symmetric keys and locked the users’ accounts, making it more difficult to revert the process. But as the security products improved their strategies and delivered rescue-CDs to users, malware authors improved their methods of cryptography, using asymmetric algorithms, and gave up the screen-locking. When infecting users with those kinds of ransomware, malware creators need a management system in order to bind private-keys with malware versions. Maybe they did not expect their methods to be so fruitful, but they seem to be overwhelmed by the number of infected users and public/private keys. It is not unusual for a user to try to pay, and get a decryptor which attempts to decrypt files from a different infection.</p>
+<p>Virlock tries somehow to escape the load produced by the key-infection management system while improving the old techniques used in locking files and user accounts by embedding the clean file and packing it safe inside the malware with random and hard-coded keys. It also tries to crack users’ account passwords, to lock their account in order to make it as difficult as possible for the users to recover their files. Using the presented technique for file infection, security products have to consider an entire arsenal of variables in order to begin a clean method, because it would be very easy to miss a certain hard-coded-key and to damage the file instead of recovering it.</p>
+<h2><a class="chapter" name="h2-3-getting-to-the-core-of-virlock"></a>3. Getting to the Core of Virlock</h2>
+<p>We’ve seen so far that Virlock uses a template-based reshape, so we can use that template as some kind of regular expression to find some inner pylons / code-blocks to start with. Studying the five different versions until now, there are certain similarities between them, which will lead us to classify a sample as infected.</p>
+<p>In this chapter we will try to reveal the malware’s weak points and see how those weaknesses may contribute to studying it better in all its present forms.</p>
+<h3><a class="chapter" name="h3-31-revealing-the-core-inside-different-malware-versions"></a>3.1 Revealing the core, inside different malware versions</h3>
+<p>First, there is an initial layer of decryption which will end up by continuing the execution somewhere at FirstSectionVA+0x400 or FirstSEctionVA+0x1000 with or without additional obfuscated code and possibly a short second decryption stage (<a href="#figure23">Figure 23</a>). <a class=" anchor" name="figure23"></a></p>
+<p class="centered-caption"><img src="/files/2214/5201/4038/Virlock-23.jpg" alt="Virlock-23.jpg" width="850" height="483" />Figure 23: First chunk of relevant code in all five versions.</p>
+<p>There are two major switch sections inside the malware which choose a path of execution depending on the hard-coded flag discussed in <a href="#h5-2122-anti-debugger">section 2.1.2.2</a>. We will consider the two sections as the core of the malware, as they are present inside all versions, no matter how obfuscated the code is, and the path to those functionalities is unique if an emulator behaves just like a real operating system.</p>
+<p>Not all versions are as compact, as shown in <a href="#figure24">Figure 24</a>. There are some cases where junk-code might appear between relevant instructions in our target code, but ignoring them is not as difficult as one may think. <a class=" anchor" name="figure24"></a></p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 24: A comparison between all five versions inside context-switch sections." href="/files/5414/5201/4058/Virlock-24.jpg"><img src="/files/cache/8f76975a92feb5c8b71bfa5093fff820_f93.jpg" alt="Virlock-24.jpg" width="847" height="430" /></a>Figure 24: A comparison between all five versions inside context-switch sections.</p>
+<h3><a class="chapter" name="h3-32-searching-for-a-matchnbsp"></a>3.2 Searching for a match </h3>
+<p>Most detection algorithms will just try to find a relevant piece of code inside a piece of malware. Looking at the code shown in <a href="#figure25">Figure 25</a>, we might be tempted to say that we found something relevant for our malware (a branching point where it chooses to execute as installed or as a fresh infection). However, in other malware versions we found other such pieces of code, doing the same thing but with modified instructions. Considering this, the detection cannot choose that sequence of instructions to follow, but we need some rules depending mostly on the constant addresses given in the piece of code and the instruction types, which are not so different across different malware versions. This kind of matching seems to be as powerful as a regular expression-matching algorithm, but additional changes have to be considered. <a class=" anchor" name="figure25"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/4214/5201/4093/Virlock-25.jpg" alt="Virlock-25.jpg" width="730" height="253" />Figure 25: Piece of malware code to decrypt clean file.</p>
+<h3><a class="chapter" name="h3-33-cleaning-infected-files"></a>3.3 Cleaning infected files</h3>
+<p>To recover the clean file from the malware, we need to follow the code until a point at which we can check whether the infection contains a clean file (switch-flag == 1) or not (switch-flag != 1). If we do have a clean file, we need to grab the hard-coded values inside the malware (different with each infected file) and to force the emulation of decryption functions.</p>
+<p>A simple clean procedure is to use the emulation to execute the decryption function. After that, we can grab from memory, using the specified variables, the actual clean file. The starting point of a particular clean file inside the malware is shown in <a href="#figure26">Figure 26</a>. <a class=" anchor" name="figure26"></a></p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/6114/5201/4117/Virlock-26.jpg" alt="Virlock-26.jpg" width="680" height="260" />Figure 26: Finding clean file using hard-coded variables.</p>
+<h2><a class="chapter" name="h2-4-statistics"></a>4. Statistics</h2>
+<p><a href="#figure27">Figure 27</a> shows a graphic for the timeline of Win32.Virlock.Gen.1, which is the most widespread version at the moment. <a class=" anchor" name="figure27"></a></p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 27: Infection timeline for Win32.Virlock.Gen.1." href="/files/4414/5201/4136/Virlock-27.jpg"><img src="/files/cache/d072768b932cb87d04c4c1a0e255b58c_f96.jpg" alt="Virlock-27.jpg" width="847" height="281" /></a>Figure 27: Infection timeline for Win32.Virlock.Gen.1.</p>
+<p>In <a href="#figure28">Figure 28</a>, we see how many systems have been infected since March 2015 for the three most common detections. Almost 39,700 unique files were detected by <em>Bitdefender</em> on 148 systems in less than five months. The highest number of infections were detected in Canada – almost 30,000, representing 75% of all infections. We expect a small increase in the next few months as the authors of the malware seem to still be working on it, and a total decrease by the middle of next year, by which time many security products will have solutions for it. <a class=" anchor" name="figure28"></a></p>
+<p class="centered-caption"><img src="/files/4314/5201/4162/Virlock-28.jpg" alt="Virlock-28.jpg" width="780" height="382" />Figure 28: Left: Win32.Virlock.Gen.1, Top-right: Win32.Virlock.Gen.3, Bottom-right: Win32.Virlock.Gen.4.</p>
+<h2><a class="chapter" name="h2-5-conclusions"></a>5. Conclusions</h2>
+<p>It seems that malware creators are constantly learning from their mistakes and they always find new ways to bypass security products, be it with a small improvement such that their sample will not be detected for a few days, combining technologies that could force certain security products to redesign their engines (due to performance-hits) in order to come up with a feature to successfully detect and clean the malicious application, or forcing security companies to search for better solutions or to give-up by not being able to keep up with damages done by specific malware infections.</p>
+<p>Virlock is among the few malware applications which combines different technologies to harden the reverse engineering process and at the same time to make the creators of security products question their technologies. The redesign process of certain engines is not always an easy step, and most of the time this is not a solution. For example, to add some features to emulators, in order to execute unimplemented APIs, to track a certain sequence of generic assembly instructions, or to increase the complexity of search algorithms near to the complexity of strstr(), might result in performance hits which will impact the overall functionalities of the security product. Some designers being inspired in the first place might laugh at the idea that an improvement could be made as a next step inside an already evolved tool, but that is not always the case.</p>
+<p>With the advance of malware technologies in the last few years, we find it even harder to revert malware, or to revert the infection process and to restore the system to a clean state. Ransomware using asymmetric encryption algorithms is constantly destroying user-data requiring money to get data back. More than ever, we need methods to automate dynamic analysis and at the same time to extract relevant features from different infections along with improving the prevention techniques. Model-checking and symbolic simulation may be a solution from that point of view, and maybe combining that with time-line analysis and control of a running operating system environment, we might prevent, learn and successfully revert much more complex infections.</p>
+<p>There is also a small chance that by using classifiers to extract common vector-features from traces obtained from emulation of such malware, and then dynamically observing the modifications which take place during the infection, one could generate the detection process (which resumes to a search problem in the space of files to be scanned), along with the disinfection process, in just one click.</p>
+<h2><a class="chapter" name="h2-acknowledgements"></a>Acknowledgements</h2>
+<p>This work was co-funded by the European Social Fund through Sectoral Operational Programme Human Resources Development 2007 – 2013, project number POSDRU/187/1.5/S/155397, project title ‘Towards a New Generation of Elite Researchers through Doctoral Scolarships.’</p> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<p><a href="/uploads/pdf/conference/vb2015/Craciun-etal-VB2015.pdf" target="_blank"><img src="/uploads/images/buttons/pdf-download-button.jpg" alt="Download PDF" width="262" height="45" /></a></p>
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=VB2015 paper: It's A File Infector... It’s Ransomware... It's Virlock&url=https://www.virusbulletin.com/virusbulletin/2016/12/vb2015-paper-its-file-infector-its-ransomware-its-virlock"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2016/12/vb2015-paper-its-file-infector-its-ransomware-its-virlock'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2016/12/vb2015-paper-its-file-infector-its-ransomware-its-virlock&title=VB2015 paper: It's A File Infector... It’s Ransomware... It's Virlock"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2016/12/vb2015-paper-its-file-infector-its-ransomware-its-virlock&t=VB2015 paper: It's A File Infector... It’s Ransomware... It's Virlock"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2016/12/vb2015-paper-its-file-infector-its-ransomware-its-virlock"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

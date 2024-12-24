@@ -1,0 +1,36 @@
+‘Flash EK’ skips landing page, goes Flash all the way
+We came across a strange new exploitation pattern recently where the payload appeared to be distributed without going through the typical process.
+With the majority of exploit kits, the infection chain consists of a landing page, then exploit files (SWF,JAR,PDF, etc.) and finally a binary drop as payload.
+In this case, the payload appeared to be isolated and without a landing page:
+
+At first glance, the capture looks like it is incomplete but upon further review in our logs, I noticed that this strange activity had been going on since at least September 15. (Thanks to Kafeine who confirmed that the exploit kit in question was Flash EK)
+To better understand what was going on I decided to try out Sulo, a tool to dissect Flash files (by performing a dynamic analysis) developed by Timo Hirvonen.
+After installing Sulo and copying the SWF files on a local server, we browsed to the first SWF file using instrument_ie.cmd
+
+This slideshow requires JavaScript.
+First Flash file (used for redirection):
+Pin 2.13 kit 65089
+Found supported Flash Player image: C:\WINDOWS\system32\Macromed\Flash\Flash11f.ocx (0xb380000 - 0xbca6fff)
+[FlashDumperPlugin] Dumping flash from 0xdc31a00, 11765 bytes
+[FlashDumperPlugin] Dumped flash to dumped_flash_0.bin
+[FlashDumperPlugin] Dumping flash from 0xe210080, 896 bytes
+[FlashDumperPlugin] Dumped flash to dumped_flash_1.bin
+Sulo dumped a couple of files following the dynamic analysis. Data that was previously encrypted now appears in clear text:
+
+I could not find the URL for redirection easily and I suspect it may be buried in an extra layer.
+Second Flash file (exploit CVE-2014-0515):
+The exploit is nicely identified by this label:
+
+More importantly, we see the direct connection with the payload:
+
+In essence this exploitation workflow makes it entirely Flash based, that is until the malware payload.
+This infection method has some advantages in that the footprint is minimal and retracing the steps involved is much harder. The redirection mechanism is hiding deep into the Flash files and the domains involved are all different.
+Malwarebytes Anti-Exploit blocks the SWF exploit:
+
+According to Kafeine, there are two threads in the Flash EK: the ‘classic’ one and this new entirely Flash-based one. Flash EK keeps on moving and after disappearing for a while, it was back. More recently Flash EK had dropped Java exploits, which according to Kafeine made it more stealth (and perhaps more effective also).
+
+It seems Flash EK has dropped Java exploitation : small infection percentage traded for more stealth
+— kafeine (@kafeine) September 13, 2014
+
+Thanks to Timo Hirvonen for building a great tool for SWF analysis which will be especially useful to analyse malvertising attacks. You may also want to check out his presentation at Black Hat USA 2014: Dynamic Flash instrumentation for fun and profit.
+@jeromesegura

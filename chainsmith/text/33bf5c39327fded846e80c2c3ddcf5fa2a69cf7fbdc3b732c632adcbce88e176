@@ -1,0 +1,92 @@
+Malvertising campaign on popular site leads to Silverlight exploit, Zeus Trojan
+Malicious ads displayed on legitimate websites (malvertising) are something we see a lot of these days.
+Website owners have grown to have a love/hate relationship with adverts because on the one hand advertising they are a substantial source of revenues but on the other they are often cause for a lot of troubles.
+Site owners use a multitude of different third-party providers which they have trusted over time. However, third-party content is always a bit iffy because you just can’t control it.
+Case in point, a popular website recently suffered a malvertising attack. Our honeypots detected the malicious redirection from a compromised ad in the wee hours of last Friday morning.
+We contacted both the site owners and the advertising agency and the malicious traffic stopped shortly after.
+Over the course of the weekend and the beginning of the week, we exchanged some further emails to get a better understanding about the attack, which turned out to be an Ad server compromise (more details later).
+On Monday, Cisco published a blog post about what they said was a wider use of Microsoft Silverlight for exploitation, in particular with the Angler exploit kit.
+The use of Silverlight in exploit kits and its preference to other plugins (or not) isn’t the point of this article. We will mainly try to study a particular attack and provide some technical details.
+We hope the information can help out both site owners, advertisers and the general public in better understanding the malvertising threat and how to mitigate it.
+Stage 1: Ad server redirection
+Figure 1: HTTP traffic showing malvertising attack.
+In this example the redirection process was very straightforward: legitimate website -> ad server -> malicious website.
+Figure 2: Compromised ad server redirects to malicious URL.
+The goal of this malvertising attack is to redirect unsuspecting users to an exploit kit landing page in order to infect their computers.
+Stage 2: Drive-by download through Angler exploit kit
+The exploit kit landing page is heavily obfuscated to make detection harder.
+Figure 3: Angler exploit kit landing page (encoded variables)
+There are also several JavaScript bits all over the place:
+Figure 4: Angler exploit kit landing page (JavaScript)
+Reconstructing the page to see what code is actually there could be a painful and lengthy process. But in this case, I decided to do it the easy way and started to look for an ‘eval’.
+Figure 5: eval statement holds the key to page’s source code.
+The eval statement will contain a value for a particular variable MDc4Pa used throughout the code. What I did was simply print its content by relying on the browser itself to do the heavy lifting (decoding the page):
+function deobfuscate() {
+var code = prompt(“Deobfuscated code:”,MDv4Pa);
+}
+deobfuscate();
+This is a very basic function that will display a prompt in the browser window containing the variable we are interested in (it replaces the eval):
+Figure 6: Printing obfuscated code for review.
+Now all we have to do is copy and paste the values into a text editing program and review the code in clear.
+Since the code is actually fairly long, we will only focus on certain interesting parts. As with most exploit kit landing pages, this one also attempts to profile the victim’s computer (browser name and version, Java, Flash, Silverlight versions etc…):
+Figure 7: Code used to detect non IE browsers.
+Following detection, various exploit modules will be loaded to exploit the user’s configuration.
+There are interesting and funny bits of code within this Angler landing page worth pointing out. First one is a check for a particular file name on the user’s machine called kl1.sys:
+Figure 8: Kaspersky network driver on the system? No exploit for you.
+It turns out that this file is a Kaspersky network driver. If the file is present on the system, several variables will be assigned a value of false, which, as we will see later, make it so that the exploit code is never triggered.
+There is also a possible voluntary (or not?) typo in the code:
+Figure 9: Typo or not?
+And finally, a tongue-in-cheek poke at security researcher Kafeine (cf April Fish):
+Figure 10: The impossible path.
+In this particular malvertising case, a Microsoft Silverlight (use Netflix on your PC?) was used. We will spend some time analyzing it in more detail.
+To prepare the exploit, the following code assesses what version of Silverlight is running:
+Figure 11: Checking Silverlight and other conditions before firing the exploit.
+Also, you can see that last line checking if a variable is true. This is the same variable (one of them) that was used earlier to detect if the user was running Kaspersky.
+Then, another piece of code prepares the URL from where the exploit will be served:
+Figure 12: Preparing the Silverlight exploit URL.
+Finally, the Silverlight PK is retrieved from the malicious server. Note the full URL and its parameters which were defined above:
+Figure 13: GET request for malicious Silverlight file.
+The PK file can be extracted and contains a .DLL (aVbtTTscsC.dll) defined in the AppManifest file:
+Figure 14: Content of the Silverlight package.
+aVbtTTscsC.dll is a typical binary with section headers:
+Figure 15: Section headers for Silverlight exploit.
+We won’t dig any further into the Silveright exploit. If you are interested to know more, I suggest you read this post by Kafeine: CVE-2013-0074/3896 (Silverlight) integrates Exploit Kits.
+Stage 3: The payload, a Zeus banking Trojan
+Following successful exploitation of the machine, a payload is dropped. This one is none other than the infamous Zeus/Zbot banking Trojan which we blogged about a few months back.
+Let’s take a look at this one:
+Figure 16: File info courtesy of malwr.com.
+Upon execution, the sample talks to a backend command and control server:
+http://macnewsonline . pw/yxg4z3vh/gate_ywa2wiq9.php
+Figure 17: Connection to C2 server.
+It also makes a request to another domain, a Pony Loader: http://{redacted}.eu/gate.php (hiding behind CloudFlare’s infrastructure):
+Figure 18: Connection to a Pony loader server.
+Figure 19: Pony admin login page.
+There’s also another notable external connection to an IP (37.57.26.167) based in the Ukraine:
+Figure 20: Geolocation for botnet related activity (picture courtesy of IPligence).
+which has had botnet related activity in the past little while:
+Figure 21: Botnet activity (details courtesy of VirusTotal).
+Web site owners (publishers and advertisers)
+You could have the most secure website in the world and yet still be affected by malvertising. Part of the problem is due to external factors involved with advertising.
+If like most companies you rely on third-party ad providers, your security is as good as theirs or that of their own suppliers.
+Carefully selecting who you do business with goes a long way, but even so, malvertising can be very sneaky and come back to haunt you.
+To give you an example, even if you carefully inspect every ad prior it went online, the bad guys have devised a way to activate their campaigns at particular times, or based on geographic zones. So a benign ad could easily turn into a malicious one later.
+Having said that, there are several guidelines to improve safety are still very valuable. You can read more here.
+Lastly, and perhaps more importantly, website owners can really benefit from an online monitoring service that checks their site at regular intervals. While there is no 100% guarantee in your site never getting hacked or suffering from malvertising, your degree of reactivity to a problem can make a big difference.
+After all, your brand and reputation are at stake. You may not land on a blacklist but there is little worse to scare your visitors away than your spreading malware.
+End users: multi-layer protection
+The best defence is a layered one and it starts with browser protection. To stop the Silverlight exploit you need to be running the latest version of the software. What if you weren’t?
+Malwarebytes Anti-Exploit BETA already blocks this type of exploit. Even a one year old version of Anti-Exploit (version 0.09.2.1100) already mitigated Silverlight exploits (CVE-2013-3896 and CVE-2013-0074):
+
+For good measure, here’s the latest version of Malwarebytes Anti-Exploit:
+Figure 21: Silverlight exploit (version 5.1.10411.0, prompts for update after exploitation attempt).
+Of course, good Anti-Malware protection running in the background can also protect you against the threat, either by blocking the malicious site or the dropped payload.
+Malwarebytes Anti-Malware detects the malvertising payload as Spyware.Zbot.VXGen:
+Figure 22: Malwarebytes Anti-Malware showing detection for Zeus/Zbot Trojan.
+Files of interest (for security researchers):
+
+Obfuscated Angler EK landing
+Deobfuscated Angler EK landing
+Silverlight exploit
+Payload
+
+@jeromesegura

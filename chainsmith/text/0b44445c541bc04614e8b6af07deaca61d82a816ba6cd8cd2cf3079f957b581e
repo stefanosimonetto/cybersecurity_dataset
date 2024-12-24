@@ -1,0 +1,236 @@
+BYOT: Bring Your Own Target
+2014-03-04
+
+Gabor Szappanos
+Sophos
+,
+Hugary
+Editor:
+Helen
+
+Martin
+Abstract
+The author of Simbot doesn’t take anything for granted: all the necessary components for the malware’s execution are bundled and dropped onto the system, including the relevant vulnerable application for exploitation and regular Windows system binaries.
+Copyright © 2014 Virus Bulletin
+
+It is nothing new for a piece of malware to exploit a vulnerability found in an application – in fact, that is the routine procedure for infecting a computer. This approach does, however, have a weak point: the application in question must be installed on the target computer; furthermore, it must be a vulnerable version of it.
+One malware sample we analysed recently breaks the traditional mould in two ways: the purpose of the exploitation is not intrusion, but to minimize the detectable system footprint, and it does not rely on preinstalled applications. Apart from that, so as not to break with tradition completely, the system infection is achieved via a common Word exploitation technique.
+Following successful infection, only a handful of clean applications are left on the system, along with the encrypted payload file and a single registry key, which is a crucial element of the infection scheme.
+The issue of whether or not the appropriate version of the vulnerable application is installed on the target system is eliminated simply: the trojan drops the vulnerable application onto the system itself, and uses it for its own purposes. In fact, the author of this malware does not take anything for granted: all the necessary components for the malware’s execution are bundled and dropped onto the system, including regular Windows system binaries.
+
+Installation process
+The installation of the malware is a little complicated. It starts with a document exploit, runs through multiple intermediate dropper stages, and concludes in the final infected state with a handful of clean components and the encrypted payload on the system. The process is summarized in Figure 1.
+Figure 1. Installation flow of Simbot.
+
+1. Exploited carrier document
+File size: 830,336 bytes
+SHA1: 0ddae43498e1b03a274f8ca8b32cd48a1a440e7d
+MD5: 6282568857a120a93de3af57e21952e1
+The starting point of the infection chain is an encrypted Excel workbook with default hard coded null password, the meaning of which was explained in [1]. The same vulnerability as described in [1] (CVE 2012-0158) was used in this case as well.
+The carrier document is a very unique compound, as illustrated in Figure 2. Normally, in document exploitations we see either Excel workbooks or Word RTF documents that contain the (usually multi staged) shellcode with the encrypted payload executable appended. In this case, the first stage shellcode is within an encrypted Excel workbook, the second stage shellcode is in an appended Word RTF fragment, and then comes the encrypted executable. It gives the impression of a project that has been copy pasted from different sources with minimal integration effort.
+Figure 2. Exploit document structure.
+The encrypted workbook contains the first stage shellcode, which enumerates open file handles, checking for the file size. The file size must be exactly 830,336 bytes – the size of the carrier workbook. Then it reads in, decodes and executes the content from file offset 0x1de00, at which the hexadecimal text representation of the second stage shellcode is located.
+The second-stage shellcode once again checks for the correct file size for the carrier workbook and searches for the start marker for the embedded .exe (TSRQPONMP). If the marker is found, the DWORD following it is used as the length of the embedded file, followed by the whole payload content, which will be encrypted with a single byte XOR encoding, the key being decremented by one after each byte.
+After the second stage code, further shellcode fragments are found, which are not used and are corrupted when decrypting the shellcode (running over the real length). This is an indication that the carrier was created by reusing older components and overwriting the (longer) shellcode with the new code, not caring about what happens to the trailing remainder of the old code. Again, this underlines the minimal integration effort made in the creation of the exploited workbook.
+
+2. First-stage dropper
+File size: 654,675 bytes
+SHA1: 16fbb14ef6c7ae9c401859aedf99cfd762f00794
+MD5: dfed4bdf77892f2c62b8c68782c16132
+This component is a very simple dropper. It reads the next stage executable from offset 0x1800 in 0x400 byte chunks, saves it to a temporary file in the %TEMP% folder, then executes the dropped file.
+
+3. Intermediate dropper
+File size: 647,168 bytes
+SHA1: 79ef9296a2a0913e60a925da2f9d061ae3a364c7
+MD5: 91d26990f22a4584e631395f5ae234c3
+This dropper searches for a mutex named ‘Sample06’ to determine whether another instance of the dropper is already running – if it finds the mutex, it exits.
+It checks for the presence of a debugger by looking for magic bytes in the allocated heap:
+0ABABABABh (used by Microsoft’s debug-built HeapAlloc() implementation to mark ‘no man’s land’ guard bytes after allocated heap memory)
+0BAADF00Dh (used by Microsoft’s debug-built HeapAlloc() implementation to mark uninitialized allocated heap memory)
+0FEEEFEEEh (used by Microsoft’s debug-built HeapFree() implementation to mark freed heap memory).
+If a debugger is found, only an empty window with the title ‘NewSetup’ is displayed.
+Otherwise, in an untainted environment, it decodes an offset independent code (using a single-byte XOR algorithm, with key 0x97), and executes it.
+This component creates the HKLM\SOFTWARE\Microsoft\Windows\Help -> Config registry key and saves the encrypted configuration data there (see Figure 3).
+Figure 3. Configuration data stored in the registry.
+If, for any reason, saving the configuration data to the registry fails, then as a backup method, the same data is dumped into the file C:\Documents and Settings\All Users\NetWork\t1.dat.
+This configuration data is used by the final stage payload, with the C&C server address extracted from the key value of the file.
+Finally, it decodes and executes the next stage dropper.
+
+4. Installer
+File size: 466,872 bytes
+SHA1: 5a22efba829c259f1cb17f9ffe529c398397e25c
+MD5: 138f32de8f53fe651a7b6967c63cf7ac
+This component is actually a Windows DLL with obfuscated entry code and a lot of redirections.
+It drops the following files:
+C:\Documents and Settings\All Users\NetWork\Config.dat (encrypted main payload)
+C:\Documents and Settings\All Users\NetWork\DDVCtrlLib.dll (clean DLL, needed for science.exe to execute)
+C:\Documents and Settings\All Users\NetWork\DDVEC.dll (clean DLL, needed for science.exe to execute)
+C:\Documents and Settings\All Users\NetWork\science.exe (clean executable).
+In order to survive a reboot, it registers the dropped executable as a service, passing an enormously long command line with three command-line parameters:
+HKLM\SYSTEM\CurrentControlSet\Services\NetWork Service  ImagePath:
+C:\Documents and Settings\All Users\NetWork\science.exe LLLLYIIII7QZAkA0D2A00A0kA0D2A12B10B1ABjAX8A1uIN2
+uNkXlMQJLePvbUPePJgW59t7kwOKDSPJgg5hh2ZezxFVXJg75xlr
+ebuXbtKyWqUXp5FKfZvYPKwpEzTm7xosdLUO7w5zXLnN0dVNKO72
+eKLYKJs3ROEucKypdnkgEVP5PgpUPLKRVtLLKT6ELLKw6WxlKQnw
+PLKp6u6vYPOr8RUzRnkyHlKRs7LNkpTvzt8w
+
+...{7760 further ASCII characters skipped}...
+
+pW2kOhRD2A00A0kA0D2A12B10B1ABjAX8A1uIN2unkZLk1jLGpdB
+Wpwpo73uKTWkwOIdU0iWW5kX0z5zjfTxO7rexlsu2uM2TKxGbejP
+5Fn6HVyPXG1Ul4M7XoRtZ5yW2ezXNNxP4VlkO73uilYKhSSR856S
+HIsTnkgE6PGpUPUPLKPvtLNkafWllKr 100
+[email protected]
+
+The first parameter is intended to cause a buffer overflow in the clean executable and, by invoking a shellcode, run the loader for Config.dat. It should be noted that, of the three parameters passed in the command line, the second bears no relevance, but the last one is of crucial importance.
+Not wanting to wait for the next reboot, CreateProcess is called with the same parameter to execute the payload immediately (the final couple of bytes differ; also the second command-line argument, 100, is replaced with 300).
+
+Loading process
+When all of the required pieces have been installed on the system, the malware deletes the temporary components, and the infected computer is ready for (ab)use. During system start up, the dropped science.exe file is loaded as a service, with a malicious command line.
+
+Science.exe
+File size: 112,064 bytes
+SHA1: 6261e967baf09e608e5d5b156a3701339c73fb95
+MD5: 0070a38553997de066b2aba8c0574d6f
+This is a legitimate, digitally signed clean application (certificate issued to Jinhua 9158 Network Science and Technology Co. Ltd), the original name of which is Download.exe. Looking up other files signed by the same certificate, we found a handful of other application installers that dropped similar versions of Download.exe (see Appendix). All of them proved to be vulnerable to the same abuse, but due to reorganization of the code and memory layout, modifications would be needed in order for them to be used in this way.
+As shown in Figure 4, the science.exe file is intact, not modified by the malware author.
+Figure 4. Digital signature checked OK.
+The program is executed either via the registry key, or using the CreateProcess API. In both cases the extremely long command line is passed to it. Either way, the long command line causes a stack overflow, and leads to the execution of a piece of shellcode. Although not obvious at first, the shellcode is actually hidden within the command line argument itself.
+Crash dumps show that an access violation occurs at virtual offset 404350h in science.exe, which is an interesting coincidence (actually, a lot more than a coincidence), given that the last command-line argument, [email protected], is exactly this value in hexadecimal representation.
+Looking at the executable in a disassembler, one can observe that at this virtual address there is a POP ECX, RET sequence:
+.text:00404350 59  pop ecx
+.text:00404351 C3  retn
+
+A bit of debugging reveals that, upon reaching this point, the stack contains the command-line parameter address and a zero; the code above pops the zero and transfers execution to the first byte of the command line.
+The mechanism of this exploitation is exactly the reason why the MSDN library documentation contains warnings such as the following for some of the function references:
+‘Using vsprintf, there is no way to limit the number of characters written, which means that code using this function is susceptible to buffer overruns. Use _vsnprintf instead, or call _vscprintf to determine how large a buffer is needed.’
+The overflow occurs when the command-line arguments are written out to the log file (Download.log) and vsprintf is used on this buffer without any precaution. This will cause an overflow if the command line is longer than 0x2000 bytes.
+char *write_log(int a1, char *Format, ...)
+{
+va_list va; // [sp+200Ch] [bp+Ch]@1
+char *result; //
+[email protected]
+
+char Dest; // [sp+0h] [bp-2000h]@2
+va_start(va, Format);
+result = Format;
+if ( Format )
+{
+result = (char *)vsprintf(&Dest, Format, va);
+if ( (unsigned int)result < 0x2000 )
+result = (char *)CLog__ADD_Log(g_Log, &Dest, result, a1);
+}
+return result;
+}
+
+The function calls vsprintf to print the argument list into a string buffer allocated with a size of 0x2000 bytes; the format string is the command-line argument, which in our case turns out to be longer than the allocated space for the buffer. As a result, vsprintf will overwrite the return address on the top of the stack.
+The command-line argument is filled with junk characters just to make sure that the [email protected] at the end will end up at the location at which the return address is stored.
+This way, the return at the end of the function:
+add  esp, 2000h
+retn
+
+will position the stack pointer to the 0x404350 DWORD on the overwritten stack.
+To illustrate this, the top of the stack on the entry of the write_log() function looks like this:
+return address
+Param 1: log entry ID
+Param 2: address of command line
+Then, after the stack overrun on the exit of write_log(), the stack will contain:
+0x404350
+Param 1: log entry ID
+Param 2: address of command line
+When the execution returns to offset 0x404350, the first value is popped from the stack, leaving only the entry ID and the address of the command line:
+Param 1: log entry ID
+Param 2: address of command line
+At offset 0x404350 in the program, a function epilogue is found:
+.text:00404350  pop  ecx
+.text:00404351  retn
+
+This will pop the log entry ID from the top of the stack, and return to the next address found on the stack, which is the address of the command line. Consequently, the execution starts at the first byte of the command-line argument.
+I should mention that this is a very simple stack overflow exploitation – a textbook example that was commonly being practised over 10 years ago. Nowadays, secure coding methods make applications a lot harder to break. Nevertheless, the malware writers only needed to find one vulnerable application, and use it for their purpose.
+
+Shellcode from science.exe
+At first glance, the command-line parameter looks like a random string:
+LLLLYIIII7QZAkA0D2A00A0kA0D2A12B10B1ABjAX8A1uIN2uNkXl
+MQJLePvbUPePJgW59t7kwOKDSPJgg5hh2ZezxFVXJg75xlrebuXbt
+KyWqUXp5FKfZvYPKwpEzTm7xosdLUO7w5zXLnN0dVNKO72eKLYKJs
+3ROEucKypdnkgEVP5PgpUPLKRVtLLKT6ELLKw6WxlKQnwPLK...
+
+But in fact it is a valid 32-bit Intel code, starting with a short decoder, which is followed by the decrypted shellcode. It is very likely that it was created by the unicode_upper encoder of the Metasploit toolkit. This encoder generates a final form where each byte of both the decoder and the decoded content is an alphanumeric character – very suitable if it has to be passed as a command line. However, an important part of the shellcode usually cannot be represented in ASCII bytes. This is the prologue, which is responsible for determining the exact memory position. Without knowing this, it is not possible to decode the main shellcode body.
+Normally, the Metasploit decoders begin with a ‘get EIP’ fragment, similar to this:
+fabs
+fnstenv byte ptr [esi-0Ch]
+pop  ebp
+
+First, a random floating point instruction is executed, and then the fnstenv instruction is used to get the floating point environment structure. Among many properties, at offset 0x0C this structure contains the EIP of the last executed floating point instruction (fabs, in this case). The structure is aligned 0x0C bytes into the stack, thus the top of the stack will just contain the EIP value, which is later popped into the EBP register. This is a commonly used, portable solution, but has one major disadvantage: the byte code of the floating point instructions contains non-printable characters, thus can’t be used in a string command-line parameter.
+The shellcode used in the Simbot infection scheme is limited by the fact that it also has to serve as a command line parameter, and can thus only contain printable characters. This means that it can’t contain the usual code to find its own memory offset, but it can make use of the fact that it knows the exact stack layout during the exploitation – thanks to the very controlled environment (i.e. only the specific science.exe, dropped during the installation, has to be exploited).
+Simbot’s shellcode uses the following ‘get EIP’ snippet:
+dec esp
+dec esp
+dec esp
+dec esp
+pop ecx
+
+The advantage is obvious: all of these instructions are represented by printable characters. But the exploitation must be very strict; this prologue requires the stack pointer to be controlled to an exact value. In the previous section we saw that this is the case – the stack pointer is well known by the time the execution reaches this point.
+The code was reached via a RET instruction from science.exe, therefore decreasing the stack pointer by four will position it back to the memory address of the command line, which coincides with the start of the shellcode, the two being the same.
+The first part of the shellcode is the unicode_upper decoder, which performs a single-byte XOR decryption, the key value being modified in each loop.
+After the decoding, a more or less traditional piece of shellcode is found.
+Figure 5. Unicode_upper decoder.
+(Click here to view a larger version of Figure 5.)
+Figure 6. A more or less traditional piece of shellcode is found.
+The API resolver code (a combination of shift left by three bytes, and a bytewise XOR of the last byte of the checksum with the actual character of the name) is unusual, and has not yet been seen in other samples.
+The shellcode reads the content of Config.dat (the main payload) from the folder from which the exploited science.exe was executed, and decrypts it.
+The decryption has two layers: first is a single-byte XOR, the key being the first byte of the file; the second is a running key single-byte XOR, which starts with 1, and is incremented in each loop.
+Finally, it executes the decrypted content.
+
+Memory loader
+The decrypted Config.dat contains the embedded main payload, which starts at offset 0xc13, and a loader code.
+The loader code, executed by the shellcode, does the necessary housekeeping to transfer this embedded data (which is actually a Windows PE executable) to an executable memory image: it fixes the section permissions, resolves the imports, and performs the necessary relocations. This way, the payload can be decoded and executed without hitting the hard disk (and without giving on-access anti virus products the chance to check and detect it).
+
+Main payload
+The final payload is a Windows DLL with an obfuscated entry code, using a couple of redirections before reaching the DllMain function, which itself is also obfuscated to make tracing more complicated.
+It contains yet another encrypted PE loader code and a large, 0x18A00-byte-long encrypted embedded DLL which is packed using the zlib algorithm and dropped as instsrv.dat in the %TEMP% directory. This loader is very similar to the loader of Config.dat. It serves as a back up loader (in case the execution runs into access restrictions), which checks the OS version: if it is 5.2 (Windows 8), then it injects the loader code into the explorer.exe process; if it is anything else, it injects the loader code into dwm.exe.
+The injected code uses a UAC bypassing technique that is very similar to [2]. Using this, it executes the instsrv.dat file dropped in the %TEMP% directory.
+Instsrv.dat is a PE executable that first adds %ALLUSERSPROFILE%\NetWork\science.exe to the DEP exclusion list by invoking the NoExecuteAddFileOptOutList export of the sysdm.cpl applet, passing the path name as a parameter. After that, it terminates the science.exe process, deletes the NetworkService service, and registers science.exe with the exploiting buffer as a service again. Finally, it restarts the service.
+Now back to the final payload.
+It connects to 59.188.23.121 (which is a dial-up IP located in Hong Kong) on ports 8001 and 8433.
+It loads configuration data from the registry key HKLM\SOFTWARE\Microsoft\Windows\Help -> Config (two byte XOR with key 0x004f). Alternatively, if the key for some reason cannot be created in the dropping process, it reads from the file %ALLUSERSPROFILE%\NetWork\t1.dat. The decoded content has the value 585e9b41ebebe0126cfa878bdea036bc.
+This is the encoded form of the C&C IP address. Interestingly, the trojan does not decrypt it, rather it is later brute-forced to match the IP – all possible IP address strings are generated and tested. The IP addresses (two of them, both the same) are decoded character-by-character.
+Given the complexity of the installation and the loading process, the backdoor component has disappointingly little functionality: once the connection is established, it sends and receives data. The data is BASE64 encoded and zlib compressed (version 1.2.3 code is compiled into the code), it is decompressed in memory, and executed. An uncompressed PE executable in the network traffic would be too obvious a sign of suspicious activity, hence the compression.
+So the result of all the efforts described here is ‘only’ to open a channel to the infected computer and facilitate the execution of arbitrary code.
+At the time of writing this article, we are not aware of the components that are pushed to the infected computer, but it would be safe to say that the usual data stealing and remote access components are the most likely candidates.
+
+Conclusion
+It is common in APT-related attack scenarios for an application vulnerability (usually in one of the MS Office suite) to be used to breach a system and infect it. The unique feature in Simbot is that an additional exploitation is utilized, this time to hide the presence of the malware on the infected system, and persist after the system restarts.
+This malware does not rely on a preinstalled application for infection, rather it carries and drops the target itself – a very convenient approach to ensure that the system contains a vulnerable version of the application in question. Even if the vulnerable application is fixed by the vendor, and the fix is distributed to all users, this will not affect the malware: as long as the malware authors have a single vulnerable version, no matter how old, they can bundle it with the installation package, and drop it onto the system. As mentioned previously, this malware does not take anything for granted, carrying all the necessary components (both malicious and clean) itself.
+Ironically, the original purpose of science.exe, as its developer intended, was to download executable updates. Indeed, the Simbot backdoor makes use of this downloader application to download executable updates, but not by using the natural functionality of the downloader, rather by exploiting its logging function to load and execute a binary payload that, after some twists and turns, does the downloading itself.
+After a successful infection we will find the following on the system:
+A clean signed application registered for start up
+Two clean DLL files needed for the execution of the clean executable
+An encrypted payload file
+A registry subkey that contains an encrypted shellcode.
+This is not very much on which to base a reliable detection. And this is a functioning backdoor infection – I can’t think of a case with a less detectable fingerprint on the infected system.
+
+Bibliography
+[1] Szappanos, G. Needle in a haystack. Virus Bulletin, February 2014, p.19. http://www.virusbtn.com/pdf/magazine/2014/201402.pdf.
+[2] Windows 7 UAC whitelist: Proof-of-concept source code. http://www.pretentiousname.com/misc/W7E_Source/Win7Elevate_Inject.cpp.html.
+
+Appendix: Files with the same certificate
+The clean science.exe application was signed by ‘JINHUA 9158 NETWORK SCIENCE AND TECHNOLOGY CO., LTD.’ This company is tied to the website 9158.com, which is registered to [email protected], to the organization Jinhua 9158Network Science and Technology Co., Ltd, in Hangzhou, China.
+We were able to identify a number of further files in our collection that use a certificate from the same issuer; all of them were clean installers. Some of them (the 9158 KTV installers) dropped Download.exe as a component. Clearly, this application would be the source of the exploited binary.
+4d2f9aac4408237a56dadb89e256e637a703b4ee: 9158 Virtual Camera installer – looks legitimate
+4d64bb02d287f2f4e3707f8f7c64a92fbe6621b5: 9158 KTV installer (a version of Download.exe is installed) – looks legitimate
+4f1e67bfe5c2698698f7abffbfa740507aaaeb49 : CHOUZHOUGame (an add-on of some sort, not a standalone application) – looks legitimate
+878f09552e7277544f6b3702e310757c0bde1b42: DuoDuoVideoGame installer (a version of Download.exe is installed) – looks legitimate
+9e7cb141eb97e4a83946b3494344b55bbbf0691a: 9158 KTV installer (a version of Download.exe is installed) – looks legitimate
+a8fb2fa2d1fdbeb45831c3ba08d6d73cd08cb44b: 9158 KTV installer (a version of Download.exe is installed – same as with 9e7cb141eb97e4a83946b3494344b55bbbf0691a) – looks legitimate
+f1dae1ee4ece2d5e30b199663f721a3718a661b9: XinGuang installer – looks legitimate
+Altogether, four different versions of Download.exe were found (including the one carried by the malware). Differentiating between them was made difficult by the fact that all versions had exactly the same version information, as seen on the following output of the Sysinternals sigcheck tool:
+Verified:     Signed
+Signing date: 07:20 23/02/2012
+Publisher:
+Description:  DownLoad Microsoft ???????
+Product:      DownLoad ????
+Version:      1, 0, 0, 1
+File version: 10, 3, 19, 1
+
+Testing the other versions of Download.exe (replacing science.exe right before the CreateProcessA) caused a crash and a debug dialog pop-up. All of these variations were vulnerable to the exploitation, with the same bogus write_log() function, but due to reorganization of the code in the development process, the 0x404350 address, where the execution is re-routed does not contain the required POP RET instruction sequence. Fixing the return value could make these variants vulnerable to full exploitation as well.

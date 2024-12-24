@@ -1,0 +1,69 @@
+A cunning way to deliver malware
+Potentially unwanted programs, also known as PUPs, continue to be a real nuisance. A recent blog post by Will Dormann on CERT.org shows the prevalence of such applications lurking on every corner of the web: search engines results, software portals, popups, ads, etc.
+Deceptive tactics
+Here is an example of an unwanted warning pushed as a pop-up:
+
+The text reads: “UPDATED RECOMMENDED! It is recommended that you install the software to ensure your browser is the latest version. Please update to continue.”
+The following page shows that our browser (Internet Explorer) may be out of date and urges us to download a program to check for outdated software.
+
+It is worth noting that this webpage was totally unsolicited and is in fact very misleading. The disclaimer hiding at the bottom of the page reveals more about what this is all about:
+“UpdateNowPro.com is distributing Software Updater. Air Installer is an install manager that will manage the installation of the selected software. In addition to managing the installation of your selected software, this install manager will make recommendations for additional free software that you may be interested in. Additional software may include toolbars, browser add-ons, game applications, anti-virus applications and other types of applications. You are not required to install any additional software to receive your selected software. You can completely remove the program at any time in Windows ‘Add/Remove Programs’. At the time of downloading you accept the Terms and Privacy Policy.”
+In other words, the program they want you to download bundles other applications, something we know all too well.
+Attempting to close the page brings up yet another warning:
+
+We could argue with advertisers that these practices are not okay until we are blue in the face. But here’s the catch with this one: while the page is saying our system could be at risk we are silently being infected with a drive-by download!
+From PUP to exploit kit
+The following Fiddler (web debugger) capture was recorded on: 2014-06-30 18:30 PT. It shows how bad guys leverage large infrastructures to hide malicious redirections behind potentially unwanted programs.
+
+hxxp://rvzr-a.akamaihd.net/sd/apps/fusionx/0.0.4.html?aff=1700-1043
+hxxp://www.likemagicbox.com/fusionx/www/delivery/afr.php?zoneid=486&cb=6065978317
+hxxp://classic.flowershopprescott.com/assets/js/jquery-1.3.1.min.js?ver=1.27.8660
+hxxp://draft.traveltube.biz/d36c829bovoym7.html
+Some users are getting redirected to an exploit kit while at the same time receiving the same software update page. This is a very sneaky attack involving many actors with rotating domain names for harder identification (click to enlarge):
+
+The domain likemagicbox.com illustrated in this case was registered on 2014-06-30, the same day it started being used in this malware campaign: this is no simple coincidence!
+Traffic analysis
+The first URL on akamaihd.net has an external JavaScript inclusion:
+
+The JavaScript contains a convoluted variable that has various identifiers corresponding to the type of ad and the geolocation of the visitor. More importantly, we see the iFrame redirecting to an abused/complicit server:
+
+Once on this URL there are a couple different ad redirections (note the Yahoo advert too!). And there is this interesting code snippet:
+if(document.cookie.indexOf("_epel")==-1){var page_object=document.createElement("iframe");
+This checks the user’s computer for a cookie called _epel and only if it does not exist will it allow the creation of a secondary (malicious) iframe. To prevent the same user from getting redirected to it again, another little piece of code creates the aforementioned cookie before exiting:
+document.cookie = "_epel=readed;
+
+This dynamically created iframe is rotated every hour using a simple sub-domain generation algorithm (DGA) with alphabetically sorted keywords:
+URL,Date,Registrant
+co.TOASTEDROOSTERCAFE.COM,Thu Jul 3 13:04,Robert Maynard
+coa.TOASTEDROOSTERCAFE.NET,Thu Jul 3 14:03,Robert Maynard
+coas.TOASTGUYS.COM,Thu Jul 3 15:04,Robert Maynard
+coach.TOASTHOUSE.COM,Thu Jul 3 16:06,?
+coaches.TOASTHOUSEMARKET.COM,Thu Jul 3 17:02,Robert Maynard
+coaching.TOASTKITCHEN.COM,Thu Jul 3 18:17,Robert Maynard
+coal.TOASTMARKET.COM,Thu Jul 3 19:22,Robert Maynard
+coals.TSTKITCHEN.COM,Thu Jul 3 20:12,?
+coast.2NDAMENDMENTVOTERS.COM,Thu Jul 3 21:07,?
+coastal.2NDAMENDMENTVOTERS.ORG,Thu Jul 3 22:02,?
+coat.AIMINSINC.INFO,Thu Jul 3 23:07,Kurt Grashaw
+coating.AMERICANBROTHERSINARM.COM,Fri Jul 4 00:07,Kurt Grashaw
+coatings.ANALEHSHOW.COM,Fri Jul 4 01:12,Kurt Grashaw
+cobra.CCNAXUSCONSTRUCTION.COM,Fri Jul 4 02:02,Kurt Grashaw
+coc.GRANBYSOCCER.COM,Fri Jul 4 03:12,Kurt Grashaw
+cock.LOOKINGTOVOLUNTEER.ORG,Fri Jul 4 04:02,Kurt Grashaw
+Many of these root domains belong to the same persons. The bad guys are enumerating compromised accounts and hijacking their DNS records.
+Malicious iframes are inserted within jquery (a very popular JavaScript library) files such as:
+{subdomain.domain}/assets/js/jquery-1.3.1.min.js?ver=1.27.8660
+After the URL has been used for an hour, it is discarded and the subdomain no longer responds.
+
+You may have recognized the URL for the landing page of the Nuclear Pack exploit kit:
+
+The page loads a Java exploit (CVE-2013-2465?):
+
+and a Flash exploit (CVE-2014-0515?):
+
+two malware payloads are subsequently dropped (#1, #2) detected as Spyware.Zbot.VXGen by Malwarebytes Anti-Malware.
+Parting thoughts
+Earlier recorded events with a similar redirection method date back to May 2014 as documented in this security blog.
+Malwarebytes is tough on PUPs and we show no mercy for exploits or malware.
+We have reported this incident to Akamai’s Abuse department so that they can take immediate action against these bad actors.
+@jeromesegura

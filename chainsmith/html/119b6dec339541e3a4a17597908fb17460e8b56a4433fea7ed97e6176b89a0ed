@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: Optimizing ssDeep for use at scale</title>
+<meta name="description" content="Being able to find files that are similar to a particular file is quite useful, although it can be difficult to handle at scale. It can often require an infeasible number of comparisons, which need to take place outside of a database. In an attempt to make this task more manageable, Brian Wallace has devised an optimization to ssDeep comparisons, which drastically decreases the time required to compare files." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 1637;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/remo_expand/blocks/remo_expand/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.color.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/remo.expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<div class="titlepage" xmlns=""><div><div><h1 class="title" xmlns="http://www.w3.org/1999/xhtml"><a id="vb201511-ssDeep"></a>Optimizing ssDeep for use at scale</h1></div><div><p class="pubdate" xmlns="http://www.w3.org/1999/xhtml">2015-11-27</p></div><div><div class="authorgroup" xmlns="http://www.w3.org/1999/xhtml"><div class="author titlepage"><h3 class="author"><span class="firstname">Brian</span> <span class="surname">Wallace</span></h3><span class="orgname">Cylance</span>, <span class="orgdiv">USA</span></div><b class="editedby">Editor: </b><span class="editor"><span class="firstname">Martijn</span> <span class="surname">Grooten</span></span></div></div><div><div class="abstract" xmlns="http://www.w3.org/1999/xhtml"><p class="title"><b>Abstract</b></p><p>Being able to find files that are similar to a particular file is quite useful, although it can be difficult to handle at scale. It can often require an infeasible number of comparisons, which need to take place outside of a database. In an attempt to make this task more manageable, Brian Wallace has devised an optimization to ssDeep comparisons, which drastically decreases the time required to compare files. </p></div></div><div><p class="copyright" xmlns="http://www.w3.org/1999/xhtml"><i>Copyright &copy; 2015 Virus Bulletin</i></p></div></div><hr /></div>
+<div class="ccm-remo-expand">
+<div id="ccm-remo-expand-title-2401" class="ccm-remo-expand-title ccm-remo-expand-closed" data-expander-speed="200">Table of contents</div><div id="ccm-remo-expand-content-2401" class="ccm-remo-expand-content"><div class="toc"><dl><dt><span class="sect1"><a href="#id4121656">Introduction</a></span></dt><dt><span class="sect1"><a href="#id4828374">About ssDeep</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id4449872">Scaling issues</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id2759125">Scaling optimizations</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id3427739">Testing methodology</a></span></dt><dt><span class="sect2"><a href="#id4028606">Chunksize</a></span></dt><dt><span class="sect2"><a href="#id2110404">IntegerDB</a></span></dt><dt><span class="sect2"><a href="#id3534348">Implementation specifics</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id2647742">ssdc</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id3600162">Example</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id2736317">Conclusion</a></span></dt></dl></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4121656"></a>Introduction</h2></div></div></div><p>Being able to find files that are similar to a particular file is quite useful, although it can be difficult to handle at scale. It can often require an infeasible number of comparisons, which need to take place outside of a database. In an attempt to make this task more manageable, I devised an optimization to ssDeep comparisons, which drastically decreases the time required to compare files.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4828374"></a>About ssDeep</h2></div></div></div><p>ssDeep [<span class="citation"><a href="#citation.1">1</a></span>] is a fuzzy hashing algorithm which employs a similarity digest in order to determine whether the hashes that represent two files have similarities. For instance, if a single byte of a file is modified, the ssDeep hashes of the original file and the modified file are considered highly similar. ssDeep scores range from zero (no similarity or negligible similarity) to 100 (very similar, if not an exact match). </p><p>ssDeep works by computing a fuzzy hash of each piece of data supplied to it (string/file/etc.). Most implementations of ssDeep refer to this computing of the fuzzy hash as &lsquo;compute&rsquo;. The output of this compute function is an ssDeep hash, which looks like the following: </p><pre class="programlisting">768:v7XINhXznVJ8CC1rBXdo0zekXUd3CdPJxB7mNmDZkUKMKZQbFTiKKAZTy:ShT8C+fuioHq1KEFoAU
+</pre><p>Once we have computed hashes for more than one input, we can conduct the comparison method (generally referred to in implementations as &lsquo;compare&rsquo;) to compare the two hashes. This similarity comparison is done completely independently of the files the hashes are based on. This allows for simple high-level comparisons without the need to compare each file byte by byte. </p><p>ssDeep is useful when searching for similar files. For instance, two malware samples generated by the same builder which inserts configuration statically into a stub sample, may be easy to identify as having a high similarity. </p><p>In the past, I have used ssDeep to preprocess a large number of samples. For instance, during <span class="emphasis"><em>Cylance</em></span>&rsquo;s Operation Cleaver investigation [<span class="citation"><a href="#citaiton.2">2</a></span>], there were an almost insurmountable number of malware samples to reverse engineer. A number of methods were required to reduce the sample set into clusters. One of the methods used was ssDeep. Using ssDeep clustering, I was able to see which files were similar, making it simpler to determine which samples were from the same family, as well as identify when a sample was embedded in another sample. </p><p>There are services that utilize ssDeep. These services tend to supply limited ssDeep functionality, such as reduced searching or no automated queries. The likely reason for this is how ssDeep scales, which will be covered in the next section. </p><p>There are also alternative fuzzy hashing methods that may be worth exploring, but they are outside the scope of this article. </p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id4449872"></a>Scaling issues</h3></div></div></div><p>The largest issue with ssDeep as it stands is that it does not scale particularly well. In order to compare a fixed ssDeep hash against a set of other ssDeep hashes, the ssDeep compare function must be called for each hash being tested. This means if you are comparing an ssDeep hash against 1,000 other ssDeep hashes, you need to call the ssDeep comparison function 1,000 times. This can become an issue when these hashes must be retrieved from a database, requiring all hashes to be retrieved to do a lookup of similar hashes. </p><p>Furthermore, clustering (or grouping) based on ssDeep requires every ssDeep hash to be compared against every other hash. This means that if you are clustering 1,000 ssDeep hashes, 499,500 (the number of pairs among 1,000 elements) ssDeep comparison function calls are required. </p><p>Considering these issues, it is quite clear that ssDeep becomes computationally heavy at scale. This is likely what leads to services providing limited functionality to use with ssDeep. </p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2759125"></a>Scaling optimizations</h2></div></div></div><p>My methodology for optimizing ssDeep comparisons at scale focuses on reducing the number of ssDeep hashes that need to be compared, which reduces the search space. This methodology avoids the need for a custom-developed library to conduct ssDeep comparisons. It also establishes that these optimizations are for the application of ssDeep at scale, not for ssDeep itself. </p><p>In order to develop optimizations to decrease the search space for similar hashes, we need to inspect how these ssDeep hash comparisons are made. Since the source code for ssDeep is publicly available, this does not require a great deal of reverse engineering. The comparisons conducted by the fuzzy_compare function are our primary focus [<span class="citation"><a href="#citation.3">3</a></span>]. While I will not cover everything this function does, I will cover the relevant portions. </p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3427739"></a>Testing methodology</h3></div></div></div><p>In the following sections, I will describe the optimization methods I developed for utilizing ssDeep at scale. When generating these methods, I used an isolated testing environment that is easy to reproduce. </p><p>In order to maintain this high level of reproducibility, all benchmarks are computed in a single-threaded application being executed on an Odroid XU4, which was isolated from any networks to maintain a sanitized testing environment. No timed portion of the code relies on accessing resources on disk. In order to reproduce an environment where a database is being queried, a simple <span class="emphasis"><em>SQLite</em></span> database, hosted completely in memory, is used. No advanced features of <span class="emphasis"><em>SQLite</em></span> are employed, and all methods are easily available to anyone wishing to reproduce these results or optimization methods. </p><p>In order to test the optimization methods, they need to accomplish a task. For this reason, all benchmarks include two tasks that are needed to use ssDeep. One of these tasks, &lsquo;Lookup&rsquo;, is searching for any ssDeep hash in our database where the comparison value is greater than zero. This task is computed for 1,000 hashes in order to increase the accuracy of the benchmarks for smaller database sizes. The other task, &lsquo;Cluster&rsquo;, requires every hash in our database to be compared against every other hash. More specifically, the algorithm must return every file comparison where the value is greater than zero. The methods for clustering the resulting matrix of distance values are independent of these optimizations. Additionally, all data points are tested five times, and an average is taken over them all. </p><p>The code used to collect the benchmarks as well as the specific optimization implementations can be found at [<span class="citation"><a href="#citation.4">4</a></span>]. </p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id4028606"></a>Chunksize</h3></div></div></div><p>An ssDeep hash is formatted as follows:</p><pre class="programlisting">chunksize:chunk:double_chunk</pre><p>The chunksize is an integer that describes the size of the chunks in the following parts of the ssDeep hash. Each character of the chunk represents a part of the original file of length chunksize. The double_chunk is computed over the same data as chunk, but computed with chunksize * 2. This is done so that ssDeep hashes computed with adjacent chunk sizes can be compared. This tells us that if we are looking to perform comparisons on an ssDeep hash with chunksize=n, the comparison will not return any value other than zero unless the chunksize of the other hash is n/2, n, or 2 * n. This is our first optimization. </p><p>By only retrieving ssDeep hashes with a compatible chunksize, we reduce the number of comparisons being made unless our dataset is extremely homogenous. In order to do this, we must store our ssDeep hashes with their chunksize. For instance, we can use the following SQL schema: </p><pre class="programlisting">CREATE TABLE hashes (chunksize INT, hash VARCHAR UNIQUE);</pre><p>With this smaller search space, we need to compute far fewer ssDeep comparisons and retrieve far fewer ssDeep hashes from our database. When benchmarks are compared with an unoptimized method, it is immediately clear that this simple optimization method is effective (see <a href="#figure.1">Figure 1</a> and <a href="#figure.2">Figure 2</a>).</p><div class="figure"><a id="figure.1"></a><div class="mediaobject"><img alt="1,000 ssDeep lookups over database (plain vs. chunksize)." src="/uploads/images/figures/2015/11/ssDeep-1.jpg" /></div><p class="title"><b>Figure&nbsp;1.&nbsp;1,000 ssDeep lookups over database (plain vs. chunksize).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-1-large.jpg" target="_top">here</a> to view a larger version of Figure 1.)</p><div class="figure"><a id="figure.2"></a><div class="mediaobject"><img alt="ssDeep cluster over database (plain vs. chunksize)." src="/uploads/images/figures/2015/11/ssDeep-2.jpg" /></div><p class="title"><b>Figure&nbsp;2.&nbsp;ssDeep cluster over database (plain vs. chunksize).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-2-large.jpg" target="_top">here</a> to view a larger version of Figure 2.)</p><div class="sect3" lang="en"><div class="titlepage"><div><div><h4 class="title"><a class="chapter" id="id3233135"></a>Clustering optimization</h4></div></div></div><p>We can further optimize our clustering method based on chunksize. By iterating over the chunk sizes incrementally and obtaining all ssDeep hashes of a certain chunksize, we can do our comparisons locally in an efficient manner. As long as the previous chunksize hashes are kept as well, all comparison values greater than zero can be determined. </p><p>This method works by first comparing each hash against each with the same chunksize. Then, each one is checked against each one with chunksize / 2. The previous chunksize data set retrieved is used unless a chunksize has no representative hashes. As this is done incrementally, this will compute all comparisons for chunksize / 2, chunksize and chunksize * 2 (see <a href="#figure.3">Figure 3</a>). </p><div class="figure"><a id="figure.3"></a><div class="mediaobject"><img alt="ssDeep cluster over database (plain vs. chunksize with cluster optimization)." src="/uploads/images/figures/2015/11/ssDeep-3.jpg" /></div><p class="title"><b>Figure&nbsp;3.&nbsp; ssDeep cluster over database (plain vs. chunksize with cluster optimization).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-3-large.jpg" target="_top">here</a> to view a larger version of Figure 3.)</p></div></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id2110404"></a>IntegerDB</h3></div></div></div><p>Further into the comparison process, each ssDeep hash goes through independent modifications (which will be mentioned in a later section). After these modifications, there is a check that acts as the last check before an edit distance algorithm is applied. This last check is simply checking to see if there is any seven-character string that is common between the two hashes. If there is not, the comparison value for these two hashes will be zero. This means that if we can search over a database for any ssDeep hash with the same seven-character string, we can highly optimize our searching. </p><p>Consider the following example: </p><p><span class="bold"><strong>Hash 1:</strong></span></p><pre class="programlisting">768:v7XINhXznVJ8CC1rBXdo0zekXUd3CdPJxB7mNmDZkUKMKZQbFTiKKAZTy:ShT8C+fuioHq1KEFoAU
+</pre><p><span class="bold"><strong>Hash 2:</strong></span></p><pre class="programlisting">768:C7XINhXznVJ8CC1rBXdo0zekXUd3CdPJxB7mNmDZkUKMKZQbFTiKKAZTV6:ThT8C+fuioHq1KEFoAj6
+</pre><p><span class="bold"><strong>Hash 3:</strong></span></p><pre class="programlisting">768:t2m3D9SlK1TVYatO/tkqzWQDG/ssC7XkZDzYYFTdqiP1msdT1OhN7UmSaED7Etnc:w7atyfzWgGEXszYYF4iosdTE1zz2+Ze
+</pre><p>Since they all have the same chunksize, these three hashes can be compared. Now let&rsquo;s search for common seven-character strings by generating all seven-character strings for each chunk of each hash. </p><p><span class="bold"><strong>Hash 1: </strong></span></p><p>Chunk: </p><pre class="programlisting">set([[&#39;v7XINhX&#39;, &#39;7XINhXz&#39;, &#39;XINhXzn&#39;, &#39;INhXznV&#39;, &#39;NhXznVJ&#39;, &#39;hXznVJ8&#39;, &#39;XznVJ8C&#39;, &#39;znVJ8CC&#39;, &#39;nVJ8CC1&#39;, 
+&#39;VJ8CC1r&#39;, &#39;J8CC1rB&#39;, &#39;8CC1rBX&#39;, &#39;CC1rBXd&#39;, &#39;C1rBXdo&#39;, &#39;1rBXdo0&#39;, &#39;rBXdo0z&#39;, &#39;BXdo0ze&#39;, &#39;Xdo0zek&#39;, 
+&#39;do0zekX&#39;, &#39;o0zekXU&#39;, &#39;0zekXUd&#39;, &#39;zekXUd3&#39;, &#39;ekXUd3C&#39;, &#39;kXUd3Cd&#39;, &#39;XUd3CdP&#39;, &#39;Ud3CdPJ&#39;, &#39;d3CdPJx&#39;, 
+&#39;3CdPJxB&#39;, &#39;CdPJxB7&#39;, &#39;dPJxB7m&#39;, &#39;PJxB7mN&#39;, &#39;JxB7mNm&#39;, &#39;xB7mNmD&#39;, &#39;B7mNmDZ&#39;, &#39;7mNmDZk&#39;, &#39;mNmDZkU&#39;, 
+&#39;NmDZkUK&#39;, &#39;mDZkUKM&#39;, &#39;DZkUKMK&#39;, &#39;ZkUKMKZ&#39;, &#39;kUKMKZQ&#39;, &#39;UKMKZQb&#39;, &#39;KMKZQbF&#39;, &#39;MKZQbFT&#39;, &#39;KZQbFTi&#39;, 
+&#39;ZQbFTiK&#39;, &#39;QbFTiKK&#39;, &#39;bFTiKKA&#39;, &#39;FTiKKAZ&#39;, &#39;TiKKAZT&#39;, &#39;iKKAZTy&#39;]])</pre><p>Double chunk:</p><pre class="programlisting">set([&#39;ShT8C+f&#39;, &#39;hT8C+fu&#39;, &#39;T8C+fui&#39;, &#39;8C+fuio&#39;, &#39;C+fuioH&#39;, &#39;+fuioHq&#39;, &#39;fuioHq1&#39;, &#39;uioHq1K&#39;, 
+&#39;ioHq1KE&#39;, &#39;oHq1KEF&#39;, &#39;Hq1KEFo&#39;, &#39;q1KEFoA&#39;, &#39;1KEFoAU&#39;])</pre><p><span class="bold"><strong>Hash 2:</strong></span></p><p>Chunk:</p><pre class="programlisting">set [&#39;C7XINhX&#39;, &#39;7XINhXz&#39;, &#39;XINhXzn&#39;, &#39;INhXznV&#39;, &#39;NhXznVJ&#39;, &#39;hXznVJ8&#39;, &#39;XznVJ8C&#39;, &#39;znVJ8CC&#39;, &#39;nVJ8CC1&#39;, 
+&#39;VJ8CC1r&#39;, &#39;J8CC1rB&#39;, &#39;8CC1rBX&#39;, &#39;CC1rBXd&#39;, &#39;C1rBXdo&#39;, &#39;1rBXdo0&#39;, &#39;rBXdo0z&#39;, &#39;BXdo0ze&#39;, &#39;Xdo0zek&#39;, 
+&#39;do0zekX&#39;, &#39;o0zekXU&#39;, &#39;0zekXUd&#39;, &#39;zekXUd3&#39;, &#39;ekXUd3C&#39;, &#39;kXUd3Cd&#39;, &#39;XUd3CdP&#39;, &#39;Ud3CdPJ&#39;, &#39;d3CdPJx&#39;, 
+&#39;3CdPJxB&#39;, &#39;CdPJxB7&#39;, &#39;dPJxB7m&#39;, &#39;PJxB7mN&#39;, &#39;JxB7mNm&#39;, &#39;xB7mNmD&#39;, &#39;B7mNmDZ&#39;, &#39;7mNmDZk&#39;, &#39;mNmDZkU&#39;, 
+&#39;NmDZkUK&#39;, &#39;mDZkUKM&#39;, &#39;DZkUKMK&#39;, &#39;ZkUKMKZ&#39;, &#39;kUKMKZQ&#39;, &#39;UKMKZQb&#39;, &#39;KMKZQbF&#39;, &#39;MKZQbFT&#39;, &#39;KZQbFTi&#39;, 
+&#39;ZQbFTiK&#39;, &#39;QbFTiKK&#39;, &#39;bFTiKKA&#39;, &#39;FTiKKAZ&#39;, &#39;TiKKAZT&#39;, &#39;iKKAZTV&#39;, &#39;KKAZTV6&#39;])</pre><p>Double chunk:</p><pre class="programlisting">set([&#39;ThT8C+f&#39;, &#39;hT8C+fu&#39;, &#39;T8C+fui&#39;, &#39;8C+fuio&#39;, &#39;C+fuioH&#39;, &#39;+fuioHq&#39;, &#39;fuioHq1&#39;, &#39;uioHq1K&#39;, 
+&#39;ioHq1KE&#39;, &#39;oHq1KEF&#39;, &#39;Hq1KEFo&#39;, &#39;q1KEFoA&#39;, &#39;1KEFoAj&#39;, &#39;KEFoAj6&#39;])</pre><p><span class="bold"><strong>Hash 3: </strong></span></p><p>Chunk:</p><pre class="programlisting">set [&#39;t2m3D9S&#39;, &#39;2m3D9Sl&#39;, &#39;m3D9SlK&#39;, &#39;3D9SlK1&#39;, &#39;D9SlK1T&#39;, &#39;9SlK1TV&#39;, &#39;SlK1TVY&#39;, &#39;lK1TVYa&#39;, &#39;K1TVYat&#39;, 
+&#39;1TVYatO&#39;, &#39;TVYatO/&#39;, &#39;VYatO/t&#39;, &#39;YatO/tk&#39;, &#39;atO/tkq&#39;, &#39;tO/tkqz&#39;, &#39;O/tkqzW&#39;, &#39;/tkqzWQ&#39;, &#39;tkqzWQD&#39;, 
+&#39;kqzWQDG&#39;, &#39;qzWQDG/&#39;, &#39;zWQDG/s&#39;, &#39;WQDG/ss&#39;, &#39;QDG/ssC&#39;, &#39;DG/ssC7&#39;, &#39;G/ssC7X&#39;, &#39;/ssC7Xk&#39;, &#39;ssC7XkZ&#39;, 
+&#39;sC7XkZD&#39;, &#39;C7XkZDz&#39;, &#39;7XkZDzY&#39;, &#39;XkZDzYY&#39;, &#39;kZDzYYF&#39;, &#39;ZDzYYFT&#39;, &#39;DzYYFTd&#39;, &#39;zYYFTdq&#39;, &#39;YYFTdqi&#39;, 
+&#39;YFTdqiP&#39;, &#39;FTdqiP1&#39;, &#39;TdqiP1m&#39;, &#39;dqiP1ms&#39;, &#39;qiP1msd&#39;, &#39;iP1msdT&#39;, &#39;P1msdT1&#39;, &#39;1msdT1O&#39;, &#39;msdT1Oh&#39;, 
+&#39;sdT1OhN&#39;, &#39;dT1OhN7&#39;, &#39;T1OhN7U&#39;, &#39;1OhN7Um&#39;, &#39;OhN7UmS&#39;, &#39;hN7UmSa&#39;, &#39;N7UmSaE&#39;, &#39;7UmSaED&#39;, &#39;UmSaED7&#39;, 
+&#39;mSaED7E&#39;, &#39;SaED7Et&#39;, &#39;aED7Etn&#39;, &#39;ED7Etnc&#39;])</pre><p>Double chunk:</p><pre class="programlisting">set([[&#39;w7atyfz&#39;, &#39;7atyfzW&#39;, &#39;atyfzWg&#39;, &#39;tyfzWgG&#39;, &#39;yfzWgGE&#39;, &#39;fzWgGEX&#39;, &#39;zWgGEXs&#39;, &#39;WgGEXsz&#39;, 
+&#39;gGEXszY&#39;, &#39;GEXszYY&#39;, &#39;EXszYYF&#39;, &#39;XszYYF4&#39;, &#39;szYYF4i&#39;, &#39;zYYF4io&#39;, &#39;YYF4ios&#39;, &#39;YF4iosd&#39;, &#39;F4iosdT&#39;, 
+&#39;4iosdTE&#39;, &#39;iosdTE1&#39;, &#39;osdTE1z&#39;, &#39;sdTE1zz&#39;, &#39;dTE1zz2&#39;, &#39;TE1zz2+&#39;, &#39;E1zz2+Z&#39;, &#39;1zz2+Ze&#39;])</pre><p>Now that we have all the seven-character strings from the chunks, we want to find any overlap between the sets with the same chunk sizes. If we have any overlap, a comparison between them will return a result greater than zero. </p><p>Hash 1 chunk &amp; Hash 2 chunk: </p><pre class="programlisting">set([&#39;mNmDZkU&#39;, &#39;0zekXUd&#39;, &#39;1rBXdo0&#39;, &#39;8CC1rBX&#39;, &#39;d3CdPJx&#39;, &#39;CC1rBXd&#39;, &#39;ekXUd3C&#39;, &#39;o0zekXU&#39;, 
+&#39;PJxB7mN&#39;, &#39;B7mNmDZ&#39;, &#39;3CdPJxB&#39;, &#39;FTiKKAZ&#39;, &#39;C1rBXdo&#39;, &#39;ZkUKMKZ&#39;, &#39;dPJxB7m&#39;, &#39;Ud3CdPJ&#39;, 
+&#39;kUKMKZQ&#39;, &#39;XINhXzn&#39;, &#39;INhXznV&#39;, &#39;kXUd3Cd&#39;, &#39;znVJ8CC&#39;, &#39;UKMKZQb&#39;, &#39;7XINhXz&#39;, &#39;nVJ8CC1&#39;, 
+&#39;ZQbFTiK&#39;, &#39;Xdo0zek&#39;, &#39;JxB7mNm&#39;, &#39;KMKZQbF&#39;, &#39;XznVJ8C&#39;, &#39;MKZQbFT&#39;, &#39;QbFTiKK&#39;, &#39;rBXdo0z&#39;, 
+&#39;CdPJxB7&#39;, &#39;TiKKAZT&#39;, &#39;NmDZkUK&#39;, &#39;J8CC1rB&#39;, &#39;VJ8CC1r&#39;, &#39;hXznVJ8&#39;, &#39;bFTiKKA&#39;, &#39;do0zekX&#39;, 
+&#39;DZkUKMK&#39;, &#39;BXdo0ze&#39;, &#39;zekXUd3&#39;, &#39;mDZkUKM&#39;, &#39;KZQbFTi&#39;, &#39;XUd3CdP&#39;, &#39;7mNmDZk&#39;, &#39;xB7mNmD&#39;, 
+&#39;NhXznVJ&#39;])</pre><p>Hash 1 double_chunk &amp; Hash 2 double_chunk:</p><pre class="programlisting">set([&#39;oHq1KEF&#39;, &#39;uioHq1K&#39;, &#39;C+fuioH&#39;, &#39;+fuioHq&#39;, &#39;q1KEFoA&#39;, &#39;Hq1KEFo&#39;, &#39;8C+fuio&#39;, 
+&#39;T8C+fui&#39;, &#39;hT8C+fu&#39;, &#39;fuioHq1&#39;, &#39;ioHq1KE&#39;])</pre><p>Hash 1 chunk &amp; Hash 3 chunk:</p><pre class="programlisting">set([])</pre><p>Hash 1 double_chunk &amp; Hash 3 double_chunk:</p><pre class="programlisting">set([])</pre><p>Hash 2 chunk &amp; Hash 3 chunk:</p><pre class="programlisting">set([])</pre><p>Hash 2 double_chunk &amp; Hash 3 double_chunk:</p><pre class="programlisting">set([])</pre><p>With these values, we should see that the comparison between Hash 1 and Hash 2 results in a value greater than zero, but the comparisons between Hash 1 and Hash 3, and between Hash 2 and Hash 3, will result in comparisons that equal zero.</p><pre class="programlisting">&gt;&gt;&gt; ssdeep.compare(&quot;768:v7XINhXznVJ8CC1rBXdo0zekXUd3Cd
+PJxB7mNmDZkUKMKZQbFTiKKAZTy:ShT8C+fuioHq1KEFoAU&quot;, &quot;768:C7XINhXznVJ8CC1rBXdo0zekXUd3CdPJxB7mNmDZkUKMKZQbFTiKKA
+ZTV6:ThT8C+fuioHq1KEFoAj6&quot;)
+97
+&gt;&gt;&gt; ssdeep.compare(&quot;768:v7XINhXznVJ8CC1rBXdo0zekXUd3Cd
+PJxB7mNmDZkUKMKZQbFTiKKAZTy:ShT8C+fuioHq1KEFoAU&quot;, &quot;768:t2m3D9SlK1TVYatO/tkqzWQDG/ssC7XkZDzYYFTdqiP1msdT1OhN7UmSaED7Etnc:w7atyfzWgGEXszY
+YF4iosdTE1zz2+Ze&quot;)
+0
+&gt;&gt;&gt; ssdeep.compare(&quot;768:C7XINhXznVJ8CC1rBXdo0zekXUd3Cd
+PJxB7mNmDZkUKMKZQbFTiKKAZTV6:ThT8C+fuioHq1KEFoAj6&quot;, 
+&quot;768:t2m3D9SlK1TVYatO/tkqzWQDG/ssC7XkZDzYYFTdqiP1msdT1
+OhN7UmSaED7Etnc:w7atyfzWgGEXszYYF4iosdTE1zz2+Ze&quot;)
+0
+</pre><p>In order to perform this comparison optimally, we will store all seven-character string values in a database for each hash. These can be reduced to integers, as the string value consists of base64 characters, which when decoded, can optimally be represented as five-byte integers in our database. The resulting schema is as follows:</p><pre class="programlisting">CREATE TABLE ssdeep_hashes (hash_id INTEGER PRIMARY KEY, hash VARCHAR UNIQUE);
+CREATE TABLE chunks (hash_id INTEGER, chunk_size INTEGER, chunk INTEGER);
+</pre><p>Now our database consists of all the integers representing seven-character strings that reside in each ssDeep hash chunk (any chunks for double_chunk have a chunksize that represents their doubled chunk size). In order to query against this database, we need to split our query hash into integers and chunksize, then query for any hash that has the same integer and the same chunksize. Since these are queries over integers, when used with a simple index, this can be powerfully effective (see <a href="#figure.4">Figure 4</a> and <a href="#figure.5">Figure 5</a>). </p><div class="figure"><a id="figure.4"></a><div class="mediaobject"><img alt="1,000 ssDeep lookups over database." src="/uploads/images/figures/2015/11/ssDeep-4.jpg" /></div><p class="title"><b>Figure&nbsp;4.&nbsp;1,000 ssDeep lookups over database.</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-4-large.jpg" target="_top">here</a> to view a larger version of Figure 4.)</p><div class="figure"><a id="figure.5"></a><div class="mediaobject"><img alt="ssDeep cluster over database (plain vs. IntegerDB)." src="/uploads/images/figures/2015/11/ssDeep-5.jpg" /></div><p class="title"><b>Figure&nbsp;5.&nbsp;ssDeep cluster over database (plain vs. IntegerDB).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-5-large.jpg" target="_top">here</a> to view a larger version of Figure 5.)</p><p>This method is so effective, that in comparison to the other methods, it is difficult to visualize the curve. For this reason, additional benchmarks must be gathered on a greater scale (see <a href="#figure.6">Figure 6</a>, <a href="#figure.7">Figure 7</a>, <a href="#figure.8">Figure 8</a> and <a href="#figure.9">Figure 9</a>). </p><div class="figure"><a id="figure.6"></a><div class="mediaobject"><img alt="1,000 ssDeep lookups over database (IntegerDB)." src="/uploads/images/figures/2015/11/ssDeep-6.jpg" /></div><p class="title"><b>Figure&nbsp;6.&nbsp;1,000 ssDeep lookups over database (IntegerDB).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-6-large.jpg" target="_top">here</a> to view a larger version of Figure 6.)</p><div class="figure"><a id="figure.7"></a><div class="mediaobject"><img alt="ssDeep cluster over database (IntegerDB)." src="/uploads/images/figures/2015/11/ssDeep-7.jpg" /></div><p class="title"><b>Figure&nbsp;7.&nbsp;ssDeep cluster over database (IntegerDB).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-7-large.jpg" target="_top">here</a> to view a larger version of Figure 7.)</p><div class="figure"><a id="figure.8"></a><div class="mediaobject"><img alt="1,000 ssDeep lookups over database (extended)." src="/uploads/images/figures/2015/11/ssDeep-8.jpg" /></div><p class="title"><b>Figure&nbsp;8.&nbsp;1,000 ssDeep lookups over database (extended).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-8-large.jpg" target="_top">here</a> to view a larger version of Figure 8.)</p><div class="figure"><a id="figure.9"></a><div class="mediaobject"><img alt="ssDeep cluster over database (extended)." src="/uploads/images/figures/2015/11/ssDeep-9.jpg" /></div><p class="title"><b>Figure&nbsp;9.&nbsp;ssDeep cluster over database (extended).</b></p></div><p>(Click <a href="/uploads/images/figures/2015/11/ssDeep-9-large.jpg" target="_top">here</a> to view a larger version of Figure 9.)</p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3534348"></a>Implementation specifics</h3></div></div></div><p>In order to assist with the implementation of the IntegerDB optimization of ssDeep comparisons, the following are implementation specific details with code examples in Python 2.7. During both the insertion of hashes into the database and searching for similar results, the following preprocessing needs to be done on the ssDeep hash in question:</p><pre class="programlisting">def get_all_7_char_chunks(h):
+  return set((unpack(&quot;&lt;Q&quot;, base64.b64decode(h[i:i+7] + &quot;=&quot;) + &quot;\x00\x00\x00&quot;)[0] for i in xrange(len(h) - 6)))
+def preprocess_hash(h):
+  block_size, h = h.split(&quot;:&quot;, 1)
+  block_size = int(block_size)
+  # Reduce any sequence of the same char greater than 3 to 3
+  for c in set(list(h)):
+    while c * 4 in h:
+      h = h.replace(c * 4, c * 3)
+  block_data, double_block_data = h.split(&quot;:&quot;)
+  return block_size, get_all_7_char_chunks(block_data), get_all_7_char_chunks(double_block_data)
+</pre><p>This code goes through a variety of steps, eventually returning the block size, all the integers from the chunk, and all the integers from the double chunk. One of the first steps in the ssDeep comparison process is to reduce any sequence of repeated characters with a length greater than three down to three. For instance, if the sequence &lsquo;aaaaa&rsquo; is in either the chunk or double chunk, it will be reduced to &lsquo;aaa&rsquo;. My code for this is far from optimal, but still effective. </p><p>Following this compression, we can gather all the seven-character chunks as integers. My Python code may appear a bit cryptic, so I will explain in detail. The code is essentially iterating through the entire input string, producing every seven-character string (0...6, 1...7, etc.). Once it has these strings, it then base64 decodes the string. We can do this because of the character set used in the ssDeep hash. The base64 decode decreases the size of the string to five bytes of binary data. We can convert this to a 64-bit integer, or a five-byte integer depending on language/database support, in order to speed up the rate of comparison in the database. </p><p>Finally, the resultant integers are put into a set, which effectively removes any duplicates so they do not increase the required storage space. </p><p>In order to support developers implementing this, here are test vectors to test against. The order is not important: </p><pre class="programlisting">&gt;&gt;&gt; preprocess_hash(&quot;384:HEOV6N0/xFXSw0x2K+PLfNDOPK2TYWImaMsYLB3q60tL5DwpXe9hZ4ksJWoTNpyY:HEI9Xg7+P9yImaNk3qrDwpXe9gf5xkIZ&quot;)
+(
+384, 
+set([589901095979, 642905316997, 905478568455, 235582186252, 929782237711, 340233217296, 851252513112, 221750149778, 643209346740, 
+128105608213, 757527782297, 953089868572, 561324516898, 680848619429, 895446934315, 326080535852, 1040326062893, 513885114415, 
+937588987312, 751061533361, 524104222258, 430227534644, 498584342327, 572534485560, 1085881015865, 975172384572, 98631062978, 
+975686749379, 329702856132, 786998125255, 755246370123, 702655530317, 43217703634, 1043551886803, 77300278103, 1044441444312, 
+438658545369, 166024021082, 424248880221, 819075526366, 670922140197, 745906090080, 873625707105, 568446241762, 1028060167396, 
+590144991069, 455890209127, 368364740072, 422543863100, 261528177643, 125293874024, 190543428819, 835680999158, 219930424056, 
+325920086139, 744049528956, 619266813355, 57098572287]), 
+set([577949007489, 150182281091, 929782237711, 822542307088, 43212569235, 733875577753, 61710615068, 526461527586, 978982065443, 
+1093098370981, 513885122730, 1028060167340, 945966419550, 260599074102, 702655552575, 34206553538, 331628579272, 672151957341, 
+643217730270, 758770030952, 591782601711, 1099381307637, 286806050806, 933755233015, 438664626168, 111251806331])
+)
+</pre></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2647742"></a>ssdc</h2></div></div></div><p>Before discovering this optimization, I developed a tool called ssdc (ssDeep Clustering) in order to allow for quick command-line clustering of files based on their ssDeep hash. After discovering this optimization, I decided to integrate it, as it would allow for significantly larger groups of files to be clustered. </p><p>In order to maximize the benefit of IntegerDB in ssdc, no database is used, but instead, I use some native Python data structures. Additionally, all comparisons are made on insertion immediately after the hashes have been computed, allowing for a different clustering optimization from that which would be effective in a database environment. </p><p>When ssdc is executed over a set of samples, it creates a tar file that contains all the files in directories, with similar files stored in the same directory. Additionally, a GEXF file is stored in the tar file, which can be used with Gephi [<span class="citation"><a href="#citation.5">5</a></span>] in order to visualize the clustering. </p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3600162"></a>Example</h3></div></div></div><p>As an example of ssdc usage, I&rsquo;m going to scan some sample sets of malware I have readily available:</p><div class="itemizedlist"><ul type="disc"><li><p>BlackShades [<span class="citation"><a href="#citation.6">6</a></span>] - 134 files - Black</p></li><li><p>DiamondFox [<span class="citation"><a href="#citation.7">7</a></span>] - 6 files - Blue</p></li><li><p>TinyZbot [<span class="citation"><a href="#citation.8">8</a></span>] - 4 files - Red</p></li></ul></div><p>After running these sample sets through ssdc, I load the resultant file_distance.gexf into Gephi, and colour all the nodes to match their malware families. I then export the graph to the image shown in <a href="#figure.10">Figure 10</a>. In this image, each node (circle) represents a malware sample, and each edge (line/curve) represents an ssDeep comparison result greater than zero. </p><div class="figure"><a id="figure.10"></a><div class="mediaobject"><img alt="Each node (circle) represents a malware sample, and each edge (line/curve) represents an ssDeep comparison result greater than zero." src="/uploads/images/figures/2015/11/ssDeep-10.jpg" /></div><p class="title"><b>Figure&nbsp;10.&nbsp;Each node (circle) represents a malware sample, and each edge (line/curve) represents an ssDeep comparison result greater than zero.</b></p></div><p>Consider if one did not know which families were which, how much simpler it would be to analyse a sample or two from each group, instead of having to reverse a few hundred files. You might notice that not all the samples of the same family are considered similar. Since ssDeep is performing a simple file comparison to determine if samples are similar, samples that are obfuscated may not compare with other samples of the same family that are not obfuscated, or which are obfuscated with different methods. </p><p>This tool can be downloaded from its Github repository [<span class="citation"><a href="#citation.9">9</a></span>]. </p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2736317"></a>Conclusion</h2></div></div></div><p>Depending on your requirements, ssDeep can be a useful algorithm for determining the similarity of files. With naive methods, performing ssDeep comparisons does not scale, but with the IntegerDB optimization, we can utilize ssDeep on far larger scales.</p><div class="bibliography"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id2497054"></a>Bibliography</h3></div></div></div><div class="bibliomixed"><a id="citation.1"></a><p class="bibliomixed">[1] <span class="bibliosource"><a href="http://ssdeep.sourceforge.net/" target="_blank">http://ssdeep.sourceforge.net/</a></span>.</p></div><div class="bibliomixed"><a id="citaiton.2"></a><p class="bibliomixed">[2] <span class="bibliosource"><a href="http://www.cylance.com/operation-cleaver/" target="_blank">http://www.cylance.com/operation-cleaver/</a></span>.</p></div><div class="bibliomixed"><a id="citation.3"></a><p class="bibliomixed">[3] <span class="bibliosource"><a href="https://sourceforge.net/p/ssdeep/code/HEAD/tree/trunk/fuzzy.c#l733" target="_blank">http://sourceforge.net/p/ssdeep/code/HEAD/tree/trunk/fuzzy.c#l733</a></span>.</p></div><div class="bibliomixed"><a id="citation.4"></a><p class="bibliomixed">[4] <span class="bibliosource"><a href="https://gist.github.com/bwall/a28733fd6890749d2413" target="_blank">https://gist.github.com/bwall/a28733fd6890749d2413</a></span>.</p></div><div class="bibliomixed"><a id="citation.5"></a><p class="bibliomixed">[5] <span class="bibliosource"><a href="https://gephi.github.io/" target="_blank">http://gephi.github.io/</a></span>.</p></div><div class="bibliomixed"><a id="citation.6"></a><p class="bibliomixed">[6] <span class="bibliosource"><a href="http://blog.cylance.com/a-study-in-bots-blackshades-net" target="_blank">http://blog.cylance.com/a-study-in-bots-blackshades-net</a></span>.</p></div><div class="bibliomixed"><a id="citation.7"></a><p class="bibliomixed">[7] <span class="bibliosource"><a href="http://blog.cylance.com/a-study-in-bots-diamondfox" target="_blank">http://blog.cylance.com/a-study-in-bots-diamondfox</a></span>.</p></div><div class="bibliomixed"><a id="citation.8"></a><p class="bibliomixed">[8] <span class="bibliosource"><a href="http://www.cylance.com/operation-cleaver/" target="_blank">http://www.cylance.com/operation-cleaver/</a></span>.</p></div><div class="bibliomixed"><a id="citation.9"></a><p class="bibliomixed">[9] <span class="bibliosource"><a href="https://github.com/bwall/ssdc" target="_blank">https://github.com/bwall/ssdc</a></span>.</p></div></div></div> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<p><a href="/uploads/pdf/magazine/2015/vb201511-ssDeep.pdf" target="_blank"><img class="ccm-image-block responsive" alt="" src="/uploads/images/buttons/pdf-download-button.jpg" onmouseover="this.src = '/uploads/images/buttons/pdf-download-button-hover.jpg'" onmouseout="this.src = '/uploads/images/buttons/pdf-download-button.jpg'" border="0" height="45" width="262"></a></p>
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=Optimizing ssDeep for use at scale&url=https://www.virusbulletin.com/virusbulletin/2015/11/optimizing-ssdeep-use-scale"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2015/11/optimizing-ssdeep-use-scale'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2015/11/optimizing-ssdeep-use-scale&title=Optimizing ssDeep for use at scale"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2015/11/optimizing-ssdeep-use-scale&t=Optimizing ssDeep for use at scale"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2015/11/optimizing-ssdeep-use-scale"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

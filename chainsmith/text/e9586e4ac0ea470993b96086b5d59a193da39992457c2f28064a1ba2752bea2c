@@ -1,0 +1,150 @@
+Obfuscation Techniques in Ransomweb “Ransomware”
+
+As vital assets for many business operations, websites and their hosting servers are often the target of ransomware attacks — and if they get taken offline, this can cause major issues for a business’ data, revenue, and ultimately reputation.
+The worst part about ransomware is that it encrypts data and removes the original encrypted copies. This means if victims don’t have backups of their files and databases, there may not be any way to recover the kidnapped data without paying the ransom.
+“All Your Files Cannot Be Recovered”
+A small business owner recently contacted us about their hacked website. It had been defaced and was displaying the following message:
+The symbol on the left of the image is the coat of arms for Indonesia, Garuda Pancasila
+Upon discovery, the website owner immediately tried to access their website’s files through a file manager interface and FTP. Unfortunately, all the data within the website files appeared to have been encrypted and file names appended with .xploiter.
+./index.php.xploiter
+./favicon.ico.xploiter
+./wp-settings.php.xploiter
+./wp-load.php.xploiter
+./wp-blog-header.php.xploiter
+./wp-config.php.xploiter
+...
+
+The attacker’s message warned that all data had been lost and was unrecoverable. Since the website’s file data was changed along with the file names, it would seem to indicate the victim was involved in a ransomware attack. The only problem was that there was no way to communicate with the attacker, and no ransom or demand had been made.
+Ransomware, as its name indicates, typically involves some type of ransom or demand made by the attacker, allowing them to profit off of the attack.
+It’s possible that this attacker was just “locking” website data for fun, or they were practicing for future attempts against bigger targets.
+Encrypted or Obfuscated?
+When trying to view the data from one of the “encrypted” .xploiter files, it shows unreadable binary data:
+�""�"��"�╼ #file index.php.xploiter
+index.php.xploiter: data
+
+�""�"��"�╼ #cat -A index.php.xploiter
+}M-^PAjM-C0^PEM-w>M-EM-lM-\M-^XM-D>@^KM-mM-FM-!M-^E^T^BqM-IRM-HM-VM-D^RM-^U%U^Z'M-tM-v^]^YZL^K]^HM-^IM-^AM-^?M-^M-W<<^F^]M-^JM-&M-*$
+M-(`^_M-=# ^OM-$^QM-N>M-*cM-DM-^T@M-^F`M-M M-IxWCM-'MM-^BM-^KM-1^HM-Jcr%M-q^MM-R}M-^R6nM-\B?^SX/UM-JM-<[M-XM-uM-VM-^O;M-^MRaM-,M-Y^D7m^FM-=D9M-$M-^@M-PM-ZM-4RM-1;M-'M-^W^B|&M-,M-^YM-^SQOA^NM-or\M-UM-biS|7M-oM-~M-aM-,M-&M-^YM-8xM-}LM-^AM-^[^ZM-zM-a_eM-^DM-^{M-;`^U^M-^LM-C;(M-OGM-qvjEM-wM-\M->M-6M-'r^K^TgM-^DM-MM-}M-bM-^ECM-~M-g/EM-kM-.M-^FM-78!/2M-^K:M-^\M-^BM-^UM-^DM-^Y^ZM-qc6M-^QM-1M-JD''~^HM-1^?9M-4BM-@^Fj(M-^[M-?M-{*M-3M-l^K
+
+This makes it easy to assume that the files are indeed encrypted and therefore unrecoverable without the encryption key.
+On the other hand, if the file’s data was obfuscated then it would be possible to recover the file data by reversing the obfuscation steps.
+Unlocker File Exposes Attacker
+With website ransomware, attackers may leave behind an unlocker file. This can be used by the victim to decrypt the locked files once they have been given the encryption key in exchange for the ransom. This solution makes sense for encrypted data, since the PHP source code alone wouldn’t be enough to recover encrypted data.
+In this particular incident, the attacker left behind a PHP file named openeds.php which was obfuscated and not human readable until it was deobfuscated.
+When loading the file in a browser and translating it from Indonesian to English, however, it became clear that it was the unlocker file:
+
+After deobfuscating the file’s contents, I was able to isolate the lines of code responsible for unlocking, or recovering, the “encrypted” .xploiter files:
+$pass = "fbb749bdca9f42b694c4b99dd7f1919a";
+$mail = "[redacted]";
+$dps  = "index.php";
+if(isset($_POST["pass"])){
+if(md5($_POST["pass"]) == $pass){
+function BukaFile($NamaFile){
+if(strpos($NamaFile,'.xploiter') === FALSE){
+return;
+}
+
+$Buka = gzinflate(file_get_contents($NamaFile));
+file_put_contents(str_replace('.xploiter', '', $NamaFile), $Buka);
+// Above two lines are responsible for recovering the locked files
+
+// Hapus File
+unlink('.htaccess');
+unlink($NamaFile);
+
+echo "$NamaFile => Terbuka\n";
+}
+
+echo "<hr>
+<center>
+<p class='text-light'>Unlock File</p>
+</center>
+<textarea class='form-control text-dark' disabled rows='8'>";
+
+function BukaDir($dir){
+$files = array_diff(scandir($dir), array('.', '..'));
+foreach($files as $key){
+if(is_dir($dir."/".$key)){
+BukaDir($dir."/".$key);
+}else{
+BukaFile($dir."/".$key);
+}
+}
+}
+BukaDir($_SERVER['DOCUMENT_ROOT']);
+
+This code reveals that the “encrypted” files aren’t really encrypted, but rather obfuscated using the gzdeflate function which compresses the text and turns it into unreadable binary — making the file contents virtually impossible for humans to read without deobfuscation.
+Most importantly, this means that the files are recoverable. The unlocker file simply uses the opposite of gzdeflate — gzinflate — to recover the files and return them to their original state.
+Recovering Website Files
+It’s possible to test out this deobfuscation process using the following PHP code.
+<?php
+$NamaFile = "a-file.php.xploiter";
+//change above $NamaFile variable to any .xploiter file you want to recover$Buka = gzinflate(file_get_contents($NamaFile));
+file_put_contents(str_replace('.xploiter', '', $NamaFile), $Buka);
+?>
+
+In the unlocker file found on the compromised website, however, the process is handled a little differently. It requires the user to know the password and submit it with their request to the unlocker — in this case, the MD5 hash is fbb749bdca9f42b694c4b99dd7f1919a.
+This functionality essentially password-protects the deobfuscation process, but if you have access to the unlocker file then you can simply remove the password protection or change the password to something you already know — for example,  we know the MD5 hash value for ‘admin’ is 21232f297a57a5a743894a0e4a801fc3.
+Here is an example of the unlocker file in action and loaded in the browser. Once the password protection has been removed or modified, the files are unlocked and returned to their original state.
+
+I was able to successfully test this functionality out on a few unrelated websites that were hit with this same malware. Website files had been replaced with the obfuscated .xploiter files, so this file naming convention is clearly not specific to our client’s website.
+I used the following script to perform the deobfuscation by  uploading it to the directory containing the .xploiter files and then loading the script in my browser.
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.75, shrink-to-fit=no">
+<meta name="author" content="@rootprivilege">
+<meta name="description" content="RansomWeb Recovery">
+<!-- Bootstrap CSS -->
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+<title>RansomWeb Recovery</title>
+</head>
+<body class="bg-dark">
+<center>
+<small class="text-light">
+This should hopefully recover any .xploiter files, or until they change the obfuscation/move to actual encryption.
+</small>
+</center>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+</body>
+</html>
+<?php
+error_reporting(1);
+$dir = getcwd();
+function UnlockFile($NamaFile){
+if(strpos($NamaFile,'.xploiter') === FALSE){
+return;
+}
+$unlock = gzinflate(file_get_contents($NamaFile));
+file_put_contents(str_replace('.xploiter', '', $NamaFile), $unlock);
+
+echo "$NamaFile => Unlocked\n";
+}
+
+echo "<hr>
+<center>
+<p class='text-light'>Unlocked Files:</p>
+</center>
+<textarea class='form-control text-dark' disabled rows='8'>";
+
+function UnlockDir($dir){
+$files = array_diff(scandir($dir), array('.', '..'));
+foreach($files as $key){
+if(is_dir($dir."/".$key)){
+UnlockDir($dir."/".$key);
+}else{
+UnlockFile($dir."/".$key);
+}
+}
+}
+UnlockDir($dir);
+?>
+
+Conclusion
+Attacks like these can be tricky to navigate, especially if you don’t have off-site backups of your database and website.
+In this particular instance, the incident didn’t turn out to be a true ransomware attack and the victim was not provided with any steps at all to recover their data. The malware had simply obfuscated the file contents — not completely encrypted them, which is often the case with ransomware attacks — and we were able to rectify the issue and restore their website.
+Ongoing protection is key to preventing malware infections and compromises like these in the first place. Keep software patched with the latest updates, maintain regular data back-ups and store them off-site, and follow website hardening steps to mitigate risk. You can also leverage a web application firewall to patch known vulnerabilities and thwart malicious activity.

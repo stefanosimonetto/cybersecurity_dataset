@@ -1,0 +1,86 @@
+Threat Introduced via Browser Extensions
+
+We love investigating unusual hacks. There are so many ways to compromise a website, but often it’s the same thing. When we see malicious code on web pages, our usual suspects are:
+
+Vulnerabilities in website software
+Trojanized software from untrusted sources (e.g. pirated themes and plugins)
+Stolen or brute-forced credentials (anything from FTP and SSH to CPanel and CMS)
+Cross-site contamination, or poor isolation from hacked sites on the same server.
+Server-level infections like Darkleech or Ebury.
+
+You probably know all this if you read our blog regularly. Today, however, we’re going to explore a browser extension used to inject unwanted malicious code into websites.
+
+When the Attack Vector is Your Computer
+It’s no secret that webmasters need to keep their computers free from malware, This is the ideal place to steal passwords. Keyloggers and traffic-sniffing trojans intercept them and send them back to the attacker. I store my passwords in the FTP client and never type them, you say? Even with secure protocols (such as SFTP) malware can still steal passwords directly from FTP clients, most of which store your passwords in an easily retrievable format.
+So, client-side malware can steal passwords. That’s a serious threat, but what else can malware do to compromise a website? There are a few vectors that come to mind, but today we’ll examine a real world example of a browser extension that silently injects malicious code into text editors, resulting in potentially harmful advertisements being loaded onto the page.
+CouponDropDown Link Ads
+Here’s the story:
+A website owner noticed that some words on his pages turned into hyperlinks that display annoying CouponDropDown ads when you hover over them. The first reaction was, “It must be a virus on my computer,” so he did a thorough anti-virus scan and cleanup. However, it didn’t help, and he still saw those CouponDropDown ads. Moreover, his site visitors started complaining about them too, so it was definitely not a local problem. At this point he asked us to scan and clean his website.
+CouponDropDown Malware Ads
+We investigated, and we were able to track down the issue to the following script:
+
+hxxp://cdncache3-a .akamaihd .net/loaders/ 1032/l.js?aoi=1311798366&pid=1032&zoneid=62862
+
+There were quite a few of these scripts injected into various parts of the page. Knowing the offending script and its placement within the code, we began to scan the server. All files were clean, so we moved to the database, where we identified about 100 records with this particular script, along with additional scripts, injected at the bottom of a legitimate content. The pattern was:
+legitimate content...
+<div id="__tbSetup"></div>
+<script src="hxxp://cdncache3-a .akamaihd .net/loaders/1032/l.js?aoi=1311798366&amp;pid=1032&amp;zoneid=62862" type="text/javascript"></script>
+<script src="hxxps://secure-content-delivery .com/data .js.php?i={172273F8-EAC2-48F2-99A5-70DECFCA7445}&amp;d=2012-10-30&amp;s=http://<compromised-site.com>/path/edit.php?category=3&amp;returnto=category" type="text/javascript"></script>
+The injected code contained a number of scripts in different records. Some records had as many as 6 different scripts. Here are several examples we found, though not a complete list. [Skip to How it Happened]
+Akamaihd
+<script src="hxxp://cdncache3-a .akamaihd .net/loaders/1032/l.js?aoi=1311798366&amp;pid=1032&amp;zoneid=62862" type="text/javascript"></script>
+Secure-content-delivery
+<script src="hxxps://secure-content-delivery .com/data.js.php?i={172273F8-EAC2-48F2-99A5-70DECFCA7445}&d=2012-10-30&s=http:////.php" type="text/javascript">
+Chango
+// <![CDATA[
+var __chd__ = {'aid':11079,'chaid':'www_objectify_ca'};(function() { var c = document.createElement('script'); c.type = 'text/javascript'; c.async = true;c.src = ( 'https:' == document.location.protocol ? 'https://z': 'http://p') + '.chango .com/static/c.js'; var s = document.getElementsByTagName('script')[0];s.parentNode.insertBefore(c, s);})();
+// ]]>
+i.simpli.fi and superfish.com
+<script src="hxxp://i .simpli .fi/dpx.js?cid=3065&m=1" type="text/javascript">
+<script src="hxxp://www .superfish .com/ws/sf_main .jsp?dlsource=wjfudcm&userId=ezE3MjI3M0Y4LUVBQzItND&CTID=default-" type="text/javascript">
+<script src="hxxp://i .simpli .fi/p?cid=3065&cb=dpx_848304794615._hp" type="text/javascript">
+Peepsrv
+<script src="hxxp://svc .peepsrv . com/svc?m=wl&domain=&callback=__verti.run" type="text/javascript">
+
+Cdnsrv
+<script src="hxxp://static .cdnsrv .com/apps/tv-classic/tv-classic-fg.js" type="text/javascript">
+Viglink
+// <![CDATA[
+var vglnk = { api_url: '//api .viglink .com/api',key: '5272edeadedcf1f0b8fe02284146aea1' };(function(d, t) {var s = d.createElement(t); s.type = 'text/javascript'; s.async = true;s.src = ('https:' == document.location.protocol ? vglnk .api_url :'//cdn .viglink .com/api') + '/vglnk.js';var r = d.getElementsByTagName(t)[0]; r.parentNode.insertBefore(s, r);}(document, 'script'));
+// ]]>
+Selectionlinksjs
+<script src="hxxp://i .selectionlinksjs .info/obfy/javascript.js" type="text/javascript">
+Loading-resource
+<script type="text/javascript" src="//loading-resource . com/data.geo .php?callback=window.__geo.getData"></script>
+Some other URLs and domains referenced by the most common Akamaihd script.
+api .jollywallet .com/affiliate/client
+nps .noproblemppc .com/npsb/logic.js?originid=CC4F8A6F-B4C0-E311-99C2-001517D1792A&SiteId=Sales&ToolbarId
+ads2srv .com/impression?auid=c5007567e6bd16&zone=181711&oimg=1
+d2 .display-trk .com
+adnxs.com
+
+How These Scripts Made it into the Database
+Did someone break into the server?… Nope!
+It turns out that the problem stems from a rogue browser extension called Text Enhance. This is a potentially unwanted program (PUP), usually bundled in an installer along with other programs that use the adware monetization approach. The installer offer fails to properly disclose the bundle components and their functionality. Another example is the VideoFileDownload browser extension, but there may be many others.
+The Text Enhance extension turns certain words on pages that you visit into active hyperlinks, showing ads when you hover over them. Another, lesser known feature of this extension is its ability to inject its ad scripts into online HTML editors, like TinyMCE (used by WordPress and Joomla!).
+Malware Hopping Into Online HTML Editors
+Such editors typically have two modes: Visual (Rich Text) and HTML (Plain Text). In HTML mode, the HTML source code is edited directly. In Visual mode, the scripts and HTML tags are not visible. This mode is often on by default, because it’s easier for the majority of users to work with a representation of the final page, rather than HTML.
+Now you can imagine that when a WordPress blogger posts from the internal editor or a Joomla user creates a new page, or post something in Moodle the final post content gets automatically appended by the ad scripts. Now the malicious advertisements are stored in the database and the ad will be displayed to every site visitor, regardless of whether they have Text Enhance installed. Moreover, even if you uninstall that extension, the site will remain infected as the code now sits in the database on server.
+How Serious Can This Be?
+Of course, these ads are an annoyance and may affect your site reputation, but it doesn’t stop there. Let’s think about what else can go wrong here.
+1. Mass Malvertising
+As illustrated, the extension injected multiple third-party advertising scripts into the page. These in turn loaded even more third-party advertisements, along with tracking and retargeting scripts. The resulting page includes resources from dozens (!) of malicious domains, potentially serving malware and scammy advertisements. These pose a significant threat to visitors and harm the reputation of the website.
+2. Malware Injection
+The same way that Text Enhance injects ad script into site posts, other trojan extensions may inject outright malicious scripts and iFrames. We’re talking drive-by-downloads, SEO poisoning, and a whole range of things that can harm visitors and search position.
+3. Stealing sensitive information.
+Browser extensions can see everything on web pages that you visit, and can even monitor requests that you make. This means that they can potentially steal your CMS or cPanel passwords.
+Browser extensions work the same way on Windows, Linux, Mac, and even ChromeOS. No operating system is immune to this. “I’m on a Mac” or “I’m only using Linux” is no excuse for being careless about threats coming from your computer.
+Webmasters should never underestimate the threat of malicious browser extension. Now is a good time to review the extensions you have installed. How many of them do you really use? How many of them do you really trust?
+Some Advice
+
+Use a good, trusted Anti-Virus. Scan regularly and keep real-time protection enabled.
+Install software only if you really need to. If you only use it from time to time, look for an online service that accomplishes the same task.
+Install browser extensions only from trusted sources (official browser repositories) and trusted developers. Popularity is not a reliable sign because it’s easy to fake, and developers are constantly approached by adware companies and criminals who pay to bundle their code into the extension.
+When working with your site, or any site that involves the exchange of sensitive information, use “Incognito” or “Private Browsing” mode with all extensions disabled.
+
+And don’t forget that there’s more than one way to skin a cat hack a site. Your local computer may be the key to your website and server, so keep it secure.

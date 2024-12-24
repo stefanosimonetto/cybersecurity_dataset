@@ -1,0 +1,98 @@
+Fake Browser Updates Push Ransomware and Bank Malware
+
+Recently we came across a malicious campaign injecting scripts that push fake browser updates onto site visitors.
+This is what a typical fake update request looks like:
+Fake Firefox Update Center Message on a Hacked Site
+Users see a message box that says it’s an “Update Center” for your browser type (in my case it’s Firefox, but they also have such messages for Chrome, Internet Explorer and Edge browsers).
+The message reads: “A critical error has occurred due to the outdated version of the browser. Update your browser as soon as possible.” To support the “critical error” claim, the malware shows some garbled text on the background.
+They suggest to download and install the update in order to avoid “Loss of personal and stored data, confidential information leaks, and browser errors”. The download link points to an exe and zip files on some compromised third-party site. The payload is usually well detected by many antiviruses.
+Injection
+We have identified several recent waves of this malicious campaign.
+Hackers inject either links to an external script or inject the whole script code into the hacked web pages.
+External Update.js Scripts
+Here are some samples of external script links used by this campaign:
+
+hxxps://wibeee.com[.]ua/wp-content/themes/wibeee/assets/css/update.js – 225 infected sites.
+hxxp://kompleks-ohoroni.kiev[.]ua/wp-admin/css/colors/blue/update.js – 54 for the second.
+hxxp://quoidevert[.]com/templates/shaper_newsplus/js/update.js – 198 infected sites.
+
+These update.js files contain an obfuscated script that creates the fake browser update overlay window. They also contain the download link to a fake update file, e.g.:
+...
+var link_to_file='hxxp://kvintek.com[.]ua/templates/ja_edenite/admin/update_2018_02.browser-components.zip
+...
+There are 14 antiviruses on VirusTotal that identify this file as a trojan. You can find a few more similar sketchy files on that domain.
+Suspicious URLs on kvintek[.]com.ua Found this FebruaryAnother download link from January is: hxxp://quoidevert[.]com/templates/shaper_newsplus/js/update_2018_01.exe.
+Inline Scripts
+At some point, instead of links to external scripts, hackers injected the complete malicious JavaScript code at the bottom of the infected web pages.
+Fake update code injected at the bottom of the HTML code on a DLE site
+The injected code is quite massive (90+ Kb). To hide it, hackers add 70+ empty lines in hopes that the webmaster will stop browsing the code after seeing an empty screen.
+At this point, we see 117 sites with this variation of malware.
+Later the attackers switched to injecting external links described above, probably to make the injected code less prominent. However, the external links had an obvious drawback – it was easy to blacklist the URLs – so they switched back to injecting complete scripts. However, the new version of the scripts turned out to be significantly lighter–less than 30Kb and didn’t contain the download link in plain text.
+Latest Version of the Injected Script
+Recent versions of the malware use these payload links on compromised third-party sites.
+
+hxxp://alonhadat24h[.]vn/.well-known/acme-challenge/update_2018_02.browser-components.zip – VirusTotal.
+hxxp://viettellamdong[.]vn/templates/jm-business-marketing/images/icons/update_2019_02.browser-components.zip – VirusTotal.
+hxxp://sdosm[.]vn/templates/beez_20/images/_notes/update_2019_02.browser-components.zip – VirusTotal
+
+Zip and Ransomware in Fake JPG Files
+The zip files are quite small. Just around 3Kb. Not enough for a real Windows malware, so my colleague Peter Gramantik analyzed them and found that they contain just one .js file, with a name like:
+“update_2019_02.browser-components                                                                                                    .js”
+– the filename contains 100 space characters after the word “components” in the filename. Looks like a trick to hide the file extension.
+The JavaScript file is obfuscated. It has the following encrypted keywords:
+Open
+Type
+Write
+ResponseBody
+Position
+Open
+unknown
+GetTempName
+charAt
+ADODB.Recordset
+SaveToFile
+cmd.exe /c
+open
+GET
+send
+hxxp://giasuducviet[.]vn/administrator/backups/browser.jpg
+hxxp://refkids[.]ir/wp-content/themes/nuovowp/assets/css/browser.jpg
+Scripting.FileSystemObject
+ADODB.Stream
+Status
+Close
+Wscript.Shell
+deleteFile
+It’s easy to see that the code uses Windows Script Host functionality to download external files, execute them, and then delete.
+In this case, the script tries to download browser.jpg files from compromised third-party sites. You should not be fooled by the benign .jpg extension. It’s actually a Windows .exe file that is launched using the “cmd.exe /c <downloaded_file>” command.
+The latest version of this shell script uses the following download links:
+hxxp://giasuducviet[.]vn/administrator/backups/browser.jpg
+hxxp://farsinvestco[.]ir/wp-content/themes/consulto-thecreo/languages/browser.jpg
+VirusTotal scans show that the fake .jpg files contain ransomware:
+Browser.jpg Detected a Ransomware
+Android Version
+The most recent version of the fake browser malware also received a payload for Android devices:
+…
+var sAndroidUrl='hxxp://viettellamdong[.]vn/templates/jm-business-marketing/images/icons/update_2019_02.apk'
+Alternative URL: hxxp://sdosm[.]vn/templates/beez_20/images/_notes/update_2019_02.apk.
+VirusTotal scan of this APK file reveals a banking malware, very similar to the one delivered by this campaign.
+Banking Malware for Android
+Histats
+To track their campaign, hackers include Histats scripts into all versions of their malware. At this point they use the following two Histats ids:
+
+4209412 – 495 infected sites
+4214393 – 1070 infected sites
+
+Typical Histats injection looks like this:
+Histats Script Injected by the Fake Browser Update Malware.
+2018 vs 2019
+An interesting observation about some inertia in the mindset of the attackers. You might have noticed that the downloads used by this campaign have dates in their filenames like 2018_01, 2018_02, 2019_02. E.g. update_2018_02.browser-components.zip or update_2018_01.exe.
+This approach seems natural to show that the “browser updates” are fresh. The only thing is in January and February of 2019, they used 2018 as the year in the filenames. This sort of mistake is typical to most of us when we get used to the current year number and in January continue using the previous year whenever we need to specify the date. Only at the end of February did they notice this and change the year to 2019, e.g. update_2019_02.apk and update_2019_02.browser-components.zip.
+Infected Websites
+While most of the infected websites are powered by WordPress, we also see many hacked sites with other CMS’ (e.g. Data Life Engine) or no CMS at all.
+In the case of WordPress, hackers inject the malicious scripts at the bottom of footer.php files of the active theme.
+Conclusion
+This campaign shows how bad actors use compromised websites on various stages of the attacks–from injecting scripts into legitimate web pages to hosting malicious binary downloads.
+While the first type of infection can be detected by external scanners, the second one (malicious downloads) can’t be easily detected without access to the server. Blacklists of various antiviruses can be helpful in such cases – client-side antivirus software sees where the malicious downloads originate from. That’s why our SiteCheck scanner includes data from 9 different security blacklists, including our own.
+Server-side scanners can detect a broader range of website infections. The Sucuri website security platform includes continuous malware monitoring. You can receive daily alerts on the state of your website security.
+If you believe your website has been compromised, reach out to us and we will be happy to help.

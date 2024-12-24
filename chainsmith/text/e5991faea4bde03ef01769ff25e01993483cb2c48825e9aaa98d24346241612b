@@ -1,0 +1,87 @@
+Re-sauce, Part 3
+November 27, 2020 in Archaeology, Clustering, Code Injection, File Formats ZOO, Forensic Analysis
+
+I like extracting data from many samples because this way I often discover new things. Combing through a set of manifest files I have extracted from a large sampleset of good samples was an interesting exercise and brought a few interesting findings.
+Manifest files I came across were saved as plain text, Unicode 16 LE, and utf8. Some were malformed, some used incorrect data, others included commented out manifest sections and sometimes the commented out parts would use HTML entities to represent opening and closing brackets. Quotation marks vs. apostrophes, boilerplate values (e.g. name = “CompanyName.ProductName.YourApplication”, name = “YourCompanyName.YourDivision.YourApp”, etc.), and typos (e.g. “schema-microsoft-com:asm.v3”, or “urn:schemas-microsoft.com:asm.v3”).
+I tried to see if I can find any publicKeyToken outliers — these are often used to reference a specific library version – the most popular being comctl32.dll v6.0 enabling visual styles back in the days when it still mattered (publicKeyToken=”6595b64144ccf1df”).
+Quick histogram of publicKeyToken values shows a small number of unique values, some of which are kinda questionable (e.g. empty, zeroed, or using a reference):
+publicKeyToken="6595b64144ccf1df"publicKeyToken="1fc8b3b9a1e18e3b"publicKeyToken="000000000000000"publicKeyToken="02ad33b422233ae3"publicKeyToken="73A0BB510A53FB51"publicKeyToken="31BF3856AD364E35"publicKeyToken="0000000000000000"publicKeyToken="dfbe2673baf698eb"publicKeyToken="6595B64144CCF1DF"publicKeyToken="89845dcd8080cc91"publicKeyToken="13acf979d16e8a17"publicKeyToken="b03f5f7f11d50a3a"publicKeyToken="B03F5F7F11D50A3A"publicKeyToken="$(Build.WindowsPublicKeyToken)"publicKeyToken="5a496c7842cd4787"publicKeyToken="296da4bedbebef8f"publicKeyToken="df38d5d136a3092e"publicKeyToken=""publicKeyToken="fcc99ee6193ebbca"publicKeyToken="b77a5c561934e089"publicKeyToken="81e233547d425e6b"publicKeyToken="6bd6b9abf345378f"publicKeyToken="C7153A0601FA8C89"publicKeyToken="7a259a25b8d448e5"publicKeyToken="654bb64156ccf1af"publicKeyToken="40C4B6FC221F4138"publicKeyToken="31bf3856ad364e35"publicKeyToken="1fc8b3b9a1e18e3c"publicKeyToken="02d1dcd786c7c243"publicKeyToken="f92d94485545da78"publicKeyToken="a03853097df2bf0c"publicKeyToken="A2625990D5DC0167"publicKeyToken="71E9BCE111E9429C"publicKeyToken="669E0DDF0BB1AA2A"publicKeyToken="5120E14C03D0593C"publicKeyToken="47D0C84D0EBB13E5"publicKeyToken="4267b751a96a28a1"publicKeyToken="30AD4FE6B2A6AEED"
+Another statistic I was interested in was requestedExecutionLevel, but it didn’t bring anything interesting:
+level="asInvoker"level="highestAvailable"level="leastPrivilege"level="requireAdministrator"
+Looking at processorArchitecture we get:
+$(build.processorArchitecture)
+*
+AMD64
+Amd64
+IA64
+MSIL
+SXS_PROCESSOR_ARCHITECTURE
+X64
+X86
+amd64
+arm
+ia64
+msil
+x64
+x86
+For uiAccess:
+&quot;false&quot;
+FALSE
+False
+TRUE
+True
+false
+true
+true|false
+Another target of these analysis were URIs. These constantly pop up during memdump analysis and knowing a list of clean ones can save us some time. Here’s a list I extracted (including these prefixed with ‘urn’):
+http://blogs.msdn.com/b/chuckw/archive/2013/09/10/manifest-madness.aspx
+http://ipmsg.org/tools/fastcopy.html
+http://ltsc.ieee.org/xsd/LOM
+http://manifests.microsoft.com/win/2004/08/windows/events
+http://mozilla.org/MPL/2.0/.
+http://msdn.microsoft.com/en-us/library/aa374191
+http://msdn.microsoft.com/en-us/library/aa374191(VS.85).aspx
+http://msdn.microsoft.com/en-us/library/aa965884%28v=vs.85%29.aspx
+http://msdn.microsoft.com/en-us/library/dd371711
+http://msdn.microsoft.com/en-us/library/hh848036
+http://msdn.microsoft.com/en-us/library/hh848036(v=vs.85).aspx
+http://msdn.microsoft.com/en-us/library/ms633543.aspx
+http://msdn.microsoft.com/en-us/library/windows/desktop/dn302074%28v=vs.85%29.aspx
+http://msdn.microsoft.com/windowsvista/prodinfo/what/security/default.aspx?pull=/library/en-us/dnlong/html/AccProtVista.asp
+http://opensource.org/licenses/cpl.php
+http://opensource.org/licenses/cpl1.0.php
+http://schemas.microsoft.com/SMI/2005/WindowsSettings
+http://schemas.microsoft.com/SMI/2010/WindowsSettings
+http://schemas.microsoft.com/SMI/2011/WindowsSettings
+http://schemas.microsoft.com/SMI/2016/WindowsSettings
+http://schemas.microsoft.com/SMI/2017/WindowsSettings
+http://schemas.microsoft.com/win/2004/08/events
+http://social.msdn.microsoft.com/Forums/en/winformssetup/thread/7787c8b9-18c3-4135-bd8a-2802eba98e3c
+http://www.adlnet.org/xsd/adlcp_v1p3
+http://www.apache.org/licenses/LICENSE-2.0
+http://www.imsglobal.org/xsd/imscp_v1p1
+http://www.w3.org/2000/09/xmldsig#
+http://www.w3.org/2000/09/xmldsig#sha1
+http://www.w3.org/2001/XMLSchema
+http://www.w3.org/2001/XMLSchema-instance
+http://yourserver/iis_auth.asp?debug=1
+urn:0073chemas-microsoft-com:asm.v3
+urn:schemas-microsoft-com:asm.v1
+urn:schemas-microsoft-com:asm.v2
+urn:schemas-microsoft-com:asm.v3
+urn:schemas-microsoft-com:clickonce.v1
+urn:schemas-microsoft-com:clickonce.v2
+urn:schemas-microsoft-com:compatability.v1
+urn:schemas-microsoft-com:HashTransforms.Identity
+urn:schemas-microsoft-com:HashTransforms.ManifestInvariant
+Finally, attributes (note, some may only exist within comments, that is, between <!–…-> not the actual manifest XML):
+nameiidversionclsidprogidhashdescriptionproxyStubClsid32tlbidIdnumMethodspublicKeyTokentaskmessagelanguagevaluexmlnsprocessorArchitectureuiAccessleveltypeclassfilestandaloneinTypeencodingmaskflagsmanifestVersionthreadingModelkeywordssizechidruntimeVersionguidxmlns:asmv3companyoptionaloutTypehelpdirxmlns:co.v2copyrightallowDelayedBindingopcodexmlns:asmv2lengthxmlns:ms_asmv3buildTypehashalgparametersxmlns:adlcpxsi:schemaLocationxmlns:cmpculturexmlns:ms_asmv1profilexmlns:ms_windowsSettingsxmlns:xsibaseInterfacemajorVersionfacexmlns:xsdmiscStatusContentresourceFileNamexmlns:asmv1isolationdependencyTypeservicePackMajorxmlns:co.v1channelxmlns:lomassemblynamexmlns:ms_asmv2messageFileNamexmlns:ms_compatibilitytemplatexmlns:mssv2minorVersionmiscStatusenabledasmv2:productproduct
+And last, but not least… this classic paper [PDF warning] from 2006 on manifest file abuse was yet another reason I looked at manifest files en masse. I speculated that maybe, maybe, maybe, maybe there are some signed executables that take advantage of manifest’ file tag as described in the document:
+
+and inadvertently may become a vehicle for a ‘by design’ manifest-based DLL side-loading. The scenario would play like this: you run a signed executable that uses a manifest leveraging the file tag and you provide it the malicious DLL named as the manifest expects and place it in a current directory. Should work?
+After grepping the manifest files for <file tag I found quite a few of them. So many that I can’t paste it here. But you can view them here.
+What’s next? Obviously, more research.
+
+Comments Off on Re-sauce, Part 3
+
+Comments are closed.

@@ -1,0 +1,63 @@
+More fast or more dirty?
+2014-04-02
+
+Ke Zhang
+Baidu (Shenzhen)
+,
+China
+Editor:
+Helen
+
+Martin
+Abstract
+It is not uncommon, nowadays, for businesses to outsource their marketing to third parties - but sometimes, such business links lead to malicious activities. Ke Zhang dissects a piece of malware that generates referrer spam for a ‘web search site’ without its own search capability.
+Copyright © 2014 Virus Bulletin
+
+Nowadays, it is not uncommon for websites and software vendors to outsource their marketing to third parties. Sometimes, such business links lead to malware activities. In this article we dissect a piece of malware that generates referrer spam for a ‘web search site’ that does not have its own search capability.
+
+The VB packer
+The 0x22000-byte payload is encrypted with a 0x45 byte key and located at file offset 0x12F5A. Both the payload and the key are enclosed with a string flag ‘//784UY554NYXSY84IOK/’ in the file. As always, the packer will decrypt and load the payload in memory. Figure 1 shows the decryption routine.
+Figure 1. The decryption routine.
+
+Payload
+After searching for and terminating any running process named ‘mfssys.exe’, the malware copies itself to ‘%Application Data%\MSOCache\mfssys.exe’ and sets the following registry value to keep itself persistent:
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run]
+‘moyeujdhasjkklsshah’=‘C:\\Documents and Settings\\agent\\Application Data\\MSOCache\\mfssys.exe’
+Then it starts its click fraud and referrer spamming using the following steps:
+It retrieves the path of Internet Explorer.
+It combines the ‘www.’ prefix and the domain ‘morefastsearch.com’ with one of the built-in request parameters (see Figure 2) to form a full URL.
+Figure 2. Part of the request parameter list.
+It launches Internet Explorer (by invoking the CreateProcessW API with the parameter StartupInfo.wShowWindow set as SW_HIDE) with the URL generated in step 2.
+It enumerates windows to find the ‘IEFrame’ window. (When it finds a window with the class name ‘IEFrame’, it checks whether the window belongs to the process instance created by itself (see Figure 3) to avoid disrupting the normal use of Internet Explorer and attracting the user’s attention.)
+Figure 3. Check whether the target window belongs to the process created by itself.
+It enumerates the child windows of the window found in step 4 to find the ‘Internet Explorer_Server’ window, then simulates the pressing of the Tab key several times and the Enter key (to walk through and click on search result items), as shown in Figure 4.
+Figure 4. Simulates the Tab key (several times) and the Enter key.
+It repeats steps 4 and 5 three times.
+It terminates Internet Explorer.
+It repeats steps 2–7 until all the request parameters have been used.
+Though we cannot view the source code of ‘feed.php’ in the request parameters, Wireshark demonstrates clearly what it does – it simply feeds the search keyword to www.bing.com and sets ‘morefastsearch.com’ as the referrer (see Figure 5).
+Figure 5. ‘feed.php’ forwards the request to bing.com.
+If we open www.morefastsearch.com manually in a browser and perform a search, we can see that it simply passes the search string to bing.com and loads the results from it (see Figure 6).
+Figure 6. Result page on ‘morefastsearch.com’ – the search string has simply been passed to bing.com.
+In order to guarantee its stealth, the malware empties the following registry values to silence Internet Explorer in different situations:
+HKEY_CURRENT_USER\AppEvents\Schemes\Apps\Explorer\Navigating\.current\(Default)
+HKEY_CURRENT_USER\AppEvents\Schemes\Apps\Explorer\BlockedPopup\.current\(Default)
+HKEY_CURRENT_USER\AppEvents\Schemes\Apps\Explorer\SecurityBand\.current\(Default)
+In our research, we have seen the same code as used in this piece of malware also being used for popularizing different domains, as detailed below:
+MD5
+Domain
+39412490E7221EA8A2C5125CC8CFC447
+morefastsearch.com
+F6CEA38DF990A0DCF73167D4E359728B
+bzmp3.com
+D86DEEFD8AF29390F408E684BD64E5F1
+bzmp3.com
+15ED9C1FF307A8E005FB6ABDDD58A0C3
+firstsearchnow.com
+C1A1F9DC884C9B34F8BEF0F6EB937C8F
+webfindpage.com
+F4A2705067AD1405D3354D1CAA0EC855
+zbeemp3.com
+
+Conclusion
+We are unable to confirm whether this particular piece of malware was built with the acknowledgement of the domain owner, but referrer spamming and click fraud do harm the real value of search engine ranking.

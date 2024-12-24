@@ -1,0 +1,249 @@
+Using Oinkmaster to Update Snort Rules
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+July 11, 2004
+
+I've never explained how I like to keep Snort rules updated on my sensors.  The tool of choice for automatic rule updates is Andreas Ostling's Oinkmaster, a Perl script.  Here is a sample run.  First I make a temporary directory to hold old Snort rules files, then download and extract the snapshot version of Oinkmaster.  (Oinkmaster 1.0 was released in May, but the snapshot includes some improvements discussed in the oinkmaster-users mailing list.)
+
+[root@sensor root]# mkdir /tmp/oldrules
+[root@sensor root]# cd /usr/local/src
+[root@sensor src]# wget http://oinkmaster.sourceforge.net/oinkmaster-snapshot.tar.gz
+--15:05:14--  http://oinkmaster.sourceforge.net/oinkmaster-snapshot.tar.gz
+=> `oinkmaster-snapshot.tar.gz'
+Resolving oinkmaster.sourceforge.net... done.
+Connecting to oinkmaster.sourceforge.net[66.35.250.209]:80... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 68,234 [application/x-tar]
+
+100%[====================================>] 68,234        16.53K/s    ETA 00:00
+
+15:05:18 (16.53 KB/s) - `oinkmaster-snapshot.tar.gz' saved [68234/68234]
+
+[root@sensor src]# tar -xzvf oinkmaster-snapshot.tar.gz
+oinkmaster/
+oinkmaster/contrib/
+oinkmaster/contrib/README.contrib
+oinkmaster/contrib/addmsg.pl
+oinkmaster/contrib/addsid.pl
+oinkmaster/contrib/create-sidmap.pl
+oinkmaster/contrib/makesidex.pl
+oinkmaster/contrib/oinkgui.pl
+oinkmaster/ChangeLog
+oinkmaster/FAQ
+oinkmaster/INSTALL
+oinkmaster/LICENSE
+oinkmaster/README
+oinkmaster/README.gui
+oinkmaster/README.templates
+oinkmaster/README.win32
+oinkmaster/UPGRADING
+oinkmaster/oinkmaster.1
+oinkmaster/oinkmaster.conf
+oinkmaster/oinkmaster.pl
+oinkmaster/template-examples.conf
+
+The default oinkmaster.conf is set up just as I want it to be.  Namely, it knows to not update local.rules and snort.conf, which are customized for my environment.  So, I copy the default oinkmaster.conf file to an alternative location, and then run Oinkmaster to see its default switches:
+
+[root@sensor src]# cp oinkmaster/oinkmaster.conf /usr/local/etc/snort/oinkmaster.conf
+[root@sensor src]# /usr/local/src/oinkmaster/oinkmaster.pl
+
+Error: no output directory specified.
+
+Oinkmaster v1.0 by Andreas Ostling (andreaso@it.su.se)
+
+Usage: oinkmaster.pl -o outdir [options]
+
+outdir is where to put the new files.
+This should be the directory where you store your Snort rules.
+
+Options:
+-b dir     Backup your old rules into dir before overwriting them
+-c         Careful mode - only check for changes and do not update anything
+-C cfg     Use this configuration file instead of the default
+May be specified multiple times to load multiple files
+-e         Enable all rules that are disabled by default
+-h         Show this usage information
+-i         Interactive mode - you will be asked to approve the changes (if any)
+-q         Quiet mode - no output unless changes were found
+-Q         super-quiet mode (like -q but even more quiet when printing results)
+-r         Check for rules files that exist in the output directory
+but not in the downloaded rules archive
+-T         Test configuration and then exit
+-u url     Download from this URL instead of the one in the configuration file
+(must be http://, https://, ftp://, file:// or scp:// ... .tar.gz)
+-U file    Merge new variables from downloaded snort.conf into
+-v         Verbose mode
+-V         Show version and exit
+
+I first run Oinkmaster with -c (careful mode) to see the changes it recommends:
+
+[root@sensor src]# /usr/local/src/oinkmaster/oinkmaster.pl -c
+-o /usr/local/etc/snort/rules -C /usr/local/etc/snort/oinkmaster.conf
+
+Loading /usr/local/oinkmaster-1.0/oinkmaster.conf
+
+Downloading file from http://www.snort.org/dl/rules/snortrules-snapshot-2_1.tar.gz... done.
+
+Archive successfully downloaded, unpacking... done.
+
+Processing downloaded rules... disabled 0, enabled 0, modified 0, total=2113.
+
+Setting up rules structures...
+
+WARNING: duplicate SID in your local rules,
+SID 2114 exists multiple times, please fix this manually!
+
+WARNING: duplicate SID in your local rules,
+SID 2113 exists multiple times, please fix this manually!
+
+done.
+
+Comparing new files to the old ones... done.
+
+Skipping backup since we are running in careful mode.
+
+Note: Oinkmaster is running in careful mode - not updating anything.
+
+[***] Results from Oinkmaster started Sun Jul 11 14:44:43 2004 [***]
+
+[+++]          Added rules:          [+++]
+
+-> Added to ftp.rules (1):
+
+alert tcp $EXTERNAL_NET any -> $HOME_NET 21
+(msg:"FTP RETR format string attempt"; flow:to_server,established;
+content:"RETR"; nocase; pcre:"/^RETR\s[^\n]*?%[^\n]*?%/smi";
+reference:bugtraq,9800; classtype:attempted-admin; sid:2574; rev:1;)
+
+-> Added to oracle.rules (1):
+
+alert tcp $EXTERNAL_NET any -> $SQL_SERVERS $ORACLE_PORTS
+(msg:"ORACLE generate_replication_support prefix overflow attempt";
+flow:to_server,established; content:"generate_replication_support";
+nocase; pcre:"/(package|procedure)_prefix[\s\r\n]*=>
+[\s\r\n]*('[^']{1000,}|"[^"]{1000,})/Rsmi";
+classtype:attempted-user; sid:2576; rev:2;)
+
+...edited...
+[///]     Modified active rules:     [///]
+
+-> Modified active in attack-responses.rules (4):
+
+old: alert tcp $HOME_NET 749 -> $EXTERNAL_NET any
+(msg:"ATTACK-RESPONSES successful kadmind buffer overflow attempt";
+flow:established,from_server; content:"*GOBBLE*"; depth:8;
+reference:cve,CAN-2002-1235; reference:url,www.kb.cert.org/vuls/id/875073;
+classtype:successful-admin; sid:1900; rev:5;)
+
+new: alert tcp $HOME_NET 749 -> $EXTERNAL_NET any
+(msg:"ATTACK-RESPONSES successful kadmind buffer overflow attempt";
+flow:established,from_server; content:"*GOBBLE*"; depth:8;
+reference:bugtraq,5731; reference:bugtraq,6024; reference:cve,2002-1226;
+reference:cve,2002-1235; reference:url,www.kb.cert.org/vuls/id/875073;
+classtype:successful-admin; sid:1900; rev:10;)
+
+old: alert tcp $HOME_NET 22 -> $EXTERNAL_NET any
+(msg:"ATTACK-RESPONSES successful gobbles ssh exploit uname";
+flow:from_server,established; content:"uname"; reference:bugtraq,5093;
+classtype:misc-attack; sid:1811; rev:5;)
+
+new: alert tcp $HOME_NET 22 -> $EXTERNAL_NET any
+(msg:"ATTACK-RESPONSES successful gobbles ssh exploit uname";
+flow:from_server,established; content:"uname"; reference:bugtraq,5093;
+reference:cve,2002-0390; reference:cve,2002-0639; classtype:misc-attack;
+sid:1811; rev:8;)
+
+...edited...
+
+[///]    Modified inactive rules:    [///]
+
+-> Modified inactive in exploit.rules (1):
+
+old: #alert tcp $EXTERNAL_NET any -> $HOME_NET 22
+(msg:"EXPLOIT ssh CRC32 overflow filler"; flow:to_server,established;
+content:"|00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00|";
+reference:bugtraq,2347; reference:cve,CVE-2001-0144;
+classtype:shellcode-detect; sid:1325; rev:4;)
+
+new: #alert tcp $EXTERNAL_NET any -> $HOME_NET 22
+(msg:"EXPLOIT ssh CRC32 overflow filler"; flow:to_server,established;
+content:"|00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00|";
+reference:bugtraq,2347; reference:cve,2001-0144; reference:cve,2001-0572;
+classtype:shellcode-detect; sid:1325; rev:6;)
+
+...edited...
+
+[---]         Removed rules:         [---]
+
+-> Removed from ftp.rules (1):
+
+alert tcp $EXTERNAL_NET any -> $HOME_NET 21
+(msg:"FTP format string attempt"; flow:to_server,established;
+content:"%p"; nocase; classtype:attempted-admin; sid:1530; rev:4;)
+
+[*] Non-rule line modifications: [*]
+
+None.
+
+[+] Added files: [+]
+
+-> classification.config
+-> gen-msg.map
+-> reference.config
+-> sid-msg.map
+-> threshold.conf
+-> unicode.map
+
+You'll see I highlighted some of the output.  These show the various categories of modifications made by Oinkmaster.  Once we are confident that Oinkmaster isn't going to make any changes we don't like, we run it in update mode by removing the "-c" flag.  We add the "-b" flag and specify a directory to hold a backup of the old ruleset:
+
+[root@sensor src]# /usr/local/src/oinkmaster/oinkmaster.pl -b /tmp/oldrules
+-o /usr/local/etc/snort/rules -C /usr/local/etc/snort/oinkmaster.conf
+
+Loading /usr/local/oinkmaster-1.0/oinkmaster.conf
+...truncated...
+
+Oinkmaster makes an archive of the rules in /tmp/oldrules:
+
+[root@sensor src]# ls /tmp/oldrules/
+rules-backup-20040711-144820.tar.gz
+
+Notice that in the original test run, Oinkmaster found duplicate rule SIDs of 2113 and 2114.  Oinkmaster should discard the old version, but a manual check finds duplicate rules:
+
+[root@sensor src]# grep -i 2113 /usr/loca/etc/snort/rules/*.rules
+
+rservices.rules:alert tcp $EXTERNAL_NET any -> $HOME_NET 512
+(msg:"RSERVICES rexec username overflow attempt"; content:"|00|"; offset:9;
+content:"|00|"; distance:0; content:"|00|"; distance:0;
+classtype:attempted-admin; sid:2113; rev:2;)
+
+rservices.rules:alert tcp $EXTERNAL_NET any -> $HOME_NET 512
+(msg:"RSERVICES rexec username overflow attempt"; flow:to_server,established;
+content:"|00|"; offset:9; content:"|00|"; distance:0; content:"|00|";
+distance:0; classtype:attempted-admin; sid:2113; rev:3;)
+
+[root@sensor src]# grep -i 2114 /usr/local/etc/snort/rules/*.rules
+
+rservices.rules:alert tcp $EXTERNAL_NET any -> $HOME_NET 512
+(msg:"RSERVICES rexec password overflow attempt"; content:"|00|";
+content:"|00|"; distance:33; content:"|00|"; distance:0;
+classtype:attempted-admin; sid:2114; rev:2;)
+
+rservices.rules:alert tcp $EXTERNAL_NET any -> $HOME_NET 512
+(msg:"RSERVICES rexec password overflow attempt"; flow:to_server,established;
+content:"|00|"; content:"|00|"; distance:33; content:"|00|"; distance:0;
+classtype:attempted-admin; sid:2114; rev:3;)
+
+This isn't a big deal.  A quick deletion with vi removes the old rules, both having revision number 2.
+
+Remember that after updating the rule set, Snort must be restarted.  I prefer to stop Snort and then run it in the foreground to make sure it accepts all of the rules.  Once it seems to be running ok, I stop and start it in the background as a daemon with the -D switch.

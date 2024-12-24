@@ -1,0 +1,118 @@
+BadRabbit: a closer look at the new version of Petya/NotPetya
+Petya/NotPetya (aka EternalPetya), made headlines in June, due to it’s massive attack on Ukraine. Today, we noted an outbreak of a similar-looking malware, called BadRabbit, probably prepared by the same authors. Just like the previous edition, BadRabbit has an infector allowing for lateral movements, using  SMB to propagate laterally. Unlike NotPetya, it doesn’t use EternalBlue and is more widely spread. (Impacted countries include Ukraine, Russia, Turkey, and Bulgaria).
+UPDATE: Talos researchers found that BadRabbit uses one of the leaked NSA exploits: EternalRomance (one of two exploits that were also used in the previous attack of Petya/NotPetya).
+Another key difference between Petya/NotPetya and BadRabbit is that the initial vector is different (a website dropping a fake Flash update). Also, some of its components have been replaced. The malware package is complex, and we will likely dedicate future articles to describing all its features. But let’s have an initial look.
+UPDATE2: Kaspersky Lab has proven that this time having a valid password, the disk can be decrypted – in contrary to Petya/NotPetya it is not a destructive attack
+Analyzed samples
+
+fbbdc39af1139aebba4da004475e8839 – the dropper (original dropped sample)
+
+1d724f95c61f1055f0d02c2154bbccd3 – infpub.dat – the main DLL
+
+b4e6d97dafd9224ed9a547d52c26ce02 – cscc.dat – legitimate driver used for the disk encryption (diskcryptor.net)
+b14d8faf7f0cbcfad051cefe5f39645f – dispci.exe – installs the bootlocker, communicates with the driver
+
+Behavioral analysis
+The dropper is an executable that pretends to be a Flash update. The malware must run with Administration privileges, but no UAC bypass technique has been deployed— it relies purely on social engineering, trying to convince the user to elevate it. After being run, it drops and deploys the main module in C:\Windows directory. This time, it is named infpub.dat. (We can see the analogy to the previous NotPetya outbreak, where the DLL was named perfc.dat):
+
+It is run by the rundll32.exe called with parameters:
+"C:\\Windows\\system32\\rundll32.exe C:\\Windows\\infpub.dat,#1 15"
+
+Notice that the malware scans computers in the LAN:
+
+Our guess is that the information about the detected machines is used for lateral movements.
+The malware also drops other elements in the Windows directory: cscc.dat and dispci.exe
+
+The dropped application is run with the help of one of the scheduled task:
+
+The malware encrypts files with the selected extensions. All the files are encrypted with the same key (the same plaintext gives the same ciphertext).
+Below, we demonstrate a visualization of a sample BMP file before and after being encrypted by BadRabbit:
+
+There are no visible patterns in the encrypted version; it suggests that some strong algorithm has been used, probably AES in CBC mode.
+It does not change files extensions. The marker indicating that the file has been encrypted is added at the end of the file content—it’s a unicode text: “encrypted”:
+
+Here’s the dropped ransom note. As before, it’s in TXT format, named Readme.txt:
+
+As NotPetya did before, BadRabbit adds a scheduled task for the system reboot:
+
+After the attack is completed, the system is restarted and the bootlocker screen pops up:
+
+We can clearly see the similarity with the screen that was displayed by Petya/NotPetya:
+
+However, this time there is no fake CHKDSK known from each of the Petya editions.
+Following the ransom notes, we see that there are two encryption keys that the victim must get in order to be able to recover the files. The first one is the key to the bootlocker. After unlocking the first stage, the second key is required to unlock the files.
+Website for the victim
+Last time, the authors of the attack tried to use a single email account to communicate with the victims. Of course, this was unreliable, as they soon lost the access to the account. This time, like most of the ransomware authors, they created a Tor-based webpage. The authors invested more effort in the user experience, and the website contains visual effects, including a ransom note that slowly emerges from colorful, animated text:
+
+After pasting the key from the ransom note, the victim is given an individual bitcoin address:
+
+They also provide a box that can be used for reporting problems.
+Inside
+This malware has multiple elements. Execution starts in the PE file that is responsible for dropping and installing other elements.
+The first component—infpub.dat—is analogical to the perfc.dat known from the NotPetya attack. This time, the DLL exports two functions:
+
+The function at ordinal #1 is deployed first by the main dropper:
+
+This DLL contains an infector that spreads malware into other machines in the LAN. Among other methods, we see WMIC being used to deploy the modules dropped on remote machines. The responsible code looks similar to the analogical elements of Petya/NotPetya:
+
+This time, in addition to the credentials dumped with the help of the Mimikatz-based module, the sample tries to perform a dictionary attack and “guess” some of the passwords for remote logins. The list consists of commonly used passwords:
+
+The same DLL is also responsible for infecting files one by one. Encryption is performed with the help of Windows Crypto API:
+
+Some of the system directories are exempted from the attack:
+\\Windows
+\\Program Files
+\\ProgramData
+\\AppData
+
+Their list of the attacked extensions looks like the extended version of the list used by Petya/NotPetya:
+3ds 7z accdb ai asm asp aspx avhd back bak bmp brw c cab
+cc cer cfg conf cpp crt cs ctl cxx dbf der dib disk djvu
+doc docx dwg eml fdb gz h hdd hpp hxx iso java jfif jpe
+jpeg jpg js kdbx key mail mdb msg nrg odc odf odg odi odm
+odp ods odt ora ost ova ovf p12 p7b p7c pdf pem pfx php
+pmf png ppt pptx ps1 pst pvi py pyc pyw qcow qcow2 rar rb
+rtf scm sln sql tar tib tif tiff vb vbox vbs vcb vdi vfd
+vhd vhdx vmc vmdk vmsd vmtm vmx vsdx vsv work xls xlsx x
+ml xvd zip
+
+The AES key is generated with a cryptographically secure function CryptGenRandom.
+Then it is passed to the encrypting routine, along with other parameters, such as a hardcoded public key (used later to protect the random key and preserve it in a form that can be decrypted only by the attackers):
+
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5clDuVFr5sQxZ
++feQlVvZcEK0k4uCSF5SkOkF9A3tR6O/xAt89/PVhowvu2TfBTRsnBs83
+hcFH8hjG2V5F5DxXFoSxpTqVsR4lOm5KB2S8ap4TinG/GN/SVNBFwllpR
+hV/vRWNmKgKIdROvkHxyALuJyUuCZlIoaJ5tB0YkATEHEyRsLcntZYsdw
+H1P+NmXiNg2MH5lZ9bEOk7YTMfwVKNqtHaX0LJOyAkx4NR0DPOFLDQONW
+9OOhZSkRx3V7PC3Q29HHhyiKVCPJsOW1l1mNtwL7KX+7kfNe0CefByEWf
+SBt1tbkvjdeP2xBnPjb3GE1GA/oGcGjrXc6wV8WKsfYQIDAQAB
+
+This module drops and installs other modules used to carry out other stages of the attack. One of them is a legitimate disk cryptor (cscc.dat). It is dropped and installed as a service:
+
+A scheduled task is created in order to deploy another application dropped by this module—dispci.exe. That element is responsible for carrying the operation of encrypting the disk.
+
+That module gets a randomly generated  -id parameter, that is used as a victim identificator:
+
+dispci.exe
+This module communicates with the dropped driver using appropriate IOCTLs. The dropped driver is a legitimate module used for disk encryption—dispci.exe is made to adopt the driver’s features for malicious purpose. Example:
+
+In its resources, we can find the low-level components that are installed directly to the disk (analogically to the Petya kernel installed by the previous version). The first resource is a bootloader, and the other two are analogical variants of the malicious kernel:
+
+The low-level components: bootloader and kernel
+This time the low-lever part looks different than in the case of NotPetya. Fragment of the bootloader:
+
+It turned out that this time the authors decided to adapt the bootable component from the diskcryptor rather than using the one from Petya. It is also installed in a different position of the disk—at the end rather than at the beginning, as Petya did. The part installed at the end of the disk starts from the second-stage bootloader. Beginning of the code:
+
+Equivalent code in the diskcyptor component:
+https://github.com/smartinm/diskcryptor/blob/master/boot/vc2008_src/asm/stage1.asm#L25
+Conclusion
+The code has many overlapping and analogical elements to the code of Petya/NotPetya, which suggests that the authors behind the attack are the same. Again, they tried to compose their malicious bundle out of stolen elements, however, the stolen Petya kernel has been substituted with a more advanced disk cryptor with a legitimate driver. It looks like the authors tried to improve upon previous mistakes and finish unfinished business. So far, it seems that in the current release, encrypted data is recoverable after buying the key, which means the BadRabbit attack is not as destructive as the previous one. However, the malware is complex and its detailed analysis will take more time. We will be updating this article with the latest findings.
+Users of Malwarebytes for Windows, Malwarebytes Endpoint Protection, and Malwarebytes Endpoint Security are protected from BadRabbit. It is detected as Ransom.BadRabbit.
+Appendix
+https://www.welivesecurity.com/2017/10/24/bad-rabbit-not-petya-back/ – ESET’s report about BadRabbit
+Summary about the previous attack, Petya/NotPetya:
+
+This video cannot be displayed because your Functional Cookies are currently disabled.
+To enable them, please visit our privacy policy and search for the Cookies section. Select “Click Here” to open the Privacy Preference Center and select “Functional Cookies” in the menu. You can switch the tab back to “Active” or disable by moving the tab to “Inactive.” Click “Save Settings.”
+
+This was a guest post written by Hasherezade, an independent researcher and programmer with a strong interest in InfoSec. She loves going in details about malware and sharing threat information with the community. Check her out on Twitter @hasherezade and her personal blog: https://hshrzd.wordpress.com.

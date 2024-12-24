@@ -1,0 +1,301 @@
+VB2017 paper: Modern reconnaissance phase by APT – protection layer
+
+Paul Rascagneres & Warren Mercer
+
+Cisco Talos
+
+Copyright © 2017 Virus Bulletin
+
+Table of contents
+Abstract Case study #1: NATO Case study #2: Dina Bosio Case study #3: Survey time Case study #4: Korean New Year Case study #5: ROKRAT #1 Twitter accounts #2 Yandex accounts #3 MediaFire accounts Mitigation Conclusion References
+
+Abstract
+
+The Talos researchers are no strangers to APT attacks. During recent research, we observed the ways in which APT actors are evolving and how a reconnaissance phase is included in the infection vector in order to protect valuable zero-day exploits or malware frameworks. Indeed, the development of exploits and complex malware is a big cost from the attacker's point of view, which is why they put a lot of effort into hiding them from analysts and security companies.
+
+This paper presents five case studies that demonstrate how the infection vector is evolving. We chose five examples from different APT actors, showing that this trend is not related to a single group of attackers, but is in fact global.
+
+The first case study is that of an
+Office
+document that includes a Flash object. The Flash object is used to retrieve information about the target system and to send this information to the attackers. If the information matches the expectations of the attacker, the exploit is sent to the infected system.
+
+The second case study is that of an
+Office
+document with a macro and JavaScript. The purpose of the JavaScript is to collect information about the target and to send this information to the attacker. If the information matches the expectations of the attacker, the final payload is sent to the infected system.
+
+The third case study is that of an
+Office
+document with a macro and PowerShell. The protection mechanism is exactly the same as in the previous case study.
+
+The fourth case study is that of a Korean threat based on a
+Hanword
+document. In this case, the infection vector is first used to send information about the targeted system before receiving the final Remote Administration Tool (RAT). If the data is wrong, the RAT cannot be downloaded and the investigation is stopped.
+
+Finally, we will see that sometimes we can obtain the final payload. We managed to obtain the final RAT of the Korean-targeting threat actor mentioned previously. We named the RAT 'ROKRAT'.
+
+After the case studies, we will describe some mitigations to help avoid infection.
+
+Case study #1: NATO
+
+SHA‑256: ffd5bd7548ab35c97841c31cf83ad2ea5ec02c741560317fc9602a49ce36a763
+
+Filename: NATO secretary meeting.doc
+
+The analysed sample is a Microsoft Word document, which contains a Flash object, as shown in Figures 1 and 2.
+
+Figure 1: Screenshot of Microsoft Word document.Figure 2: Flash object.
+
+The first task of the Flash object is to gather information about the system using the flash.system.Capabilities.serverString API and to send this information to the attacker. The following is an example of the output of this function:
+
+A=t&SA=t&SV=t&EV=t&MP3=t&AE=t&VE=t&ACC=f&PR=t&SP=t&SB=f&DEB=t&V=WIN%209%2C0%2C0%2C0&M=Adobe%20Windows&R=1600x1200&DP=72&COL=color&AR=1.0&OS=Windows%20XP&L=en&PT=ActiveX&AVD=f&LFD=f&WD=f&IME=t&DD=f&DDP=f&DTS=f&DTE=f&DTH=f&DTM=f
+
+The values are documented by Adobe in [1]. Some fields are interesting:
+
+The PT value in the example is ActiveX. This value means that the Flash object is executed through ActiveX (in
+Microsoft Office
+). If the Flash object is executed outside of
+Office
+the value is different. This information helps the attacker to identify if the Flash context is good. Generally, security researchers extract embedded objects to analyse them.
+
+The V value provides the Flash version. This information can help the attacker to deliver an exploit that works on the installed Flash version (no zero-day if it's not mandatory).
+
+The OS value provides the operating system version (
+Windows XP
+in our case). This value can be used to determine whether the system is legitimate. If the attacker knows that the target uses
+Windows 10
+but receives
+Windows XP
+as the OS value, they can conclude that the request was performed by a sandbox system.
+
+Figure 3 is a screenshot of the C&C used to send this information.
+
+Figure 3: C&C used to send information.
+
+If the data matches the attacker's expectations, the server will send a second Flash object and an additional payload to the infected system (Figure 4).
+
+Figure 4: If the data matches the attacker's expectations, the server will send a second Flash object and an additional payload to the infected system.
+
+The new Flash object will be loaded with the LoadBytes() API (this.swf variable) and the payload is passed in an argument in the 'sh' variable (we assume that sh is for shellcode). This case study demonstrates how the attackers protect their exploits, in this case a Flash exploit.
+
+Thanks to Umbrella Cisco we were able to observe the DNS activity (Figure 5). The campaign started on 29 December 2016 with a very low level of activity. On 16 January, we see an uptick in activity – this is when we started to observe more public samples, which we used for our research purposes.
+
+Figure 5: DNS activity showing an uptick on 16 January.
+
+Case study #2: Dina Bosio
+
+SHA‑256: 2299ff9c7e5995333691f3e68373ebbb036aa619acd61cbea6c5210490699bb6
+
+Filename: National Day Reception (Dina Mersine Bosio Ambassador's Secretary).doc
+
+This case study revolves around a Microsoft Word document. The document is alleged to have been created by Dina Bosio, an individual whom we believe to be fictitious (see Figure 6).
+
+Figure 6: Dina Bosio profile.
+
+As can be seen in Figure 7, the document contains a macro.
+
+Figure 7: The document contains a macro.
+
+The purpose of the macro is to generate and execute a JavaScript document called mailform.js. This document is executed with the argument NPEfpRZ4aqnh1YuGwQd0. This is the RC4 key used by the JavaScript to decrypt itself. Without this key/argument, the JavaScript cannot be executed. If this file is identified on VirusTotal without the context (the macro with the RC4 key) then analysis is impossible.
+
+The purpose of the decrypted payload is to gather information about the targeted system and to download the final RAT (with the .pif extension) if the data meets the attackers' criteria (Figure 8).
+
+Figure 8: The payload gathers information about the targeted system and downloads the final RAT if the data meets the attackers' criteria.
+
+In this case, the script collects network information, domain information, share information, user information, installed software, and task list.
+
+Case study #3: Survey time
+
+SHA‑256: eb1f47c9f71d3fd2ff744a9454c256bf3248921fbcbadf0a80d5e73a0c6a82de
+
+Filename: survey.xls
+
+The file in this case study is a Microsoft Excel document with a macro, the purpose of which is to drop and execute a VBS and a PowerShell script (see Figures 9 and 10). As with the previous case study, the purpose of the payload is to collect information about the infected system; Figure 11 shows the information-gathering script.
+
+Figure 9: The document contains a macro.
+
+Figure 10: The purpose of the macro is to drop and execute a VBS and a PowerShell script.
+
+Figure 11: The information-gathering script.
+
+As in the other cases, if the collected data is good and is what the attacker is looking for, a binary is downloaded and executed on the system.
+
+Case study #4: Korean New Year
+
+SHA‑256: 281828d6f5bd377f91c6283c34896d0483b08ac2167d34e981fbea871893c919
+
+Filename: 5170101-17년_북한_신년사_분석.hwp (5170101-17 __ North Korea _ New Year _ analysis .hwp)
+
+In this case study the infection vector is a Hanword document (HWP). Hanword is a well-known text editor in South Korea, widely used in the public sector (instead of Microsoft Office). The HWP format support OLE objects. The OLE objects are simply compressed with zlib. Figure 12 shows a screenshot of the analysed document.
+
+Figure 12: The analysed document.
+
+The logo at the bottom of the document is that of the Ministry of Unification. The purpose of the ministry is to work on the unification of North Korea and South Korea. As expected, the HWP document contains OLE objects, as shown in Figure 13.
+
+Figure 13: OLE objects in the HWP document.
+
+The OLE objects are executed when the user clicks on a link in the document. The objects drop two executables onto the disk:
+
+C:\Users\ADMINI~1\AppData\Local\Temp\Hwp (2).exe
+
+C:\Users\ADMINI~1\AppData\Local\Temp\Hwp (3).exe
+
+The first step of the executable is to open a decoy document and present this to the user (Figure 14).
+
+Figure 14: A decoy document is presented to the user.
+
+The next step is to gather information from the system:
+
+Computer name
+
+Username
+
+Execution path
+
+BIOS model (HKLM\System\CurrentControlSet\Services\mssmbios\Data\SMBiosData)
+
+The purpose appears to be to determine whether the target is suitable for attack. The data is sent to a (compromised) legitimate website of the South Korean government:
+
+www.kgls.or.kr/news2/news_dir/index.php
+
+If the attackers decide that the victim's profile meets their requirements, a .jpg file is generated. This file is the binary executed on the infected system (the final RAT):
+
+www.kgls.or.kr/news2/news_dir/02BC6B26_put.jpg
+
+(where 02BC6B26 is the ID of the infected machine)
+
+Figure 15, for example, shows a pcap of the communication between an infected machine and the C&C (the pcap comes from VirusTotal).
+
+Figure 15: Communication between an infected machine and the C&C.
+
+The decoded content is as follows:
+
+0F37555F#0#0#0#TEQUILABOOMBOOM#janettedoe#C:\4b20883386665bd205ac50f34f7b6293747fd720d602e2bb3c270837a21291b4#innotek GmbH VirtualBox 1.2
+
+The first field contains an ID generated on the infected system, the fifth field is the hostname of the VirusTotal sandbox, the sixth field is the username, the seventh field is the execution path, and finally we can see the BIOS version of the VirusTotal sandbox. We can conclude that the sample was executed on a VirusTotal virtual machine.
+
+Case study #5: ROKRAT
+
+In some cases, we are able to provoke APT actors and obtain the final RAT. This was the case with the Korean actor mentioned in case study #4. As before, the campaign started with two HWP documents.
+
+The first email was sent from the official email contact of the Korea Global Forum. We assume that the account was compromised and abused by the attacker. The email asks the recipient to complete a form in an attached document (an HWP document), as shown in Figures 16 and 17.
+
+Figure 16: The recipient is asked to complete a form in an attached (HWP) document.
+
+Figure 17: The attached HWP document.
+
+The second email asks for help from someone in North Korea. In this case, the attackers work on the empathy of the receiver. This email also contains an attached HWP document (Figures 18 and 19).
+
+Figure 18: The second email also contains an HWP document.
+
+Figure 19: The attached HWP document.
+
+As usual in HWP documents, the file contains OLE objects (compressed with zlib).
+
+Figure 20: The file contains OLE objects.
+
+The document contains an EPS (Encapsulated PostScript) object. This object contains an exploit that is used to execute code thanks to the vulnerability CVE-2013-0808. The purpose is to download a PE file from a compromised website:
+
+http://ac ddesigns[.]com[.]au/clients/ACPRCM/kingstone.jpg
+
+http://discgolfglow[.]com:/wp-content/plugins/maintenance/images/worker.jpg
+
+There is a similar .jpg pattern to the one in the previous case study. We named the downloaded RAT 'ROKRAT'.
+
+This malware does not work on Windows XP or 2003. If it is executed on these platforms, an infinite loop is executed.
+
+Figure 21: If the malware is excuted on Windows XP or 2003, an infinite loop is executed.
+
+The next step is to check if there are any analysis tools running on the system.
+
+Figure 22: Checking if analysis tools are running.
+
+If one of the following applications is running, the malware deduces that the system is a sandbox or an analysis machine:
+
+'mtool' for
+VMware Tools
+
+'llyd' for
+OllyDBG
+
+'ython' for Python (
+Cuckoo Sandbox
+for example)
+
+'ilemo' for
+File Monitor
+
+'egmon' for
+Registry Monitor
+
+'peid' for
+PEiD
+
+'rocex' for
+Process Explorer
+
+'vbox' for
+VirtualBox
+
+'iddler' for
+Fiddler
+
+'ortmo' for
+Portmon
+
+'iresha' for
+Wireshark
+
+'rocmo' for
+Process Monitor
+
+'utoru' for
+Autoruns
+
+'cpvie' for
+TCPView
+
+In this case, the malware performs queries on legitimate websites and starts watching a Japanese anime, as shown in Figure 23.
+
+Figure 23: The malware performs queries on legitimate websites and starts watching a Japanese anime (https://www[.]amazon[.]com/Men-War-PC/dp/B001QZGVEC/EsoftTeam/watchcom.jpg http://www[.]hulu[.]com/watch/559035/episode3.mp4).
+
+We assume that these connections are intended to generate fake IOCs on sandbox systems.
+
+If the malware is running on an intended system, it is able to initiate communications through three different communication channels:
+
+#1 Twitter accounts
+
+The malware is able to communicate with the attackers using Twitter via seven different hard-coded Twitter API tokens, as shown in Figure 24.
+
+Figure 24: The malware communicates via seven hard-coded Twitter API tokens.
+
+#2 Yandex accounts
+
+ROKRAT is able to communicate with the attackers via Yandex. It is able to upload or download files on the Yandex cloud service. The malware contains four hard-coded tokens, as shown in Figure 25.
+
+Figure 25: The malware has four hard-coded Yandex API tokens.
+
+#3 MediaFire accounts
+
+ROKRAT is able to communicate with MediaFire too. A single API token is hard coded in the analysed sample, as shown in Figure 26.
+
+Figure 26: The malware has a single MediaFire API token.
+
+Each of the three platforms is legitimate and may be used by organizations in standard, day-to-day work. Additionally, these platform use HTTPS encryption. From an incident response point of view, this could frustrate efficient analysis and remediation of an incursion.
+
+Mitigation
+
+Windows platforms already include effective mitigation techniques for these vectors. To thwart threat actors that prefer leveraging macros, we recommend disabling macro execution in Microsoft Office. Additionally, PowerShell is becoming more and more popular with APT threat actors, hence we recommend restricting PowerShell execution with Execution Policy GPO. Malicious use of JavaScript and WScript is common too – these can easily be disabled by setting the following registry value:
+
+HKEY_LOCAL_MACHINE\Software\Microsoft\Windows Script Host\Settings\Enabled => REG_DWORD = 0
+
+It goes without saying that we also recommend keeping your software, OS and security products up to date and correctly configured.
+
+Conclusion
+
+The costs of developing a zero-day or complex malware framework is significant. That's why it makes perfect sense for malware actors to protect their investments and secure them from security researchers. Once a complex malware variant is discovered by the security industry, it is of little or no use to the threat actor.
+
+There is a clear trend towards adding information-gathering mechanisms within the infection vector to avoid leaking valuable code to security analysts. It is likely that many targets of these attacks have already been compromised in the past by the same actors. Hence, the adversary knows the target infrastructure, the network IP ranges, the naming convention of the hostname or the username, the domain name, etc. of the targets they are seeking to infect. The information obtained by these pieces of malware allows the attacker to identify efficiently if the infected system shares the profile of the intended victim. With the benefit of this information, the attackers can perform additional tests before releasing their advanced and valuable malware. This new approach makes the jobs of security analysts and researchers more complex, yet also that little bit more interesting.
+
+References
+
+[1] http://help.adobe.com/en_US/FlashPlatform/reference/actionscript/3/flash/system/Capabilities.html.

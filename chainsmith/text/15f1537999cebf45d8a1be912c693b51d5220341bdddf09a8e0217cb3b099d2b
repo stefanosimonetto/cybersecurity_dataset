@@ -1,0 +1,286 @@
+PRODUCTS & SERVICES
+
+How to remove unused devices from Sophos Central
+
+We take you through the steps to clear your old devices from Sophos Central, so you've got more time to focus on the devices that matter.
+
+Written by
+Mark Lanczak-Faulds
+
+April 28, 2020
+
+Products & Services SIEM SOAR Sophos Central Sophos Central API Sophos Security Team
+
+The number of devices managed in your Sophos Central will increase over time, and, as your estate evolves, some devices may not have a recent last activity date.
+This could be due to a multitude of reasons. The device may have been decommissioned. It was set up as a quick test machine. Or the user has left the company. The list goes on.
+Whatever the reason, you may already have a robust process in place for dealing with such devices. Perhaps your tenant is looking spick and span and is a model deployment. Although, I’m sure for many of us out there, there’s a device that may have slipped through the net and is lying dormant in Sophos Central.
+So why do I need to do this?
+Currently the Sophos Central Active Directory (AD) Sync Utility supports synchronizing AD users and user groups, but not devices and device groups. This means there is currently no native method to clear old devices from Sophos Central automatically. If there are many devices in need of deleting, we do not want to manually delete these through the UI of Sophos Central.
+We have two options. The first is somewhat a manual process using the Sophos Central API to gather device information and manually cross reference those devices against your source of devices. You can create a script which will delete devices using the Sophos Central API.
+At the end of this blog post there are two demo scripts to allow you to gather inactive devices and then delete them.
+The second option still uses the Sophos Central API to gather device information, but with the added benefit of using a Security Information and Event Management (SIEM) and Security Automation and Orchestration (SOAR) tool to make it as automated as possible from end to end.
+For the second option we need to answer a few questions:
+
+What data will I need to collect to help determine whether I can delete a device?
+What happens if an active machine is deleted automatically?
+What tools do I have to assist with this process?
+
+To answer these questions, I will cover the basic components of our process as a template for you to implement into your own environment and processes. For a quick overview, below is a process diagram we have in place.
+
+What data is needed?
+Firstly, and most importantly, we need a source of truth for devices, and for most organizations this is AD. You will need to monitor the latest changes in the Disabled OU or equivalent location dependent on how your organization manages retired devices and rebuild processes. Important fields from this data source are:
+
+Hostname
+Domain
+Distinguished Name
+Operating System
+Operating System Build Number
+
+We also need to establish the current devices in Sophos Central. We can gather an inventory list of devices using the Sophos Central API.
+The fields will be gathered using the Sophos Central get endpoint API.
+Key fields from this data for this process are:
+
+hostname
+id
+lastSeenAt
+os
+
+name
+build
+
+type
+associatedPerson
+
+name
+viaLogin
+
+tenant
+
+id
+
+Together, these will form a solid base to help determine which systems are potential candidates for deletion.
+How can we validate the AD and Central data?
+The data is correlated using the hostname and domain of the device. In an ideal world, we would want to have a universally unique identifier (UUID) which ties them together. You may have another method which works in your environment to achieve this correlation.
+Once the two data sources are correlated, we need to establish some comparatives before we pass the data to a SOAR tool for processing to ensure there is some logic to handle the events.
+What questions require some logic to answer?
+Our aim for this process is to remove devices from Sophos Central which are no longer active. To achieve this without deleting valid devices we need to think of likely scenarios of when we do not want to delete a device.
+Determine device inactive period:
+The purpose of this is to allow a sensible period of inactivity for a system in the disabled OU. By only returning those devices inactive above a certain period of time, we are less likely to delete a device which may not need to be deleted from Sophos Central.
+
+Convert lastSeenAt field to Unix epoch time using strptime, lastSeenAt format is: “2019-09-23T12:02:01.700Z”
+Calculate how many days since device was last seen: (now() Unix epoch – lastSeenAt Unix epoch)/86400
+
+Validate whether the OS build matches:
+There could be a situation where the hostname and domain match a system in the inventory where the OS build does not match. In this instance, this device should have a flag set for manual intervention to avoid errors. The best method is comparing the OS build of the device in against the data from Sophos Central.
+Automate
+We now have several systems identified in the data which could be deleted from Sophos Central. Using a SOAR platform will allow you to pass each event through a flow process to determine what should happen to the device.
+By checking the data you have from your SIEM against live Sophos Central Endpoint API data, you can make a final validation that the device is indeed inactive and can be deleted.
+In addition to the automation aspect of deleting devices, we also need to do some auditing and perhaps include some scenarios to enforce manual intervention before deletion can be authorized.
+Monitor VIP devices:
+To avoid unintentional deletion of devices for VIP users, we would advise flagging these devices for manual intervention to verify whether the device can be deleted from Sophos Central. One possibility is using a specific user AD group to define who these users are.
+Active devices:
+After comparing the machine last activity with the data from the SIEM and that obtained through the live Sophos Central API query, it’s calculated that the device has reported back into Sophos Central recently. These machines should be raised for manual validation before they are deleted.
+Avoid duplication of processing:
+Logging which devices have been deleted allows for auditing and exclusion of these systems when collating the information at the start of the process.
+Track active processing which has been passed for manual intervention:
+Where devices require manual intervention and a ticket is opened, it is recommended to log these and exclude from future processing while the ticket is open. As part of the SOAR process intervention, this can be automated. Once the relevant response is received, the change can be made. Whether the device is deleted or not is noted and the ticket is updated, and the ticket log is removed as active.
+Track deletion failures:
+It is recommended to also flag failures to delete or verify device information so manual intervention can be applied to these.
+Whoops, an active device was removed
+In a situation where a device is removed incorrectly, the following steps are required to protect the endpoint:
+
+If the host does not have Sophos Endpoint Protection installed, simply download the latest installer from Sophos Central and install it to the endpoint.
+If the endpoint already has Sophos Endpoint Protection installed and Tamper Protection is not enabled, first uninstall Sophos Endpoint Protection and install using the latest installer from the correct Sophos Central tenant.
+If Sophos Endpoint Protection is installed and Tamper Protection is enabled, please follow the steps below:
+
+Log on to the correct Sophos Central tenant: https://cloud.sophos.com/manage/login
+Go to: Logs & Reports > Endpoint & Server Protection > Recover Tamper Protection passwords (Passwords will remain in this report for 60 days after deletion)
+Search for the host name and click on ‘View details’ to view the latest Tamper Protection password that was active on the machine prior to deletion
+Open Sophos Endpoint Protection UI on the device
+Click on ‘Admin login’ and enter the Tamper Protection Password
+Select ‘Settings’ and tick the box ‘Override Sophos Central Policy for up to 4 hours to troubleshoot’
+Under ‘Control on Users’ turn off Tamper Protection
+Uninstall Sophos Endpoint Protection
+Reinstall Sophos Endpoint Protection with the latest installer from the correct Sophos Central tenant
+
+Wind it up and let it go
+With the basic building blocks in place you are ready to dry run the automation flow. Some key milestones are:
+
+In your chosen SOAR platform be sure to disable the final action to delete the device before testing.
+Validate whether each device meets its expected outcome before committing to delete.
+When going live with the automation start off by deleting devices slowly. This will allow time to further fine tune your process and find any more gotchas.
+Reach out to your AD admins and service desk teams for feedback. They can provide valuable insight to the process and could highlight a key point that may have been overlooked.
+
+For us, this process of removing the clutter of unused devices in Sophos Central has been invaluable. It also gives Central admins time back to focus on other tasks, which would normally be taken up with a manual process of checking and deleting old devices.
+Sample Python to gather devices
+Gather old device data
+To gather old devices to check against AD please use the following code example (you will need to have the Sophos Central API Connector installed). This will create JSON files of the devices.
+You will need to change ‘find_old’ and ‘client_id’ variables.
+
+# Demo code sample using Sophos Central API connector. Not intended for production use.
+
+import getpass
+import logging
+from sophos_central_api_connector import sophos_central_api_tenants as api_tenant
+from sophos_central_api_connector import sophos_central_api_auth as api_auth
+from sophos_central_api_connector import sophos_central_api_connector_utils as api_utils
+from sophos_central_api_connector import sophos_central_api_get_data as get_api
+from sophos_central_api_connector.sophos_central_api_output import process_output_json as json_output
+from sophos_central_api_connector.config import sophos_central_api_config as api_conf
+
+def main():
+log_level = "INFO"
+log_name = log_level
+level = getattr(logging, log_name)
+logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s',
+datefmt='%d/%m/%Y %I:%M:%S %p')
+
+logging.info("Start of Logging")
+
+# Enter the variable to set how old devices you wish to return. E.g. for more than 30days enter '-P30D'
+find_old = "&amp;lt;ADD IN TIME&amp;gt;"
+
+# Enter your Sophos Central API Client ID (This is generated when setting up Sophos Central API credentials)
+client_id = "&amp;lt;ADD IN YOUR CLIENT ID&amp;gt;"
+
+# Set authorisation and whoami URLs
+auth_url = api_conf.auth_uri
+whoami_url = api_conf.whoami_uri
+partner_url = api_conf.tenants_ptr_uri
+organization_url = api_conf.tenants_org_uri
+
+# Get client secret by prompting user
+client_secret = getpass.getpass(prompt="Provide Sophos Central Secret ID: ", stream=None)
+
+# Get Sophos Central API Bearer Token for authorisation
+sophos_access_token = api_auth.get_bearer_tok(client_id, client_secret, auth_url)
+
+# Construct id_headers
+headers = api_auth.validate_id_headers(sophos_access_token)
+
+# Lookup up the unique ID assigned to the business entity for Sophos Central API
+whoami_id, whoami_type, whoami_data = api_auth.get_whoami_data(headers, whoami_url)
+
+# Obtain correct whoami uri/header based on the whoami type
+header_type, tenant_url = api_auth.validate_whoami_type(whoami_type, whoami_data, partner_url, organization_url)
+
+# Construct tenant headers
+tenant_headers = api_tenant.gen_tenant_headers(headers, whoami_id, whoami_type, header_type)
+
+# Check and gather tenant information
+if whoami_type == "tenant":
+tenant_info = api_tenant.type_tenant(tenant_headers, whoami_id, tenant_url, sophos_access_token)
+else:
+tenant_info = api_tenant.get_tenant_info(headers, tenant_url, sophos_access_token)
+
+# Generate urls for tenants
+api = "endpoint"
+page_size = "50&amp;amp;lastSeenBefore={0}&amp;amp;fields=tenant&amp;amp;fields=hostname&amp;amp;fields=id&amp;amp;fields=lastSeenAt&amp;amp;fields=os&amp;amp;fields=type&amp;amp;fields=associatedPerson".format(find_old)
+
+# Generate tenant url data
+tenant_url_data = api_utils.generate_tenant_urls(tenant_info, page_size, api, from_str=None, to_str=None)
+
+for ten_id, ten_item in tenant_url_data.items():
+# Pass the ten_url_data and gather devices
+tenant_id = ten_id
+# get data information for the tenant in the loop
+json_data = get_api.get_data(tenant_url_data, page_size, tenant_id, api)
+filename = tenant_url_data[tenant_id]['filename']
+json_output(json_data, filename, api)
+
+if __name__ == "__main__":
+main()
+
+Delete identified devices in Sophos Central
+To delete the identified assets you can edit the JSON that was gathered previously and remove any devices which should not be deleted. The demo script assumes the JSON file is in the same location as the script. You will need to change ‘client_id’ variable.
+
+# Demo code sample using Sophos Central API connector. Not intended for production use.
+
+import getpass
+import logging
+import os
+import json
+import requests
+from sophos_central_api_connector import sophos_central_api_tenants as api_tenant
+from sophos_central_api_connector import sophos_central_api_auth as api_auth
+from sophos_central_api_connector import sophos_central_api_connector_utils as api_utils
+from sophos_central_api_connector.config import sophos_central_api_config as api_conf
+
+def main():
+log_level = "INFO"
+log_name = log_level
+level = getattr(logging, log_name)
+logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s',
+datefmt='%d/%m/%Y %I:%M:%S %p')
+
+logging.info("Start of Logging")
+
+# Enter your Sophos Central API Client ID (This is generated when setting up Sophos Central API credentials)
+client_id = "&amp;lt;ADD IN YOUR CLIENT ID&amp;gt;"
+
+# Set authorisation and whoami URLs
+auth_url = api_conf.auth_uri
+whoami_url = api_conf.whoami_uri
+partner_url = api_conf.tenants_ptr_uri
+organization_url = api_conf.tenants_org_uri
+
+# Get client secret by prompting user
+client_secret = getpass.getpass(prompt="Provide Sophos Central Secret ID: ", stream=None)
+
+# Get Sophos Central API Bearer Token for authorisation
+sophos_access_token = api_auth.get_bearer_tok(client_id, client_secret, auth_url)
+
+# Construct id_headers
+headers = api_auth.validate_id_headers(sophos_access_token)
+
+# Lookup up the unique ID assigned to the business entity for Sophos Central API
+whoami_id, whoami_type, whoami_data = api_auth.get_whoami_data(headers, whoami_url)
+
+# Obtain correct whoami uri/header based on the whoami type
+header_type, tenant_url = api_auth.validate_whoami_type(whoami_type, whoami_data, partner_url, organization_url)
+
+# Construct tenant headers
+tenant_headers = api_tenant.gen_tenant_headers(headers, whoami_id, whoami_type, header_type)
+
+# Check and gather tenant information
+if whoami_type == "tenant":
+tenant_info = api_tenant.type_tenant(tenant_headers, whoami_id, tenant_url, sophos_access_token)
+else:
+tenant_info = api_tenant.get_tenant_info(headers, tenant_url, sophos_access_token)
+
+# Generate urls for tenants
+api = "endpoint"
+page_size = None
+
+# Generate tenant url data
+tenant_url_data = api_utils.generate_tenant_urls(tenant_info, page_size, api, from_str=None, to_str=None)
+
+logging.info("Creating device deletion URLs...")
+
+for file in [os.path.basename(file) for file in os.listdir() if file.endswith(".json")]:
+with open(file, 'r', encoding='utf8') as device_file:
+logging.info("Processing file: {0}".format(file))
+device_dict = json.load(device_file)
+for ten_id, ten_item in tenant_url_data.items():
+tenant_id = ten_id
+for item in device_dict.values():
+tenant_ref = item['tenant']['id']
+if tenant_ref == tenant_id:
+orig_url = ten_item['orig_url']
+headers = ten_item['headers']
+device_id = item["id"]
+endpoint_url = "{0}/{1}".format(orig_url, device_id)
+del_ep = requests.delete(endpoint_url, headers=headers)
+del_sc = del_ep.status_code
+logging.info("Device ID: {0}, deletion status: {1}".format(device_id, del_sc))
+
+if __name__ == "__main__":
+main()
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+4

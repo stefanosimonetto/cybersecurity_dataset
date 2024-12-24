@@ -1,0 +1,134 @@
+Inside Chimera Ransomware – the first ‘doxingware’ in wild
+Ransomware have proven to be a good source of money for cybercriminals. Not surprisingly, we are nowadays facing various families of this type of malware, i.e Cryptowall, CTB-Locker,Teslacrypt to name a few.
+Recently, one more joined this set: Chimera, that is distributed via targeted e-mails to small companies.
+At the first sight, it appears like yet another malware encrypting user’s private files and demanding ransom for decrypting it. But it added to this feature one more twist that is supposed to put more pressure on the victim. It threatens that in case if the ransom will not be paid, all the stolen files are going to be published, along with the stolen credentials allowing to identify files’ owner*.
+This blackmail technique, called doxing provides much more serious threat than just loosing access to files. Also, keeping backups, that helps to manage attack of a normal ransomware would not help much. I think it will be fair to make a new term to describe this new subtype of ransomware, for example: doxingware.
+*- Fortunately in case of Chimera authors didn’t decided to really upload the files on the server, so it is only a bogus threat. Yet, from the point of view of the victim the pressure is very real.
+
+This time we will take a high and low level view at Chimera, in order to understand the techniques used.
+Analyzed samples
+I will base on following three samples, captured by @JAMESWT_MHT // – big thanks to him for sharing! 🙂
+
+8956cf38e5b6941921a3a2788f50a871
+e6922a68fca90016584ac48fc7722ef8
+60fabd1a2509b59831876d5e2aa71a6b  –  Stub.exe <- chosen as the main object of the analysis
+
+8df3534fe1ae95fc8c22cb85aed15336 – payload (Loader.dll)
+
+0a27affc77bd786beff69aa1f502d694 – payload (Core.dll)
+
+Behavioral analysis
+When deployed, Chimera enumerates files on all the available disks and encrypts documents recognized by some predefined extensions.
+This is an example of what you may see, if on your machine Chimera was deployed – some files have been substituted by their encrypted versions with the appended extension .crypt.
+
+See below a visualization of bytes.
+square.bmp : left – original, right encrypted with Chimera:
+
+Also, there is an HTML file dropped, that teaches user what happened. The HTML can be displayed in two languages – English and German. Below the English version:
+
+At the bottom of the HTML file we can read that, in addition to blackmail, attackers also search people willingly to cooperate – probably for franchising their criminal business. More info about it is available in the source of the HTML:
+
+After the process of encryption of all the files is finished, this HTML is displayed in full screen mode via Internet Explorer.
+Unpacking
+Two out of three malicious samples (60fabd1a2509b59831876d5e2aa71a6b, e6922a68fca90016584ac48fc7722ef8) are packed by the same .NET crypter, so I decided to give a brief overview on unpacking this crypter.
+It is not obfuscated and can be easily decompiled by typical tools i.e. ILSpy. Looking at function names, we can get a lot of information about the functionality, i.e it loads the payload by the RunPE technique:
+
+(full Stub.cs: https://gist.github.com/hasherezade/5b742b46df4f79fdb784)
+
+public static void Main()
+{
+byte[] rawAssembly = Stub.decrypt(Stub.pe, Stub.decode(BASE64_ENCODED_KEY));
+Stub.run_pe(rawAssembly);
+}
+
+private static void run_pe(byte[] rawAssembly)
+{
+new Stub.ManualMap().LoadLibrary(rawAssembly);
+}
+
+This author of the crypter didn’t relied on simple XOR based algorithm – instead, provided a custom implementation of a block cipher (Rijndael). We can find variables with familiar names like: sbox, inv_sbox (inverse S-Box), Rcon (the Round Constant), Nr, Nb, Nk…
+Fragment:
+// Stub
+private static byte[] decrypt(byte[] input, byte[] key)
+{
+byte[] array = new byte[input.Length];
+byte[] array2 = new byte[16];
+Stub.Nb = 4;
+Stub.Nk = key.Length / 4;
+Stub.Nr = Stub.Nk + 6;
+Stub.w = Stub.generateSubkeys(key);
+int i;
+for (i = 0; i  0 && i % 16 == 0)
+{
+array2 = Stub.decryptBloc(array2);
+Array.Copy(array2, 0, array, i - 16, array2.Length);
+}
+if (i < input.Length)
+{
+array2[i % 16] = input[i];
+}
+}
+array2 = Stub.decryptBloc(array2);
+Array.Copy(array2, 0, array, i - 16, array2.Length);
+return Stub.deletePadding(array);
+}
+
+Payloads
+Loader.dll
+md5 = 8df3534fe1ae95fc8c22cb85aed15336
+The file unpacked by Stub.exe is a DLL. It comes with a string referring to a database with debug symbols of the project, suggesting that it is not the core payload, but just a loader for it: C:\Projects\Ransom\bin\Release\Loader.pdb. In fact, it role is just to unpack and load the core executable.
+Automatic analysis: https://malwr.com/analysis/Zjc0MDg0ZmRlMjhkNGYxZTlmZWI1NzIxMTlhYmEyODU/
+Loader.dll unpacks a new PE file, writes into process memory and runs it in a new thread:
+
+Core.dll
+md5 = 0a27affc77bd786beff69aa1f502d694
+The original name of the executable unpacked by the Loader is Core.dll (it also comes with a analogical string: C:\Projects\Ransom\bin\Release\Core.pdb) and is responsible for all the malicious activities.
+
+At this stage we can see clearly all the strings and api calls. Also, the full list of extensions of files that are going to be encrypted. (Full list of strings: https://gist.github.com/hasherezade/ceef1c2fed2c70f37d6e)
+DllMain sets a mutex automatically generated from the volume serial number (to ensure that the malware is not run more than once), and then starts a new thread that deploys following three procedures:
+
+In the function start_network_thread Chimera prepares all the data to be sent to the C&C and after that deploys a new thread, that handles all the network-related operations.
+First is the information gathering phase. The victim ID is generated basing on hardware – also, some other information about the local machine is collected: computer name and external IP (by querying address: bot.whatismyipaddress.com – if the computer is offline 0.0.0.0 is used as the IP). This data, along with the generated bitcoin wallet address and a generated key pair are supplied as a parameter to the newly created thread.
+
+It is deployed before the process of file encryptions starts – and the public key from this pair is passed forward to the function encrypting files.
+File encryption function (beginning):
+
+Preparing random symmetric key for each file:
+
+The public key (marked purple) is passed to the function responsible for generating random key for each file. Every symmetric key is encrypted by the public key and then stored in the file:
+
+File is processed chunk by chunk:
+
+then,saved under the name with suffix .crypt added:
+
+Communication
+Chimera authors have chosen Bitmessage P2P protocol for the communication with C&C (as well as for the contact with eventual recruits).
+
+To bootstrap the connection the bot uses two hard-coded hosts and receives addresses from them.
+
+Mind the fact, that those addresses are not C&Cs of the malware, but just nodes of Bitmessage. Below – fragment of original file from Bitmessage protocol:
+
+Sample response from one of the servers (95.165.168.168):
+
+Using the received list, it starts a new Bitmessage connection and sends there an object:
+
+Example of sending an object (containing client data) to a new address: 79.218.142.200:
+
+The same protocol is used also to obtain the private key when the ransom is payed. Below – fragment of code of decompiled Decrypter:
+
+Decrypter
+Decrypter is delivered as an .msi installer. It have very friendly user interface and guides a victim through full process of decrypting files.
+
+However, to work properly it requires that the full environment will be set as the malware left it. If we remove ransom notes of try to decrypt files moved from another computer – we will have unpleasant surprise.
+Decrypter fetches bitcoin wallet address from the ransom notes – that’s why leaving it is necessary to make it work. Also, a hardware ID generated for the current machine must be the same like of the machine on which files have been encrypted. Decryption proceeds only if the payment to a particular address have been received.
+Decoder is an executable written in C# and can be easily decompiled. However, it’s core functions related to decrypting and hardware id generation are imported from and external dll (that is included in the decoder’s package):
+
+Export table of PolarSSLWrapper.dll:
+
+Conclusion
+Chimera does not have any outstanding obfuscation and once we unpack the core, analysis becomes easy. However, it comes with several ideas that are novel and may slowly become a new trend.
+It’s communication over P2P protocol is an interesting countermeasure from botnet take down. Also, the idea of blackmailing the user by leaking documents was not found in any malware before. In this case authors ended on bogus threats (sending huge amount of files to the C&C and storing them is much more costly) – but the idea itself is dangerous.
+If others cybercriminals will get inspired and decide to implement it, we will have a new headache.
+Appendix
+http://www.techwalls.com/chimera-ransomware-now-even-harder-decrypt/ – about Chimera’s distribution method
+http://www.bleepingcomputer.com/news/security/chimera-ransomware-uses-a-peer-to-peer-decryption-service/ – more about Chimera’s communication

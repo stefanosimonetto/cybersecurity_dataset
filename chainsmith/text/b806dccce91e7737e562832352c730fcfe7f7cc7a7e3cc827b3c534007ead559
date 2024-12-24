@@ -1,0 +1,44 @@
+A Tale of Two Crypters
+
+In early March 2017 we saw a surge in malware samples with similar behaviours and low detection rates, often triggering only generic and/or heuristic antivirus signatures. Examining these revealed them to be samples of the venerable njRAT Trojan (also known as Bladabindi) and, unsurprisingly, shows their post-infection behaviour and capabilities to align with known njRAT patterns (keylogging, screen-capturing, etc.)
+Two samples were examined in particular: both of these downloaded a sizeable 'blob' from Pastebin and communicated with C2s hosted on domains associated with dynamic DNS services - typical features of njRAT campaigns dating back several years. However, as it turns out, despite being two different versions of the same malware and even having compilation timestamps within a day of each other, the obfuscation methods used by the samples are quite different.
+
+Sample One - njRAT v0.6.4
+SHA1 005bcb98a91013d3997c8c6b4135a8ede920c351
+SHA256 10f40a6b3446e7773c4be09a8bbf885742ff88e76f4428315a695b57ba127d3c
+Upon execution, this sample connects to Pastebin to retrieve a very obviously obfuscated 'raw' paste:
+
+Upon deobfuscating the malware it is revealed that it uses a very simple homebrew encryption algorithm which iterates over the Pastebin file byte by byte, treating each byte as a char value and subtracting 200 from it before copying it to a buffer as a byte which then gets executed (see below).
+
+The result of the decryption algorithm is a slightly obfuscated version of njRAT v0.6.4 with a hardcoded C2 URL and port number:
+
+Sample Two - njRAT v0.7d
+SHA1 0a1988d11e798b2bc5269db6ba5821fddfadfca0
+SHA256 c173f9d0caf1a9f5e7f2cb3ec562370f56589eabfc2128647fbd68ad7470cdf1
+This sample exhibits very similar behaviour to the previous one, acquiring a binary blob from Pastebin then proceeding to contact a dynamic DNS host. However, the obfuscation methods of the two samples are drastically different. The 'paste' in this instance is a base64 encoded, obfuscated .NET executable. This executable contains a hardcoded key and an implementation of the RC4 encryption algorithm. This second stage searches the original binary for the magic string **HACKERDARK** which marks the beginning of an overlay which contains an RC4 encrypted binary blob (shown in the image below).
+
+Below we can see the harcoded key and magic string used...
+
+...and the RC4 decryption algorithm:
+
+Once the overlay is decrypted it is dropped on the system and executed, revealing this to be njRAT v0.7d:
+
+Conclusion
+A lot has been written about njRAT over the past few years, and its distribution via Pastebin has been well documented in recent times. However, the differing methods of achieving this between two versions currently in the wild show the degree of variation evident even within a single malware 'family'. Tens of unique sample hashes were identified for both versions of njRAT discussed here, highlighting the variation within even single versions of the malware. The difficulties this can ultimately present are evidenced by the poor detection rate of these samples at the time of writing, despite njRAT v0.7d first being documented at least as far back as 2014.
+Protection statement
+Forcepoint™ customers are protected against this threat via TRITON® ACE at the following stages of attack:
+Stage 6 (Call Home) - The TCP-based C2 traffic is blocked.
+Indicators of Compromise
+Note: The combined use of Pastebin and dynamic DNS services as distribution and C2 methods for these campaigns limits the usefulness of static IOCs. To date, several dozen active 'pastes' have been identified along with a commensurate number of DNSRRs. As such, only the details of the samples examined are detailed here.
+NJRAT v0.6.4
+
+SHA1 005bcb98a91013d3997c8c6b4135a8ede920c351
+SHA256 10f40a6b3446e7773c4be09a8bbf885742ff88e76f4428315a695b57ba127d3c
+URL hxxp://pastebin[.]com/raw/8R9F8tND
+Domain hakami.zapto[.]org
+NJRAT v0.7d
+
+SHA1 0a1988d11e798b2bc5269db6ba5821fddfadfca0
+SHA256 c173f9d0caf1a9f5e7f2cb3ec562370f56589eabfc2128647fbd68ad7470cdf1
+URL hxxp://pastebin[.]com/raw/H5JPm4Lv
+Domain blackbird305.hopto[.]org

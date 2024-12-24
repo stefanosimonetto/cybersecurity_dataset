@@ -1,0 +1,125 @@
+Reversing Python modules
+2008-07-01
+
+Aleksander Czarnowski
+AVET INS
+,
+Poland
+Editor:
+Helen
+
+Martin
+Abstract
+The object-oriented programming language Python can be used for many kinds of software development – potentially including malware development. Aleksander Czarnowski believes in being prepared and here he provides a brief overview of how to reverse engineer a Python module.
+Copyright © 2008 Virus Bulletin
+
+One might ask: why is there any need to reverse engineer Python scripts? After all, aren’t scripts just text files being parsed by an interpreter? In fact, if the parsing process succeeds, Python creates .pyc files from source files. These are in the form of bytecode, which is far from original source.
+
+Not only bytecode
+The example presented above is one of four possible situations in which it might be necessary to reverse engineer Python scripts. The other three are: the use of .pyd files; embedding the Python interpreter into a native application written in C/C++; and the use of freeze alike capabilities. I will focus my discussion on .pyc files, but the following paragraphs provide a brief description of each of the other cases:
+Essentially, .pyd files are the same as Windows DLLs (with a different extension). These files can be imported into a module just like other Python modules (every script is treated as a module in Python). If a file is named ‘foo.pyd’ it must contain the ‘initfoo()’ function. The command ‘import foo’ will then cause Python to search for foo.pyd and attempt to call initfoo() to initialize it.
+The Python interpreter may be embedded into a native application for a number of different reasons including as a method of code obfuscation. It would be very easy (in theory at least) to embed Python into a C/C++ application. The simplest method is as follows (for more information see [1]):
+#include <Python.h>
+
+void runpy(void) {
+Py_Initialize();
+PyRun_SimpleString(“print ‘hello world from embedded Python.’”);
+Py_Finalize();
+}
+There are several tools that allow a programmer to turn Python scripts into single EXE files. Two popular tools in use today are cx_freeze [2] and py2exe [3]. Internally, these are normal EXE files with an import table – however, keep in mind that this will not tell you much about Python imports or Python code.
+I have spent many years using the powerful reverse-engineering tool IDA Pro, extending its capabilities with the help of plugins, IDC scripts and Python. I was shocked, therefore, when I attempted to open a .pyc file for analysis, and found that IDA did not support the target. With my most powerful tool out of the picture, I had to resort to alternative reverse-engineering methods.
+
+The PYC file structure
+It turns out that the PYC file structure is quite simple:
+
+Size (bytes)
+Meaning
+Magic number
+4
+The first two bytes of this number tell us which version of Python has been used to compile the file. The second two are 0D0Ah, which are a carriage return and a line feed so that if the file is processed as text it will change and the magic number will be corrupted. (This prevents the file from executing after a copy corruption.)
+Modification timestamp
+4
+This is the Unix modification timestamp of the source file that generated the .pyc so that it can be recompiled if the source changes.
+Code object
+>1
+This is a marshalled code object which is a Python internal type and is represented as bytecode [
+4
+].
+More details, such as all the possible magic number values, are included in [5], while [6] and [7] should help explain all the internals.
+The .pyc file header can be created by the Module.getPycHeader method:
+def getPycHeader
+(self):
+
+# compile.c uses marshal to write a long directly,
+# with calling the interface that would also
+# generate a 1-byte code to indicate the type of the
+# value. simplest way to get the same effect is
+# to call marshal and then skip the code.
+
+mtime = os.path.getmtime(self.filename)
+mtime = struct.pack(‘<i’, mtime)
+
+return
+self.MAGIC + mtime
+The MAGIC variable is defined as: MAGIC = imp.get_magic(). So to determine your Python interpreter magic number you need to enter the following commands:
+>>> import imp
+>>> imp.get_magic()
+‘\xb3\xf2\r\n’
+
+Getting to the module
+The beauty of Python is that you can import any module you like as long as it compiles properly. This is not an issue for .pyc files unless the file has been corrupted on disk.
+Let’s assume our target is called ‘sample.pyc’. The following is a sample session from Python interactive mode:
+ActivePython 2.5.0.0 (ActiveState Software Inc.) based on Python 2.5
+(r25:51908, Mar  9 2007, 17:40:28) [MSC v.1310 32 bit (Intel)] on win 32
+
+Type “help”, “copyright”, “credits” or “license” for more information.
+>>> dir() #inspect our namespace
+[‘__builtins__’, ‘__doc__’, ‘__name__’]
+>>> import dis #import Python disassembler – batteries are really included
+>>> import sample #import our pyc.file
+>>> dir() #inspect our namespace once again
+[‘__builtins__’, ‘__doc__’, ‘__name__’, ‘dis’, ‘sample’]
+>>> dir(sample) #inspect our target namespace
+[‘__builtins__’, ‘__doc__’, ‘__file__’, ‘__name__’, ‘foo’, ‘string’]
+
+After inspecting the sample.pyc namespace we see there is only one function called ‘foo’. To confirm that this is a function we can use the following code:
+>>> getattr(sample, ‘foo’)
+<function foo at 0x00AE1E70>
+Now we can use the dis.dis() method to obtain the bytecode of the foo function inside the sample.pyc module Figure 1.
+Figure 1. Getting the bytecode of the foo function.
+There is another object in the namespace of our target – ‘string’. Let’s inspect it, using getattr:
+>>> getattr(sample,’string’)
+<module ‘string’ from ‘c:\Program Files\Python25\lib\string.pyc’>
+We can see that this is another module that has been imported by our target. Looking at its path we can see it is a standard string module from the Python distribution – but how has this module been imported? We have never run any of the sample.pyc code and a quick inspection of the sample.foo() bytecode reveals no imports. First let’s have a look at how the Python code ‘import string’ is translated into bytecode:
+Figure 2. There is no definitive import.
+Figure 2 shows that there is no definitive import in our disassembly of sample.foo(). How could this happen? The answer is simple – importing modules means the execution of Python instructions that are not enclosed in classes or functions. So in the case of malware using the import function, this might not be the right solution for disassembling the bytecode. However, we can use the interpreter itself to perform the disassembly. This time we will read the .pyc file by hand and use the marshal module. The marshal module allows bytecode to be loaded from file. As it expects the input to be bytecode, we need to skip the first eight bytes of the .pyc file (the magic number and modtime stamp), as shown in Figure 3.
+Figure 3. Using the marshal module.
+Now we can see our ‘import string’ instruction in bytecode as well as the creation of the foo() function.
+
+__import__() and imp
+Python also allows the importing process to be hooked. Internally, the import instruction calls the __import__() function, which is responsible for all the internal magic that happens during module imports. Also, the imp module can be used for finding and loading modules (imp.find_module and imp.load_module, respectively). This could prove to be helpful during dynamic analysis.
+
+Dynamic analysis
+Python comes with a built-in debugger: pdb. Pdb is a module so it is quite simple to use:
+>>> import pdb
+>>> import module_name
+>>> pdb.run(‘module_name.function_name()’)
+
+Internally, pdb uses sys.settrace to achieve its magic. Like most debuggers, pdb is better suited to cases in which we have access to source code. In fact, when the source code is missing it is quicker to run the script in a controlled environment and trace the system function calls at OS level than to work with pdb. On Win32 systems a set of trusty SysInternals tools comes in handy. For larger tasks writing a dedicated sys.settrace handler function would be a possible solution.
+
+Rewriting bytecode
+Rewriting bytecode is also possible. Byteplay [8] is an interesting project which allows the user to manipulate Python code. The module works with Python versions 2.4 and 2.5. There are also a number of other utilities with similar functionality. Rewriting bytecode could prove useful, for example, in the case of patching .pyc files on the fly.
+
+Summary
+The aim of presenting the methods described here was not to provide a definitive reverse-engineering solution but to provide the reader with enough information to find their own path. Python often allows even complex problems to be solved with its built-in functionality. Many of the operations presented here could have been achieved in a simpler manner or using other tools.
+I have seen very little information published about Python bytecode. As Python is commonly installed on many Unix/Linux systems and is also embedded into several games engines, the ability to understand its bytecode is important as there can be little doubt that it will be targeted by attackers in the future.
+
+Bibliography
+[1] Embedding Python in another application. http://www.python.org/doc/ext/embedding.html.
+[2] http://python.net/crew/atuining/cx_Freeze/.
+[3] http://www.py2exe.org/.
+[4] Internal types: code objects http://docs.python.org/ref/types.html#l2h-143.
+[5] http://svn.python.org/view/python/trunk/Python/import.c?view=markup.
+[6] http://docs.python.org/lib/compiler.html.
+[7] http://svn.python.org/view/python/trunk/Lib/compiler/pycodegen.py?rev=61585&view=markup.
+[8] http://code.google.com/p/byteplay/.

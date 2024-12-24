@@ -1,0 +1,203 @@
+Finding Alternate Data Streams (ADS) with HMFT
+October 4, 2012 in Compromise Detection, Forensic Analysis, HMFT, Malware Analysis, Tips & Tricks
+
+Finding Alternate Data Streams  (ADS) on the whole drive may be quite time consuming so in this quick post I will show you how to do it faster with HMFT.
+As you probably know, the latest version of HMFT supports listing of basic attributes directly from $MFT – from both images and live systems. Amongst the features it currently supports is showing type of attribute and its name. Turns out, that this is enough information to find out what named DATA streams are hidden inside the FILE records – and this is essentially what ADSs are.
+So…
+First, let’s test how HMFT shows ADS-related data:
+
+First let’s create a few sample ADSs
+
+echo > f:\test
+echo > f:\test:ads
+echo > f:\test:ads2
+echo > f:\test:ads3
+
+Next, we run hmft over the drive and saving it to a file
+
+hmft -l f: f_mft.txt
+
+Finally, let’s see the content of the file – scroll down to see file name, first unnamed DATA attribute that is then followed by 3 named DATA attributes – ADS names:
+
+[FILE]
+SignatureD                    = 1162627398
+OffsetToFixupArrayW           = 48
+NumberOfEntriesInFixupArrayW  = 3
+LogFileSequenceNumberQ        = 4204637
+SequenceValueW                = 1
+LinkCountW                    = 1
+OffsetToFirstAttributeW       = 56
+FlagsW                        = 1
+UsedSizeOfMFTEntryD           = 448
+AllocatedSizeOfMFTEntryD      = 1024
+FileReferenceToBaseRecordQ    = 0
+NextAttributeIdD              = 6
+--
+
+RESIDENT ATTRIBUTE
+AttributeTypeIdentifierD = 16
+LengthOfAttributeD       = 96
+NonResidentFlagB         = 0
+LengthOfNameB            = 0
+OffsetToNameW            = 0
+FlagsW                   = 0
+AttributeIdentifierW     = 0
+--
+SizeOfContentD          = 72
+OffsetToContentW        = 24
+--
+MFTA_STANDARD_INFORMATION
+CreationTimeQ         = 129938289425003390
+ModificationTimeQ     = 129938289502223390
+MFTModificationTimeQ  = 129938289502223390
+AccessTimeQ           = 129938289425003390
+FlagsD                = 32
+MaxNumOfVersionsD     = 0
+VersionNumberD        = 0
+ClassIdD              = 0
+OwnerIdD              = 0
+SecurityIdD           = 261
+QuotaQ                = 0
+USNQ                  = 0
+CreationTime (epoch)    = 1349355342
+ModificationTime (epoch)  = 1349355350
+MFTModificationTime (epoch)  = 1349355350
+AccessTime (epoch)           = 1349355342
+--
+
+RESIDENT ATTRIBUTE
+AttributeTypeIdentifierD = 48
+LengthOfAttributeD       = 104
+NonResidentFlagB         = 0
+LengthOfNameB            = 0
+OffsetToNameW            = 0
+FlagsW                   = 0
+AttributeIdentifierW     = 2
+--
+SizeOfContentD          = 74
+OffsetToContentW        = 24
+--
+MFTA_FILE_NAME
+ParentID6             = 5
+ParentUseIndexW       = 5
+CreationTimeQ         = 129938289425003390
+ModificationTimeQ     = 129938289425003390
+MFTModificationTimeQ  = 129938289425003390
+AccessTimeQ           = 129938289425003390
+CreationTime (epoch)    = 1349355342
+ModificationTime (epoch)  = 1349355342
+MFTModificationTime (epoch)  = 1349355342
+AccessTime (epoch)           = 1349355342
+AllocatedSizeQ        = 0
+RealSizeQ             = 0
+FlagsD                = 32
+ReparseValueD         = 0
+LengthOfNameB         = 4
+NameSpaceB            = 3
+FileName = test
+--
+
+RESIDENT ATTRIBUTE
+AttributeTypeIdentifierD = 128
+LengthOfAttributeD       = 40
+NonResidentFlagB         = 0
+LengthOfNameB            = 0
+OffsetToNameW            = 24
+FlagsW                   = 0
+AttributeIdentifierW     = 1
+--
+SizeOfContentD          = 13
+OffsetToContentW        = 24
+--
+MFTA_DATA
+--
+
+RESIDENT ATTRIBUTE
+AttributeTypeIdentifierD = 128
+LengthOfAttributeD       = 48
+NonResidentFlagB         = 0
+LengthOfNameB            = 3
+OffsetToNameW            = 24
+FlagsW                   = 0
+AttributeIdentifierW     = 3
+--
+SizeOfContentD          = 13
+OffsetToContentW        = 32
+--
+MFTA_DATA
+AttributeName = ads
+--
+
+RESIDENT ATTRIBUTE
+AttributeTypeIdentifierD = 128
+LengthOfAttributeD       = 48
+NonResidentFlagB         = 0
+LengthOfNameB            = 4
+OffsetToNameW            = 24
+FlagsW                   = 0
+AttributeIdentifierW     = 4
+--
+SizeOfContentD          = 13
+OffsetToContentW        = 32
+--
+MFTA_DATA
+AttributeName = ads2
+--
+
+RESIDENT ATTRIBUTE
+AttributeTypeIdentifierD = 128
+LengthOfAttributeD       = 48
+NonResidentFlagB         = 0
+LengthOfNameB            = 4
+OffsetToNameW            = 24
+FlagsW                   = 0
+AttributeIdentifierW     = 5
+--
+SizeOfContentD          = 13
+OffsetToContentW        = 32
+--
+MFTA_DATA
+AttributeName = ads3
+
+Knowing all this, we can quickly put together a perl script that can walk through the data and pick up all ADS from the output file:
+
+use strict;
+my $f='';
+my $l='';
+while (<>)
+{
+s/[\r\n]+//g;
+$f = $1 if /FileName = (.+)$/;
+print "$f:$1\n" if ($l =~ /MFTA_DATA/&&/AttributeName = (.+)$/);
+$l = $_;
+}
+
+Save it as ads.pl
+Run it using the following syntax
+
+perl ads.pl <hmft output>
+e.g.:
+perl ads.pl f_mft.txt
+The output for the example file system is:
+$Repair:$Config
+test:ads
+test:ads2
+test:ads3
+
+I suggest you running a test on your local drives  – you are probably going to be quite surprised 🙂
+Not only you may find plenty of files with ADS, but you may also get to know less-known good ADSs – many of them I have listed previously and a few more e.g. internal ADSs used by OS:
+
+$Info in $UpCase:$Info
+$Config in $Repair:$Config
+$Max in $UsnJrnl:$Max
+
+and also MAC-related streams (resource forks) added by Safari  (kinda equivalents of IE’s Zone.Identifier)
+
+com.apple.quarantine
+com.apple.metadata:kMDItemWhereFroms
+
+Note on a small bug here: with a larger number of ADSs the ads.pl script will show incorrect entries as ADS attributes that don’t fit within one FILE record will be stored elsewhere and w/o FILENAME attribute, hence the associated file name will be incorrect. Some may be also stored under ATTRIBUTE_LIST that is not supported by HMFT yet.
+
+Comments Off on Finding Alternate Data Streams (ADS) with HMFT
+
+Comments are closed.

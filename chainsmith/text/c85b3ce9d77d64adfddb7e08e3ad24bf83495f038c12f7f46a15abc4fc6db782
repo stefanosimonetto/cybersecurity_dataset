@@ -1,0 +1,43 @@
+More Than 162,000 WordPress Sites Used for Distributed Denial of Service Attack
+
+Distributed Denial of Service (DDoS) attacks are becoming a common trend on our blog lately, and that’s okay because it’s a very serious issue for every website owner. Today I want to talk about a large DDoS attack that leveraged thousands of unsuspecting WordPress websites as indirect source amplification vectors.
+Any WordPress site with pingback enabled (which is on by default) can be used in DDOS attacks against other sites. Note that XMLRPC is used for pingbacks, trackbacks, remote access via mobile devices and many other features you’re likely very fond of. But, it can also be heavily misused like what we are seeing.
+
+The Story
+It all happened against a popular WordPress site that had gone down for many hours due to a DDoS. As the attack increased in size, their host shut them down and then they decided to ask for help. They subscribed to our Website Firewall.
+Once the DNS was ported over, we were able to see what was going on. It was a large HTTP-based (layer 7) distributed flood attack, sending hundreds of requests per second to their server. The requests looked like this:
+74.86.132.186 - - [09/Mar/2014:11:05:27 -0400] "GET /?4137049=6431829 HTTP/1.0" 403 0 "-" "WordPress/3.8; http://www.mtbgearreview.com"
+121.127.254.2 - - [09/Mar/2014:11:05:27 -0400] "GET /?4758117=5073922 HTTP/1.0" 403 0 "-" "WordPress/3.4.2; http://www.kschunvmo.com"
+217.160.253.21 - - [09/Mar/2014:11:05:27 -0400] "GET /?7190851=6824134 HTTP/1.0" 403 0 "-" "WordPress/3.8.1; http://www.intoxzone.fr"
+193.197.34.216 - - [09/Mar/2014:11:05:27 -0400] "GET /?3162504=9747583 HTTP/1.0" 403 0 "-" "WordPress/2.9.2; http://www.verwaltungmodern.de"
+..
+
+If you notice, all queries had a random value (like “?4137049=643182“) that bypassed their cache and force a full page reload every single time. It was killing their server pretty quickly.
+But the most interesting part is that all the requests were coming from valid and legitimate WordPress sites. Yes, other WordPress sites were sending that random requests at a very large scale and bringing the site down.
+WordPress Insecure Default Option = Very Large Botnet
+Just in the course of a few hours, over 162,000 different and legitimate WordPress sites tried to attack his site. We would likely have detected a lot more sites, but we decided we had seen enough and blocked the requests at the edge firewall, mostly to avoid filling the logs with junk.
+Can you see how powerful this can be? One attacker can use thousands of popular and clean WordPress sites to perform their DDOS attack while being hidden in the shadows. That all happens with a simple pingback request to the XML-RPC file:
+$ curl -D -  "www.anywordpresssite.com/xmlrpc.php" -d '<methodCall><methodName>pingback.ping</methodName><params><param><value><string>http://victim.com</string></value></param><param><value><string>www.anywordpresssite.com/postchosen</string></value></param></params></methodCall>'
+
+Yes, that simple command on Linux can start it all.
+Is Your Site Attacking Others?
+It might be, and you could have no idea. To verify, look through your logs for any POST requests to the XML-RPC file, similar to the one below. If you see a pingback to a random URL, you know your site is being abused.
+93.174.93.72 - - [09/Mar/2014:20:11:34 -0400] "POST /xmlrpc.php HTTP/1.0" 403 4034 "-" "-" "POSTREQUEST:<?xml version=x221.0x22 encoding=x22iso-8859-1x22?>x0A<methodCall>x0A<methodName>pingback.ping</methodName>x0A<params>x0A <param>x0A  <value>x0A   <string>http://fastbet99.com/?1698491=8940641</string>x0A  </value>x0A </param>x0A <param>x0A  <value>x0A   <string>yoursite.com</string>x0A  </value>x0A </param>x0A</params>x0A</methodCall>x0A"
+
+94.102.63.238 – - [09/Mar/2014:23:21:01 -0400] "POST /xmlrpc.php HTTP/1.0" 403 4034 "-" "-" "POSTREQUEST:x0Ax0Apingback.pingx0Ax0Ax0A x0A http://www.guttercleanerlondon.co.uk/?7964015=3863899x0A x0A x0Ax0A x0A yoursite.comx0A x0A x0Ax0Ax0A"
+
+In these cases someone tried to use one of our honeypots to DDoS fastbet99.com and guttercleanerlondon.co.uk (we don’t know or service these websites).
+Prevent XML-RPC Abuse
+To stop your WordPress website from being misused, you will need to disable the XML-RPC (pingback) functionality on your site.
+You can do this by removing the file, xmlrpc.php, or you can disable notifications in your settings. The biggest challenge you’ll find with removing the file is that on an update it’ll come right back, annoying, I know. Some preliminary tests are showing that we’re able to bypass the disable notification setting but we are still investigating.
+Update: A better way to block it is by creating a plugin that adds the following filter:
+add_filter( ‘xmlrpc_methods’, function( $methods ) {
+unset( $methods[‘pingback.ping’] );
+return $methods;
+} );
+
+This is a well known issue within WordPress and the core team is aware of it. It’s not something that will be patched though. In many cases this same issue is categorized as a feature, one that many plugins use, so in therein lies the dilemma.
+Online Tool to Check if Your Site Was Misused
+Because of how prevalent an issue this is becoming, we’ve put together a little scanner that will check if your website has shown up in our logs. This scanner is only looking to see if your site has used to attack anyone within our network.
+Use our WordPress DDOS Scanner to check if your site is DDOS’ing other websites.
+Try it out and do your part to make the Internet a safer place for everyone.

@@ -1,0 +1,43 @@
+The CVE-2012-4792 and the Spear-Phishing Rotary Domains (Part 2)
+
+In the previous part of our report, we analyzed  the malicious content detected in the domain "rotary-eclubtw.com". We detected the exploitation code for the vulnerability CVE-2012-4792 and analyzed the Flash file which was used to contain the heap spray code and the shell code. In this part we are going to show some of the details that we extracted from the shell code and from behavioral analysis of the malware installed after a successful exploiting attempt. We have also added some details related to the domain name using the WHOIS records and internal data.
+
+Why are waterhole attacks occurring? What is the attackers' objective, both here and in other cases? As we learned from this analysis, the malware is used to steal files from compromised computers, while also enabling monitoring of the user's emails and other activities. We also found suspicious ties to sites potentially targeting high technology suppliers, perhaps in Taiwan. Read on for details of the attack.
+
+From the shellcode contained in the SWF file mentioned in the first part of this blog, we have extracted and disassembled, specifically, the Windows XP shellcode. To do this, we used the tool shell2exe which allowed us to obtain a consistent PE file by inputting the sequence of bytes of the shellcode. There is also an online version of this tool provided by sandsprite.org. In the following screenshot we can see the first stage which decrypts the remaining code using the XOR key "2Eh":
+
+After this first stage the execution flow is passed to the code just decrypted, which, as its first action, tries to create a file in the operating system temp path named "dw20.exe":
+
+Another interesting detail is the search in memory for the string "KONG" which as mentioned in the first part of our analysis, has been used as a prefix of the content of the variable "THISISIT" in the first HTML code from which we started this analysis. So, once this string is detected in memory, the file created previously, "dw20.exe", is filled up with the value of the array "THISISIT" stripped of the marker "KONGK":
+
+Once the encoded file is detected in memory it is passed to another assembly routing which applies another XOR operation using the key "BFh":
+
+Following the logic of the shell code, we had extracted the encoded stream and applied the XOR on it, obtaining a file with MD5: 1ad6afeec913f4c3a0ffce0093cddf21. At this time the file seems to have a low detection as reported here. We submitted this file to the Websense® ThreatScope™ service with the following result:
+
+The full report is available here. The initial lookup of this .EXE file seems to produce some suspicious details. Firstly it is signed with an invalid certificate as shown below:
+
+A suspicious resource section named  "DATA" was also detected, which is loaded and decrypted at runtime:
+
+The code where this resource is referenced was found during the dynamic analysis, and is loaded afterwards by the function called at the address 0x00403f02:
+
+Following the execution of this file, we noticed the creation of the file "ntshrui.dll"  and the use of the Windows system file: "wdmaud.drv":
+
+The file "ntshrui.dll" has been submitted to Virustotal and the report again shows a low detection of malware, but thanks to these two file names we located a Microsoft report, from which we can deduce that we are talking about the same family of malcode (named Fucobha.A). From the Microsoft analysis it is also possible to see that while this malware is used specifically to download files from the impacted systems, it also permits monitoring of emails and the user's activity. Also, the report shows that the same behavior is used in the persistence mechanism as an injection in a new instance of the process "explorer.exe" as shown here:
+
+In the previous screenshot, it is possible to see unusual network activity in the process "explorer.exe" - in fact, once executed, the malware contacts the host "hxxp://www.rotary-eclub.com" ( IP address 118.212.64.23 TCP port 4356 ) to start sending information gathered from the impacted system as follows:
+
+As is possible to see from the network traffic, the information exchanged between the impacted system and the C&C is encrypted:
+
+The first message contains encrypted basic information (such as the operating system version, installed service pack, local IP address and so on) for the impacted system.  We tried to analyze the injected code in the process "explorer.exe" and discovered the parser that handles the commands once they are decrypted. Here we can see the check for two specific commands: "ptt" and "skc":
+
+The WHOIS information for the C&C "hxxp://www.rotary-eclub.com" provides a strong link with the host "hxxp://www.rotary-eclubtw.com" as shown below:
+
+Here is the WHOIS information for the C&C domain:
+
+By googling for YOVOLE.COM, we found that this Chinese Service Provider has been reported as one of the most active for phishing related attacks as detailed in this report. Also, using our internal database we detected that the registrant "2207406762@qq.com" has recently registered other interesting domain names. Specifically:
+
+From this it is possible to detect a weird coincidence: zhiaoit and zy-intl are keywords which on Google provide results related to high technology suppliers as shown below:
+
+Still another note: using the location address gathered from the WHOIS information, we can see via Google Maps the geographical location where the C&C is hosted is actually just across from the island of Taiwan:
+
+Websense customers are protected from these and other threats by Websense ACE (Advanced Classification Engine).

@@ -1,0 +1,183 @@
+Sender authentication – practical implementations
+2011-04-01
+
+Terry Zink
+Microsoft
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Previously Terry Zink has looked at how SMTP works, email headers, SPF, SenderID and DKIM. But what about some practical realities? How well do these technologies work in real life? Can we use them to solve actual problems? Here he describes a real case in which SPF and SenderID were combined to solve a problem.
+Copyright © 2011 Virus Bulletin
+
+In my six-part series on sender authentication [1], [2], [3], [4], [5], [6], I wrote about a number of topics: how SMTP works, email headers, SPF, SenderID and DKIM.
+I mainly wrote about the theoretical constructions of the system and illustrated some considerations for mail receivers when they implement the technologies. But what about some practical realities? How well do these technologies work in real life? Can we use them to solve actual problems? The answer is yes, and that is the subject of this article.
+
+The real-life weaknesses of SPF and SenderID
+SPF and SenderID are two technologies that are very similar and accomplish similar things, but each has its weaknesses and strengths. Table 1 shows a comparison between the two technologies.
+Feature
+SPF
+SenderID
+DNS records
+v=spf1
+v=spf2.0
+Domain that it works on
+Envelope sender (P1)
+PRA (P2 – much more common) or envelope sender (much less common)
+How does it treat SPF records
+Works per normal
+Treats it like a SenderID record if the SenderID record does not exist
+How does it treat SenderID records
+Ignores it
+Works per normal
+Strengths
+- Can stop some phishing, good for some whitelisting
+- Better at stopping phishing (or spoofing) that visually tricks the user
+
+- Can prevent backscatter by only sending bounces to messages that pass an SPF check
+- The PRA derives from actual Resent-* headers, and Sender and From headers; this makes validation on forwarded mail theoretically possible
+
+- Can reject some messages in SMTP before accepting any data
+
+Weaknesses
+- Doesn’t catch phishing when the P1 From is Neutral or None and the PRA is spoofed
+- Prone to false positives when mail is sent on behalf of another
+
+- Doesn’t work on forwarded mail
+- Doesn’t work on forwarded mail
+Table 1. Comparison between SPF and SenderID.
+The weaknesses of SPF became apparent to me several years ago. The year was 2007. The mortgage financial crisis was still ahead of us, Rudy Giuliani and Hillary Clinton were their party front runners for the presidential nominations, and I was still a fledgling spam analyst. The years 2006 and 2007 were quite turbulent in the spam world. In 2006 we saw a major influx of image-only spam, and spam filters were caught scrambling to react to it because it was very effective in evading content filtering. This was also the time that botnets really hit their stride and we saw massive increases in the volume of spam hitting our inbound servers. Finally, in the summer of 2007, spam with PDF attachments was just emerging. It was short-lived, but it was still a new and creative spam technique that hadn’t been seen previously.
+I wasn’t nearly as familiar with SPF at that time as I am now. I had only recently become a Program Manager at Microsoft and this meant that I would be exposed to an increasing number of customer escalations. This also meant that anything I couldn’t speak confidently about would come back to haunt me.
+In mid-2007, I was looped into an escalation for a new customer who was receiving a lot of phishing messages in which the attacker was spoofing the From: address. These messages were evading our filters and landing in people’s inboxes. Users were being fooled by the messages, clicking the links, and their workstations were being compromised. This was occurring regularly enough for the IT personnel of the company to escalate the matter to us. (This was the first instance I had seen of a spear phishing attack, although in retrospect it was probably less sinister than it sounds. A targeted spear phishing attack customizes everything, right down to the recipients. This attack spoofed the From: address, but nothing else in the message content was customized.)
+At the time, I knew that SPF was an anti-spoofing technology but I didn’t know much more beyond the basics so I did some research and learned a lot more. The spammer was sending mail from a domain with no SPF records in the ‘P1 Mail From’ and was spoofing the recipient’s organization in the ‘P2 From’ address field. The result was that the recipients of the message were fooled into believing that it was from an internal sender because they recognized their ‘own’ domain as the sender.
+For example, suppose that the organization receiving the mail was the government of Washington State (the government of Washington State is not our customer, I use this as an example):
+SMTP Mail From:
+[email protected]
+
+P2 From:
+[email protected]
+
+To:
+[email protected]
+
+Subject: Update your credentials
+
+Dear recipient,
+
+We are upgrading our security infrastructure. Please login to the following site
+and enter your credentials so it will update in our systems otherwise your account
+will be locked out.
+
+http://security.wa.state.gov/user/login
+
+Thanks for your co-operation in this regards.
+
+Department of IT Security
+Let’s take this message apart and see what happened:
+The state of Washington has published SPF records and tagged them with ‘-all’, which means that receivers should Hard Fail any mail that purports to come from its servers but whose sending IP is not in its SPF record. This is something that a responsible organization does to prevent being spoofed and then delivered to someone’s inbox.
+Upon receipt of the message, the spam filter executes an SPF check on the email address in the ‘P1 Mail From’, which is the randomized [email protected] The domain zebuzez.com exists in DNS and has an A-record but does not publish SPF records. The spam filter checks it out and the result is SPF None. It continues to pass it down to the rest of the filter.
+The URL in the message is a newly created domain, and the message is sent from a new IP address that is part of a botnet but is not on any blocklists. It evades the spam filter’s other reputation checks and ends up in the customer’s inbox. This is a false negative.
+The user sees the mail which appears to come from their own internal department, [email protected] Since it seems to come from a domain they recognize, they trust the message and decide to click on the link. The spammer has been clever enough to send the message in HTML format and the link in the message actually points to a spammer’s domain. The user’s computer has now become part of a botnet because they clicked on the link. (One dismissive argument I hear regarding SPF’s ability to prevent spoofing by Hard Failing spoofed addresses is that all a spammer has to do to circumvent it is to send mail from a slightly different account, say, state.wa.gov.ghsataw.com. This is true, and spammers do this. However, they also spoof the actual domains and they do this a lot. I have not measured which is more prolific, but the spoofing occurs so often that it is a legitimate scenario that requires a solution.)
+If you only use SPF as part of your spam filter, then your filter will be prone to these types of attack. Whether spammers spoof your specific domain intentionally or are randomizing the domains in the senders, the fact is that SPF cannot prevent these emails from reaching your inbox.
+I was left scratching my head. How could we combat these types of spam messages using content filtering? I started to investigate SPF and how it executes on the ‘P1 From’ address. The SPF documentation discourages the use of SPF on the ‘P2 From’ address because, while the P1 and P2 From addresses are often the same, sometimes they are not, and it is difficult to predict what will occur in the event that they are not the same. Will a spam filter flag legitimate messages as spam (i.e. generate false positives)? For example, suppose that the state of Washington wanted to send out a large mail campaign to residents of the state who had opted in to receive special announcements – e.g. about road repairs, government office closures, breaking news reports or results of legislative changes. Rather than sending these out themselves, the state might decide to use a marketing company, say, Big Communications, Inc. The marketing company wants the emails to look like they came from the state of Washington, but needs to avoid them being marked as spam.
+Since SPF is the most common authentication technology, they would do something like the following:
+SMTP Mail From:
+[email protected]
+
+P2 From:
+[email protected]
+
+To:
+[email protected]
+
+Subject: Latest results of bill 2101
+
+Dear
+[email protected]
+,
+
+The results of Bill 2101 are in! The legislature has voted to approve the use
+of $2 million to the University of Diamondville to study the effects of weightlessness
+on tiny screws! This can have vast repercussions here in the future, everything
+from watch making to watch repair!
+
+Stay tuned for more updates!
+
+Washington State Department of Communications
+
+Obviously, the contents of the mail above are entirely fictional and far fetched, and a government department might not outsource their communications. However, large corporations like Microsoft do. If an SPF check in the above example were performed on the ‘P1 From’ address, the result would be an SPF Pass. However, if it were performed on the ‘P2 From’ address – the one that is displayed in the mail client – the result would be an SPF Hard Fail. Many spam filters assign this a heavy weight and there is a good chance that the message would subsequently be marked as spam – the exact opposite of what is desired.
+Thus, we are in a position where performing a standard SPF check leaves our recipients open to phishing attacks. Performing a modified SPF check on the ‘P2 From’ address (i.e. performing a SenderID check) has the very real possibility of marking legitimate messages as spam and generating false positives. What can we do? How can we get the best from SPF and SenderID (stopping phishing) while avoiding the worst of SPF and SenderID (false positives)?
+
+Combining SPF and SenderID
+While investigating these two technologies, I liked SenderID’s ability to combat spoofing of the ‘P2 From’ address because that is what is displayed to the end-user. However, I could not stomach the idea of generating false positives.
+The solution was to combine SPF and SenderID and perform both checks. They would not both be performed every time, but conditionally: a SenderID check would only be performed in the event that a standard SPF check returned a non-authoritative authentication result.
+What do I mean by non-authoritative? Rather than the conventional Internet industry use of the term, I use it to refer to an assertion that we cannot say something for certain either one way or the other. To illustrate this, here are the results of an SPF check:
+SPF Pass – We can state with certainty that the sending IP of the message is permitted to send mail for that domain. It is explicitly stated in the SPF record published by that domain.
+SPF Hard Fail – We can state with certainty that the sending IP of the message is not permitted to send mail for that domain and should be treated with great suspicion.
+SPF Soft Fail – We can state with certainty, although a lot less of it, that the sending IP is not permitted to send mail for that domain.
+SPF None – We cannot state one way or the other whether the sending IP is permitted to send mail for the sending domain, and the result is ambiguous. This is what I mean by non-authoritative. We just don’t know.
+SPF Neutral – Similar to SPF None, we don’t know whether or not the IP is permitted to send mail for the sending domain. Again, it is ambiguous. Is it neutral because the sender forgot to include the IP in the SPF record, because the message is forwarded, or because the sender is forged? We can’t assert either way.
+SPF Temp Error, Perm Error – The same as the above, we can’t say one way or the other whether the sending IP is permitted to send mail for the domain.
+The implementation we came up with was to send all messages in our pipeline through a standard SPF check. If the message returns Pass or Fail, then we know if the message is authenticated or spoofed. However, we don’t know one way or the other if we get None, Neutral, Temp Error or Perm Error. If we get one of these results, then we perform a SenderID look up on the ‘P2 From’ address to see if that address is being spoofed – a SenderID check is conditional upon the result of an SPF check. Once that result comes back, appropriate action can be taken:
+Use the Hard or Soft Fail as weights in the spam filter.
+Use the other results with the same actions that you would take for the results of a regular SPF check.
+The idea is that, since we didn’t have an authentication answer the first time, we try it again a second time on a different field and see what the result is.
+Let’s return to our two previous examples and see how we can get the results we want while avoiding the results we don’t want:
+SMTP Mail From:
+[email protected]
+
+P2 From:
+[email protected]
+
+To:
+[email protected]
+
+Subject: Update your credentials
+Perform an SPF check on [email protected] It returns SPF None. This is a non-authoritative result.
+Perform a SenderID check on [email protected] It returns SPF Hard Fail.
+We therefore interpret this as a spoofed message and treat it as such. Whereas before it was a false negative, now it is detected as spam.
+What about our other example?
+SMTP Mail From:
+[email protected]
+
+P2 From:
+[email protected]
+
+To:
+[email protected]
+
+Subject: Latest results of bill 2101
+
+In this case:
+Perform an SPF check on [email protected] It returns an SPF Pass.
+We therefore interpret this message as authenticated and proceed with the rest of the filtering pipeline. No further authentication is performed. Whereas before this message was a true positive with SPF, and a false positive with SenderID, now it is back to being a true positive again.
+
+Naming the feature
+After it was decided that this was the way we would address the spoofing issue, we had to come up with a name for the feature. It isn’t SPF and it isn’t SenderID, it’s a combination of the two of them. Since the feature is designed to authenticate against the ‘From:’ field in an email message, we called it ‘From Address Authentication’. It authenticates against the ‘From:’ address of an email message. (Technically speaking, SenderID authenticates against the PRA, which is either the Resent-Sender, Resent-From, Sender or From field. In the majority of cases, this is the From: field.)
+We decided that this feature would not be enabled by default on all inbound mail hitting the network. Instead, it would be a custom spam filter action that was off by default. In order to get the benefit of this feature an organization would have to activate it manually.
+
+Actions
+Next, we had to decide on an action to take in the event that a message received a Hard Fail with the second check. Spam filters usually use the results of an SPF check as a weight in their scoring engines. Some (like ours) allow users to enable an option to auto-reject all mail that Hard Fails a traditional SPF check. I don’t typically recommend this because more legitimate mail than you might think fails SPF checks – although for certain organizations that are heavily spoofed it makes sense.
+We had to decide whether we wanted a Hard Fail to be used as a weight in the engine or to automatically mark the message as spam. Experience had taught me that auto-marking anything that Hard Fails an SPF check as spam would be prone to false positives. My proposal was to use the failure of this feature as a weight in the engine by default, and then give users another option to mark anything that Hard Failed the check as spam. However, a colleague pointed out that this would over complicate things for users. For one, they would have to enable this option manually. Second, they would subsequently have to click another checkbox to mark a message as spam instead of using the Hard Fail as a weight in the spam evaluation. That was too much. Better to pick one action and give the user the on/off option than to make them do two things. (Years later, when researching choice architecture – the process of providing users with a list of options – I discovered that giving users fewer choices is better than giving them more. The reason is that the more options we are given, the more difficult it is to make a decision and the less likely we are to be happy with that decision. This seems counterintuitive, but in fact a simplified interface with fewer options helps people make decisions faster and to remain happier with their decisions. )
+I decided to go with the auto-mark-as-spam option in the event that a message performed a From Address Authentication and returned a Hard Fail. Simplifying the design was the best option even if it had the potential to cause false positives. All of the other results (Soft Fail, Neutral, etc.) have their own weights associated with them and used in the spam filter evaluation. By itself, Hard Fail can single-handedly mark a message as spam. Thus, if an organization selects this option and publishes SPF records, then a spammer will not be able to spoof the organization in either the ‘P1 From’ or ‘P2 From’ address. Those messages will be marked as spam and hidden from the end-user.
+Figure 1. From address authentication in Forefront Online.
+
+Results
+The feature was coded, tested and deployed into the production network within a couple of months. Yet, for all of the work we had put in and the research we had done, I was still nervous. All of the reading I had done that looked at performing SPF checks on the ‘P2 From’ address suggested that the results were potentially unreliable. Would we get false positives? Would there be a whole bunch of scenarios that I hadn’t considered and lots of complaints pouring in? The best case scenario was that it solved the problem of spoofing for the original customer who had complained, that it was adopted by others and that no complaints came in. The worst case scenario was that piles of false positives occurred, the original customer complained and disabled the feature, phishing messages still came in and we would be back to square one.
+As it turned out, it was the best case scenario. We solved the problem for the customer and stopped the phishing messages from hitting their inboxes. We didn’t get false positive complaints from other people, and the feature was adopted by a number of other organizations as well. The feature worked exactly the way it was supposed to (how often does that happen in real life?). By getting creative with SenderID and SPF, we had managed to use them in a unique way that combined their strengths while avoiding their weaknesses.
+
+Conclusion
+SenderID and SPF each have their advantages and weaknesses, but it is possible to use them together to create an effective anti-phishing mechanism that targets a specific case. Obviously, this is a special scenario. It doesn’t solve the overall problem of phishing, which is still with us today; we even have an organization – the Anti-Phishing Working Group – that was formed in an effort to address the problem. Furthermore, this technique doesn’t address the issue of when the phisher uses visually or phonetically similar domains to the one that’s being spoofed (for example state.gov.wa.com.br), which don’t publish SPF records but which look like a domain that the organization in question might use.
+However, this solution does stop spammers who attempt to spoof either the ‘P1 From’ address or the ‘P2 From’ address when the targeted domain has published SPF and/or SenderID records. This scenario occurred so often that we were driven to come up with a response to it. It’s true that SPF and SenderID each have their limitations, but it is equally true that they have their place in an anti-spam environment.
+We have the evidence to prove it.
+
+Bibliography
+[1] Zink, T. What’s the deal with sender authentication? Part 1. Virus Bulletin, June 2010, p.7. http://www.virusbtn.com/pdf/magazine/2010/201006.pdf.
+[2] Zink, T. What’s the deal with sender authentication? Part 2. Virus Bulletin, July 2010, p.16. http://www.virusbtn.com/pdf/magazine/2010/201007.pdf.
+[3] Zink, T. What’s the deal with sender authentication? Part 3. Virus Bulletin, August 2010, p.15. http://www.virusbtn.com/pdf/magazine/2010/201008.pdf.
+[4] Zink, T. What’s the deal with sender authentication? Part 4. Virus Bulletin, September 2010, p.17. http://www.virusbtn.com/pdf/magazine/2010/201009.pdf.
+[5] Zink, T. What’s the deal with sender authentication? Part 5. Virus Bulletin, December 2010, p.12. http://www.virusbtn.com/pdf/magazine/2010/201012.pdf.
+[6] Zink, T. What’s the deal with sender authentication? Part 6. Virus Bulletin, January 2011, p.8. http://www.virusbtn.com/pdf/magazine/2011/201101.pdf.

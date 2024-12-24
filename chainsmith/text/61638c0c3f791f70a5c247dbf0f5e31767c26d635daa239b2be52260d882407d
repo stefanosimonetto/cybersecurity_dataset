@@ -1,0 +1,43 @@
+Sucuri CloudProxy WAF – Fake Bots Explained
+
+One of the most common questions we have been getting since launching our CloudProxy WAF is regarding bot activity and why it appears that we are blocking Google and / or Bing bots. Inside the CloudProxy dashboard we provide a full audit log of any request that gets denied access and when a client see’s something like the following in their logs they tend to get concerned:
+
+13/May/2013:09:20:29 +0000] 80.72.37.156 “IP Address not authorized” “POST /wp-login.php HTTP/1.1” 403 “” “Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)”
+
+In this specific instance they are concerned that we are blocking Bing because of this reference: bingbot/2.0; +http://www.bing.com/bingbot.htm. They are especially concerned when it says Googlebot, like this one:
+
+13/May/2013:18:27:14 -0400] 198.50.161.234 “Spam comment blocked” “POST /blog/wp-comments-post.php HTTP/1.0” 403  “Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)”
+
+Nobody wants to block Google out of their sites.
+
+If you are not familiar with HTTP and logs, the first snippet is saying that the IP address 80.72.37.156 tried to login to wp-login.php and it identified itself as Bingbot. In the second log, it is saying that the IP address 198.50.161.234 tried to send a comment and it identified itself as Googlebot.
+We do not block any major search engine bots!
+One things most users do not know is that anyone can fake or modify the “User Agent” (browser id) of their request to look like it is coming from somewhere else.
+So what do attackers do? They emulate a real browser, like Google Chrome or Firefox, and sometimes also try to identify themselves as bots like those provided by Google, Bing, Yandex and many others, to see if they can evade detection.
+This is why we do not rely on the user agent alone to detect if real bot is crawling your site.
+Identifying a real bot
+This is what a real Google bot looks like in the logs:
+
+66.249.73.141 – – [13/May/2013:04:58:13 -0400] “GET / HTTP/1.1” 200 6095 “-” “Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)”
+
+First, their IP address always resolves back to Google’s domain. So if you try to do an IP lookup you’d see it points back to the Google domain:
+
+$ host 66.249.73.141
+141.73.249.66.in-addr.arpa domain name pointer crawl-66-249-73-141.googlebot.com.
+
+And the same applies to Bing, Yandex and all other real search engines.
+Second, another red flag, these bots will not be trying to send comments or logging in to your website. If you see any login attempt from any of them, you know it is someone just impersonating their requests. If you are not sure, try to see where the IP is coming from. If we use the first example from this post, we would see that the IP 80.72.37.156 actually comes from Polish IP address (likely a compromised server):
+
+$ host 80.72.37.156
+156.37.72.80.in-addr.arpa domain name pointer host-156.etop.dev.pl.
+
+Fake Bots and Comment spam
+Interestingly enough, from our data points, we are seeing a large percentage of comment spam leveraging this technique of faking their user agent. So far in May, 2013, we have blocked 33,988 spam comments using this technique:
+
+2013/Jan:  41,660 spam comments blocked coming from fake Googlebot
+2013/Feb:  71,747 spam comments blocked coming from fake Googlebot
+2013/Mar:  106,197 spam comments blocked coming from fake Googlebot
+2013/Apr:  68,708 spam comments blocked coming from fake Googlebot
+
+Now you know
+So next time you see a Bot visiting your site, you should be able to identify if it’s real or not. If you are not sure, just ask and we will be happy to help.

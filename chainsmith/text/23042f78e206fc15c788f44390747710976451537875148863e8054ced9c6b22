@@ -1,0 +1,72 @@
+Dridex in the shadows - blacklisting, stealth, and crypto-currency
+
+Dridex has drastically reduced in volume throughout 2016. Actors are now appearing to prefer crypto-ransomware such as Locky over the infamous banking trojan. However, Dridex is still being actively developed.  Here at Forcepoint Security Labs we have seen a number of changes and improvements over the last few months.
+
+Command-and-Control (C&C) blacklisting
+The initial Dridex executable is known as the Dridex Loader.  It is responsible for checking in to its C&C servers, requesting the "bot" module and a "list" of peers to communicate with. The module contains all of the core Dridex functionality and is known as the "worker".
+Recently we have seen that the Dridex loader C&Cs refuse to send back these payloads if the initial check-in information does not pass some simple criteria. Instead the response is a 403 HTTP error code.
+
+The check-in information sent from the loader [see above] contains a variety of information about the user's machine and environment. The sizes are all defined in big endian format.
+Information sent to the C&C includes the user's computer name, user name, installation date of the operating system, operation system version, and a list of installed software. As a result, the Dridex operators have been able to build up profiles of commercial sandboxes and researcher VMs.
+Blacklisting.  It has now become trivial for the Dridex operators to blacklist these machines in an attempt to prevent them from obtaining the core module and list of peers. This makes it more difficult for automated analysis systems to find and block the appropriate IPs. During our recent analysis we noticed that one of our VMs had been blacklisted based on its user name and operating system installation date, which of course was trivial for us to bypass once we knew what was going on.
+Protecting the assets
+Earlier versions of the Dridex loader predating November 2015 contained an XML structure which listed the botnet ID and C&C IPs. From November 11, 2015 onwards, this was changed to a binary structure to make analysis more difficult. The core module was still using XML for its settings up until March 2016, at which point they changed over to a multi-layered encrypted binary format with Dridex version 3.188 (196796).
+
+Other parts of Dridex have also gradually moved away from XML in favour of more complicated binary formats, making the trojan an ever more challenging threat to analyse.
+Main configuration
+Despite the protections put in place by the Dridex developer(s), it is still very much possible to reconstruct the Dridex settings configuration file received by the core module. This configuration file includes the list of banking websites to capture data from and inject code into when infecting a user's browser.
+After decryption, each section of the new binary format can be loosely represented as follows:
+
+type         (BYTE)             - the element type (1-12)
+size         (WORD)             - the size of the element's content
+content      (variable length)  - the content of the element
+Element types appear to range between 1 and 12 and define what type of data is contained in the content. For example, element type 11 defines the "node_tick_interval" element where the content contains two WORD values.
+Other element types contain XOR encrypted strings with the string length and XOR key also defined in the content. For example, the element type 1 ("httpshots") has the following content structure:
+
+type         (BYTE)             - the type of "httpshot" which can be 0 (deny) or 1 (allow)
+onget        (BYTE)             - defines if data should be captured from GET requests to this URL (0 or 1)
+onpost       (BYTE)             - defines if data should be captured from POST requests to this URL (0 or 1)
+pattern      (variable length)  - a structure containing an encrypted URL regex pattern string to match on
+The "pattern" entry is a binary structure containing an encrypted string. The structure for every string begins with a WORD value defining the length of the string, followed by a 4-byte XOR key, and finally the encrypted string content:
+
+length       (WORD)             - defines the length of the encrypted string
+xorkey       (BYTE[4])          - defines the 4-byte XOR encryption key for the string
+string       (variable length)  - the encrypted string
+In March, 2016 Moritz Kroll created a Python script to reconstruct the configuration from the raw, encrypted stream by parsing these elements. Newer versions of Dridex contain an additional parameter for the "redirects" element which appears to be a default URL.
+Targeted software & cryptocurrency wallets
+Dridex contains two distinct lists for targeting software that is installed on the current system. These lists have gradually expanded over the months and years, and now include back-end payment and point-of-sale software, online banking software, and a recently added list of crypto-currency wallet managers.
+A full list of targeted software used by Dridex botnet 1234 can be seen below, captured on September 2, 2016 from version 3.247 of the worker module:
+
+<commands>
+<cmd id="5648" type="15">
+<fs>avaloq</fs>
+</cmd>
+<cmd id="5649" type="15">
+<fs>crealogix,multiversa,abacus,ebics,agro-office,cashcomm,softcrew,coconet,macrogram,mammut,omikron,multicash,quatersoft,alphasys,wineur,epsitec,myaccessweb,bellin,financesuite,moneta,softcash,trinity,financesuite,abrantix,starmoney,sfirm,migrosbank,migros bank,online banking,star money,multibit,bitgo,bither,blockchain,copay,msigna,armory,electrum,coinbase,magnr,keepkey,coinsbank,coolwallet,bitoex,xapo,changetip,coinapult,blocktrail,breadwallet,luxstack,airbitz,schildbach,ledger nano,mycelium,trezor,coinomi,bitcore</fs>
+</cmd>
+<cmd id="5819" type="17">
+<kl>WinBacs,albacs,Albany.EFT.Corporate.Client,wpc,eSigner,StartStarMoney,StarMoney,acsagent,accrdsub,acevents,acCOMpkcs,jp2launcher,sllauncher,cspregtool,RegisterTool,OEBMCC32,sfirm,Bbm24win,wip,paypen,mammut_tb,telelink,translink,deltaworks,dfsvc,bitcoin-qt,multibit,BacscomIP2,runclient,paycentre,accesspay,PaymentStudio,DiasClient,SynIntegrationClient,QuestLauncher,RemoteAdminServer,SymForm2App,plink,launch,PaygateWpfClient,terminal,Telelink,EBsec,ftrskr,Suite Entreprise,rbpmain2,rbpmain,tkc,ecbl-nxbp,sagedirect,turbo_teletransmission,cedripack,cedrisend,QikDesktop,QikDesktopCitrix,ConfigurationEditor,InteractFastConfig,otscm-client,ecb-sg,crs1,GbpSV,pstw32,MopaMaes,ldcptv10,gslshmsrvc,launcher,tokensharesrv,universe,ifrun60,roiwin31,guawin32,intwin31,kb_pcb,spawin31,cziwin31,czawin31,sta2gpc,etsr,tellerlauncher,prowin32,dirclt32,PLT1751,PLT1151,cegidebics,CCS3,CCMPS3,ComSX,keepass,c_agent,transac,relaisbtp,telebanking,ewallet,mstsc,cardentry,TPComplianceManager,TPWorkstation,BancLine 2.0,MS000000,BancLine 3.0,BancLine 4.0,BancLine 5.0,SFW,ptw1151,fedcomp,sfmain,VRNetWorld,KDS,Kasir,ICS,mpkds,pspooler,ipspool,POS-CFG,callerIdserver,EftTray,dpseftxc,EFTSERV,QBPOS,APRINT6,POSCONFG,jRestaurant,AFR38,rmpos,roi,AxUpdatePortal,Firefly,InitEpp,SM22,xfsExplorer,XFSSimulator,WosaXFSTest,kiosk,CRE2004,aspnet_wp,javav,XChrgSrv,rpccEngine,PTService,Rpro8,UTG2Svc,Active-Charge,javaw,DDCDSRV1,alohaedc,dbstpssvc,XPS,Transnet,posw,NCRLoader,PSTTransfer,TSTSolutions,wndaudit,TSTAdmin,TellerDR,merapplauncher,contact manager,goldtllr32,goldtrakpc,farm42phyton,fx4cash,bpcssm,vp-ebanking,LLB Online Banking,efix,iberclear,AMBCN,SGO,SQLpnr,vmware-view,banktelapk,SynJhaIntService,uniservice,client32,CanaraCustMaintenance,legaclt,pcsfe,pcscmenu,cwbtf,srvview,pcsmc2vb,cwb3uic,trcgui,cwbsvstr,rtopcb,cwbujcnv,cwbujbld,cwbuisxe,pcsws,cwbsvd,cwblog,cwbdsk,securID,jhaintexec,appupdate,SGNavigatorApp,dbr,WINTRV,bsaadmin,encompass,eautomate,link,adminconsole,commandclientplugin,commandclientplugin_gui,mfmanager,verex director-server manager,verex director-communication manager,notes,nlnotes,notes2,sacmonitor,netterm,fspnet,bridgerinside,cardserver,si,dais.ebank.client.offlineclient,BGFWIN31,BGDWIN31,BGXWIN31,bocusertool,CLXReader,UBSPay,Migros_Bank_E-Banking,Bank linth Online Banking,java,abastart,abamenu,abajvm,sage200.finanz.gui,vpxclient,htmlshell,mmc,e3K.Main,QOPT,cresus,wineur,abaeb,efinance,GestionPE,BCN-Netkey,Sage 30,ISL_light_client,msaccess,proffix.v4,pxShowThread,grpwise,mammut private,CashCommv5,winbiz</kl>
+</cmd>
+</commands>
+The "fs" list specifies a list of strings to search on the file-system. Any directory paths matching a string will be reported to a peer node in the format "matched-string|full-path", such as "electrum|C:\Program Files\Electrum". This allows the Dridex operators to quickly and effectively profile a system for interesting software that could be targeted for financial gain.
+The "kl" list specifies a list of process names to find and inject into, in order to perform key-logging activities. The key logs are then sent to a peer node periodically as a "keylog session" with the associated process name.
+Protection statement
+Forcepoint™ customers are protected against this threat via TRITON® ACE at the following stages of attack:
+
+Stage 2 (Lure) - Malicious e-mails associated with this attack are identified and blocked.
+Stage 5 (Dropper File) - The malware is prevented from being downloaded from malicious URLs.
+Stage 6 (Call Home) - Dridex is blocked from communicating with its loader C&Cs.
+
+Summary
+Despite the slow down in Dridex activity, there is no reason to believe that the threat is going to disappear. The malware is still being developed and improved, consistently striving to be harder to detect and protect against. The delivery of Dridex remains much the same, with the most common delivery being by e-mail. It is important to remain cautious and vigilant when opening e-mails containing attachments or links, and to ensure that Microsoft Office macros are disabled whenever possible.  We continue to closely collaborate with our colleagues in CERT-UK as well as other national bodies, in order to assist with the ongoing efforts to combat threats such as these.
+Indicators of Compromise
+Dridex Samples (SHA1)
+
+606236dcce09a75aecb64daddaec7d247900a10d
+f88d05e5cca62a332fe4267db100086c7bde6379
+Dridex Loader C&Cs
+
+210.172.213.117:18443
+87.98.132.57:18443
+37.221.210.196:4434
+85.214.207.16:18443

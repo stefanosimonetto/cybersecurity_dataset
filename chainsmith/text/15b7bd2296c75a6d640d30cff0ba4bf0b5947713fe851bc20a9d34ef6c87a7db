@@ -1,0 +1,34 @@
+Google Bots Doing SQL Injection Attacks
+
+One of the things we have to be very sensitive about when writing rules for our CloudProxy Website Firewall is to never block any major search engine bot (ie., Google, Bing, Yahoo, etc..).
+To date, we’ve been pretty good about this, but every now and then you come across unique scenarios like the one in this post, that make you scratch your head and think, what if a legitimate search engine bot was being used to attack the site? Should we still allow the attack to go through?
+This is exactly what happened a few days ago on a client site; we began blocking certain Google’s IP addresses requests because they were in fact SQL injection attacks. Yes, Google bots were actually attacking a website.
+
+The Requests
+It all started when we saw a real Google IP address being blocked as a SQL injection. This is what the audit logs showed (slightly modified the protect the innocent):
+
+66.249.66.138 - - [05/Nov/2013:00:28:40 -0500] "GET /url.php?variable=")%20declare%20@q%
+20varchar(8000(%20select%20@q%20=%200x527%20exec(@q)%20-- HTTP/1.1" 403 4439 "-" "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+
+Our first thought was that it was a fake Google bot, but when inspecting the IP we found that it wasn’t, it was a real Google bot:
+
+$ host 66.249.66.138
+138.66.249.66.in-addr.arpa domain name pointer crawl-66-249-66-138.googlebot.com.
+
+NetRange:       66.249.64.0 - 66.249.95.255
+CIDR:           66.249.64.0/19
+OriginAS:
+NetName:        GOOGLE
+
+Further investigation showed other similar request signatures all coming from Google IP addresses.
+What is going on?
+It seems that while Google has no real interest in hacking you (far from it), their automated bots can be used to do the heavy lifting for an attacker.
+In this scenario, the bot was crawling Site A. Site A had a number of links embedded that had the SQLi requests to the target site, Site B. Google Bot then went about its business crawling pages and following links like a good boy, and in the process followed the links on Site A to Site B, and began to inadvertently attack Site B. It’s hard to say if it’s something we hadn’t seen, or maybe it’s just something we hadn’t really paid much attention to, but it makes you really think…
+Can someone create fake links with malicious keywords and have bots follow them and run malicious strings on another website?
+Stealth Attacks Using Bots
+Let’s assume we have an attacker, his name is John. John is your everyday hacker, he spends his day crawling the web looking for new vulnerabilities. In the process, he finds a number of vulnerable sites or web servers, ripe for the picking. John though, is not your average hacker, he is very aware of the forensics process, and knows that to be a successful hacker, you must cover your tracks.
+As a forensics analyst, one of the first things we look at is the logs. John knows this. What if John does enough to find the vulnerability passively, allowing him to go unnoticed? John now has a list of possible weaknesses, one being an SQLi or RFI vulnerability on Site B.
+John goes to his site, Site A, he adds all this awesome content about kittens and cupcakes, but in the process he adds a number of what appear to be benign links that are unsuspecting to the user reading, but very effective to the bot crawling the site. Those links are riddled with RFI and SQLi attacks that allow John to plead ignorance, also allowing him to stay two arms lengths away from Site B. This doesn’t mean he can’t verify success, it just means he doesn’t open himself to early detection by more active scanning and attacks.
+Maybe this is just conjecture, but then again, maybe it’s not.. Thoughts?
+Another possibility is that if a site is running a WAF (or IDS) that does protect against SQL injection attacks and the attacker can’t get through. But what if the Google’s IP address is white listed? That allows an easy bypass for the bad guy.
+We are contacting Google about it, but it is always something important to keep in the back of your mind. You can’t just whitelist their IP, and allow through without any type of inspection.

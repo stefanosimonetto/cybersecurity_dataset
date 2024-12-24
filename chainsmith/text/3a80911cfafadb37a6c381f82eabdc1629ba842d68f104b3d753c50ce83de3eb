@@ -1,0 +1,88 @@
+Hacked Websites Mine Cryptocurrencies
+
+Cryptocurrencies are all the rage now. Bitcoin, altcoins, blockchain, ICO, mining farms, skyrocketing exchange rates – you see or hear this every day in the news now. Everyone seems to be trying to jump on this bandwagon.
+This trend resulted in the emergence of online platforms that allow webmasters to install coin miners into their websites as an alternative means of monetization. The most notable platforms that provide JavaScript cryptocurrency miners for websites are JSE Coin and Coinhive.
+Controversy Around JavaScript Miners
+Both of these platforms allow webmasters to register and obtain a snippet of JavaScript code that they can install on their sites. This code will work in the background of visitors’ browsers, mining coins by utilizing excess CPU power of their computer.
+In this blog post we will not discuss whether it’s a good alternative for banner ads, nor whether your computer has “excess CPU power” that allows websites you visit to drain – this is what happens when you visit a site with CoinHive JavaScript Miner.
+Visitor’s computer CPU load
+For example, many visitors of PirateBay immediately noticed that it began testing such an online miner. It’s a no-brainer that ad blockers will soon begin blocking JavaScript miners too.
+Like with any other type of website monetization, this one is prone to abuse, especially in its early stages. It didn’t take long for us to encounter the CoinHive miner installed on hacked sites. It’s a natural move for bad actors who similarly abuse other legitimate means of website monetization, for example, installing their own ad or affiliate codes to third-party sites.
+Malicious Injection with CoinHive Miner
+In this case, a webmaster contacted us and said that some of their site visitors noticed high processor load while visiting the site. Some of them even identified the CoinHive cryptominer there. Indeed, the HTML code of web pages contained this code in the footer section:
+Injected code
+That security.fblaster[.]com script loaded the CoinHive Miner script
+CoinHive miner on security.fblaster[.]comIt’s not the official way to use the CoinHive Miner  (which is supposed to be loaded from lib/coinhive.min.js on their own site) but if you check the first long line of the “security.fblaster[.]com” script you’ll see that it’s identical to the CoinHive’s own coinhive.min.js. The rest of the lines are the part that initializes the miner using the site’s unique key and starts it on page load.
+Security.fblaster[.]com Malware
+We searched for security.fblaster[.]com and found very similar injections on a few other sites.
+
+hxxp://security.fblaster[.]com/sidebar.js?id=1
+hxxp://security.fblaster[.]com/slider.js?id=1
+hxxp://security.fblaster[.]com/widgets.js?id=1
+
+The names of the scripts are made to appear legitimate so that the webmaster doesn’t get alarmed when seeing them. Moreover, a couple of sites we investigated referenced the domain names of the infected sites within the malicious script – making them look even more as if they belong on the sites.
+Those scripts have been already removed from most of the infected sites, but one site still had that live script and it loaded the same crypto-miner with another site key: XMzUIs3Jx7qkRuPPfxG4I5k4AdXfQV6D.
+Cryptominer Re-uses Old Infection
+We checked the infected sites on the Wayback Machine and tracked down that injection to the end of 2016. We also noticed that the IP address of the “security.fblaster[.]com” server (178.62.224.14 – Digitalocean Amsterdam) was mentioned in a tweet about an attacks that tried to exploit RevSlider vulnerability:
+#RevSlider #soaksoak #malware attempts from 178.62.224.14 (NL) ../wp-config.php
+That was strange considering CoinHive didn’t even exist back then. According to WHOIS, coin-hive.com (the domain that is hard-coded inside the JavaScript miner) was registered just a month ago on August 24th, 2017.
+Moreover, on the site whose webmaster contacted us, the script was only injected on September 19th, 2017 (which was confirmed by Google cache). We also noticed that the script had a long number in the ?id= parameter that changed on every page load, while in scripts on other sites it was always ?id=1.
+It appears as if this is not a new infection, but since the attackers already control the “security.fblaster[.]com” server, they can easily modify the malicious script without having to change anything on sites that they had infected previously.
+Once the hackers learned about CoinHive, they registered for the service (it only asks for a valid email address) and ported their JavaScript Miner to work off of their own domain – effectively re-using the scripts they already injected to compromised sites.
+Since the cryptocurrency miner only produces meaningful results on sites with lots of visitors (or on a large number of less popular sites), they began to inject the miner to new sites just a few days ago. At this point the security.fblaster[.]com infection is not massive (although there are other similar attacks as you’ll read below) as we don’t see it on many other sites so probably the attackers are still testing this approach.
+Infected Files on WordPress
+Now let’s see how this infection works on the server. A quick scan revealed modified core WordPress files.
+The first modification was discovered at the top of the wp-admin/admin-header.php
+<?php
+/**
+* WordPress Administration Template Header
+*
+* @package WordPress
+* @subpackage Administration
+*/
+if(!isset($_COOKIE["wpt"])){setcookie("wpt","4376",time()+3153600000,"/");}
+...
+This line of code sets the wpt cookie for 100 years (!) for WordPress users who log into the Admin interface.
+The next file is wp-includes/general-template.php with a modified wp_footer() function.
+...
+function wp_footer() {
+/**
+* Prints scripts or data before the closing body tag on the front end.
+*
+* @since 1.5.1
+*/
+do_action( 'wp_footer' );
+require_once('options-footer.php');
+}
+...
+This function is responsible for generating the footer section of web pages. Hackers added functionality by calling code from wp-includes/options-footer.php  – which, by the way, is not a legitimate part of WordPress.
+Let’s take a look inside the malicious options-footer.php file.
+Source code of options-footer.php
+As you can see, this file injects the security.fblaster[.]com script (CoinHive Miner), into the footer of web pages, effectively abusing all visitors who are not known as the site users (don’t have the wpt cookie).
+This code also provides us with the answer why we saw a long number in the ?id= parameter of the injected script, and why it changed on every page load. It turns out it’s just a timestamp generated by the time() function.
+Injected CoinHive Miner on Magento
+By the time we finished cleaning this site, my colleague Douglas Santos, who worked on a different site, found another type of injected cryptominer script. It was the same CoinHive JavaScript miner but the code was injected into database of the Magento site (design/head/includes in the core_config_data table).
+The injected remote script was different:
+CoinHive miner in Magento Database
+The source of the script – hxxps://camillesanz[.]com/lib/status.js – is also a version of the CoinHive’s own coinhive.min.js – but this time it’s encrypted and looks like this:
+Encrypted CoinHive miner inside status.js
+In this case, the attacker decided to host the script on a hacked third-party site and went an extra mile to encrypt the script which suggests far more serious intentions for this attack than in the case of security.fblaster[.]com.
+The database injection, in this case, coexists along with an older massive Magento infection that injected redirect scripts like:
+
+hxxps://africangrey[.]top/redirect_base/redirect.js
+hxxp://alemoney[.]xyz/js/stat.js
+hxxp://africangirl[.]top/redirect_base/redirect.js
+hxxp://ribinski[.]us/redirect_base/redirect.js
+hxxps://aleinvest[.]xyz/js/theme.js.
+
+It Escalated Quickly
+The next morning we received this email:
+Themes, Plugins are exploiting to mine monero coin and sucking lot of CPU.
+Manually Cleaned 20+ Sites today.
+Please help us.
+We are still waiting for details on this case so stay tuned for the updates.
+Conclusion
+One thing is clear – the release of JavaScript coin miners for websites was not unnoticed by the bad guys. They immediately began looking for ways to abuse it, and we expect to see mass infections switching their attention to crypto-miners instead of traditional types of malicious payloads, and not just on WordPress and Magento.
+While the cryptocurrency miners for websites is a very new thing, there is nothing new in approaches that hackers use to abuse it. If something can be installed on a web site and monetized, hackers will do it on websites they compromise. Thus one of the best security practices for webmasters is to monitor integrity of their sites.
+For WordPress infections like this, you can use our step-by-step guide on how to identify hack and clean a compromised WordPress site.  We also have a similar guide that will help owners of Magento sites.
+If you need immediate help with this type of infection, we offer affordable website security plans.

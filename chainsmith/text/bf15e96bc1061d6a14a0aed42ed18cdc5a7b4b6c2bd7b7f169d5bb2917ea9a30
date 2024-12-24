@@ -1,0 +1,187 @@
+VPNFilter botnet: a SophosLabs analysis
+
+A technical investigation of the malicious components involved in the attack that infected over 500,000 routers and network storage devices.
+
+Written by
+Sergei Shevchenko
+
+May 24, 2018
+
+SophosLabs Uncut SophosLabs VPNFilter
+
+Thanks to the Cyber Threat Alliance, SophosLabs researchers were provided early access to malware samples collected by Cisco TALOS team in their research of the VPNFilter botnet activity. Besides updating our protection data, we also had a chance to take a closer look at the attack components and the 3 stages of the attack. Here is our findings.
+1st stage implant
+The 1st stage implant 0e0094d9bd396a6594da8e21911a3982cd737b445f591581560d766755097d92 is compiled as a x86 ELF executable.
+This executable was first submitted to VirusTotal on 12 June 2017, from a user in Taiwan. According to VirusTotal, the submitted file has a filename:
+C:\Users\chli\Documents\qsync.php
+Possibly, the file was fetched from a remotely hosted script called qsync.php, using a Windows system. However, it’s not clear how this sample was used to compromise the devices.
+When run, the implant schedules itself to be executed periodically, by modifying crontab (cron table) file.
+The cron format has five time and date fields: minute, hour, day of month, month, and day of week.
+If a value is specified as */step, execution takes place at every interval of step through the unrestricted range.
+By appending the schedule argument */5 * * * * to the crontab, the implant is scheduled to be activated every 5 minutes:
+fd = open_file("/etc/config/crontab", "a");
+_fd = fd;
+if (fd)
+{
+format_sys_write(fd, "*/5 * * * * %s\n", (int)&fname);
+fd = close(_fd);
+}
+The implant keeps its critical strings encrypted. For that, it relies on a modified RC4 algorithm. In a normal RC4 implementation, the RC4 initialisation routine calculates an index into the state table, using the key. Next, 2 bytes in the state table are swapped in place, where the first byte is pointed by the incremented index i, and the second one – by the newly calculated index index2, as shown below:
+#define swap_byte(a, b) {swapByte = a; a = b; b = swapByte;}
+
+for (i = 0; i < 256; i++)state[i] = i;
+key_index = 0;
+index2 = 0;
+for (i = 0; i < 256; i++)
+{
+index2 = (key[key_index] + state[i] + index2) & 0xFF;
+swap_byte(state[i], state[index2]);
+if (++key_index == key_size)key_index = 0;
+}
+The implant however, initialises the state table differently. Instead of permutating the state table by swapping the bytes in it, it simply applies XOR to the state table, using the same RC4 key.
+Apparently, this flavour of RC4 initialisation is known to be used by BlackEnergy.
+for (i = 0; i < 256; i++)state[i] = i;
+key_index = 0;
+for (i = 0; i < 256; i++)
+{
+state[i] ^= key[key_index];
+if(++key_index == key_size)key_index = 0;
+}
+The RC4 key is a 4-character string hard-coded as %^:d. The rest of the RC4 implementation is identical to the standard algorithm.
+In total, the body of the implant contains 12 encrypted strings. Each encrypted string is stored as a string length that takes 1 byte, followed with the encrypted string itself.
+Once decrypted these strings become:
+
+/var/run/client.crt
+/var/run/client.key
+/var/run/client_ca.crt
+0.3.9qa
+/var/run/msvf.pid
+http[://]toknowall.com/manage/content/update.php
+/var/vpnfilter
+/update/test
+http[://]photobucket.com/user/nikkireed11/library
+http[://]photobucket.com/user/kmila302/library
+http[://]photobucket.com/user/lisabraun87/library
+http[://]photobucket.com/user/katyperry45/library
+
+The first 3 strings are the filenames where the implant saves 3 client certificates, hard-coded within its own body. These client-side SSL certificates are used for authenticated requests to the C2 server, over HTTPS (port 443).
+The version number 0.3.9qa is saved into the file /var/run/msvf.pid.
+The /var/vpnfilter is used as a temporary filename for the downloaded files.
+The implant relies either on hard-coded Photobucket URLs or Toknowall C2 website to fetch the images. The images are used to extract a 2nd stage server IP from the images’ EXIF metadata.
+Next, a payload module is fetched from the 2nd stage server, using a URL path /update/test. The downloaded module is saved as /var/vpnfilter, assigned execution permission with the chmod(511) command, then executed with the sys_execve() system call.
+2nd stage payload: a backdoor trojan
+The 2nd stage payload fetched by the implant 8a20dc9538d639623878a3d3d18d88da8b635ea52e5e2d0c2cce4a8c5a703db1 is a backdoor trojan compiled as x86 ELF executable.
+Just like the 1st stage implant, its critical strings are encrypted using the same method. The RC4 key is different this time: g&*kdj$dg0_@@7'x.
+The decrypted strings expose backdoor commands, IP addresses of C2, and some other configuration parameters.
+For example, the backdoor is able to accept and execute the following remote commands:
+
+download – download remote file, save it as /var/tmp/vpn.tmp
+reboot – terminate current process with sys_exit() system call
+restart – reboot the device with sys_reboot() system call;
+delay – appears to invoke delayed reboot
+copy – read local file contents
+exec – execute command or another plugin, using sys_execve() system call with the following shells:
+
+/bin/sh
+/bin/ash
+/bin/bash
+/bin/shell
+
+kill – terminate process(es) with the sys_kill() system call, delete own files and directories, such as:
+
+/var/run/tord
+/var/run/
+/var/run/vpn.pid
+/var/tmp/vpn.tmp
+etc.
+
+pxs – set C2 proxy, i.e. the module contains 2 hard-coded proxies in it:
+
+217.12.202.40
+91.121.109.209
+
+port – set proxy port
+tr, mds, tor, me – set other configuration parameters
+
+In its communications, the backdoor relies on a user agent string randomly selected from a list of 9 strings:
+user_agent = user_agents[PRNG() % 9];
+where user_agents table consists of:
+
+Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:52.0) Gecko/20100101 Firefox/52.0
+Mozilla/5.0 (Windows NT 6.1; rv:52.0) Gecko/20100101 Firefox/52.0
+curl/7.47.0
+Wget/1.17.1 (linux-gnu)
+git/2.7.4
+Google Chrome/64.0.3282.140 Windows
+Google Chrome/64.0.3282.140 Linux
+Lynx/2.8.8pre.4 libwww-FM/2.14
+python-requests/2.18.4
+
+Just like the implant, the backdoor communicates with its proxies via a SSL connection, relying on client-side SSL certificates.
+The module tries to determine the presence of TOR by parsing socket info from /proc/net/tcp. For each enumerated socket descriptor, it then tries to find a file descriptor (by using a method described here) to a socket that has open connection on port 9050, that is used by TOR.
+With the TOR module installed as a 3rd stage plugin, the communication will take place via the following .onion domains:
+
+6b57dcnonk2edf5a.onion/bin32/update.php
+tljmmy4vmkqbdof4.onion/bin32/update.php
+
+Backdoor modules built for different platforms are almost identical in their functionality. The strings are encrypted using the same key.
+A subtle difference exists in the internal platform ID parameters. For example, x86 module uses IDs:
+
+pDJOSERi686QNAPX86 or pPRXi686QNAPX86
+i686
+
+Backdoor module built for ARM CPU may have these parameters set to:
+
+pDJOSERarmv5lQNAP_ARM
+armv5l
+
+Backdoor compiled for MIPS:
+
+pDJOSERmipsDGN2200V4
+mips
+
+3rd stage plugin
+A 3rd stage plugin afd281639e26a717aead65b1886f98d6d6c258736016023b4e59de30b7348719 is a TOR client. Compiled as x86 ELF executable, it shares the same code as known open-source TOR client implementations.
+Another 3rd stage plugin is built for MIPS architecture f8286e29faa67ec765ae0244862f6b7914fcdde10423f96595cb84ad5cc6b344. The plugin represents itself a sniffer that looks for several interesting traffic patterns, such as:
+
+/tmUnblock.cgi – a vulnerable CGI script in some Cisco/Linksys router firmware; this executable is linked to several exploits and malicious executables, such as Moon Worm, a malicious Bitcoin miner that has infected Linksys routers in the past
+*modbus*\n%s:%uh->%s:%hu – a packet used in Modbus, a standard communication protocol, commonly used for connecting industrial electronic devices, such as PLC
+Basic Og== – part of HTTP authentication packet, that means “Empty username and empty password”
+
+Other patterns related to HTTP authentication packets:
+
+Password required
+Authorization: Basic
+User=
+user=
+Name=
+name=
+Usr=
+usr=
+Login=
+login=
+Pass=
+pass=
+Password=
+password=
+Passwd=
+passwd=
+
+The intercepted data is stacked into the files, formatted as:
+%DIR%/rep_%NUMBER%.bin
+where %DIR% is a working directory, such as /var/run/vpnfilterw.
+Conclusion
+VPNFilter malware is another clear demonstration of rather philosophical paradigm: the more IoT devices we have helping us out in our daily lives, the more advanced the CPUs become, driving our routers, cars, or refrigerators (you name it), the bigger an attack surface becomes.
+The type of CPU during the grunt work within all those devices, whether it’s ARM or MIPS or Intel x86, don’t matter much, as long as they are powerful enough, and they are becoming more powerful each day. That’s the whole gist of the evolution, and this process won’t stop.
+VPNFilter also demonstrates how the cybercriminals achieve a high degree of portability by building their code so that it targets different architectures.
+What’s still interesting in this case however, is the very possibility for an organization or a home to become compromised by allowing a backdoor access via one of the least suspicious devices in its possession: a little black box quietly sitting on a shelf, blinking with its friendly green eyes.
+VPNFilter isn’t the first zombie malware to target everyday devices on everyone’s network, and it won’t be the last.
+For more information read part 2 of our VPNFilter botnet analysis.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+4

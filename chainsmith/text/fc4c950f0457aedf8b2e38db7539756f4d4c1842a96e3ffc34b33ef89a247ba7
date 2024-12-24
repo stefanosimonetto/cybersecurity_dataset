@@ -1,0 +1,98 @@
+Mail authentication with Domain Keys Identified Mail – part one
+2009-04-01
+
+John Levine
+Taughannock Networks
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Message authentication is a promising technique that can be used to help separate wanted email from unwanted email, and Domain Keys Identified Mail (DKIM) is an authentication technique that seems likely to gain wide acceptance. John Levine looks at what message authentication is and how DKIM works.
+Copyright © 2009 Virus Bulletin
+
+Message authentication is a promising technique that can be used to help separate wanted email from unwanted email. Domain Keys Identified Mail (DKIM) is a new authentication technique that seems likely to gain wide acceptance. In this article we start by looking at what message authentication is (and isn’t), then at how DKIM works, and finally at how DKIM fits into an overall mail-handling strategy.
+
+What is message authentication?
+Internet email dates from an era when everyone on the Internet behaved themselves. (If they didn’t, they lost their net access – a penalty too awful to contemplate.) As a result, the design of the message formats and SMTP delivery protocol didn’t concern itself with security, meaning that anyone could (and can) send mail that purports to be from anyone else. At the time this was an entirely reasonable design. After all, there is no difference between this and paper mail, where anyone can scribble anyone else’s return address on an envelope and drop it in a mailbox.
+These days, the security weaknesses of Internet mail are painfully apparent. The ability to lie about the origin of mail makes phishing (the practice of sending fraudulent mail that attempts to trick users into revealing their banking credentials or similar) far easier. It also makes spam filtering a lot harder, since a spammer can make spam that really comes from a single source appear to come from thousands of different people.
+Message authentication addresses this problem by associating a hard-to-forge identity with every legitimate message. Once you have a reliable identity associated with a message, you can make mail-handling decisions based on that identity, as well as on other characteristics of the message.
+
+What authentication is and isn’t
+Although message authentication is an important tool for mail management, it is not the silver bullet that some people have taken it to be. In particular, knowing that the identity of a message is authenticated is not useful unless you know something about the identity. It is easy to assume that an authenticated message is better than an unauthenticated message, but bad guys can (and do) authenticate their mail just as much as good guys.
+In the follow-up part of this article next month we will discuss some of the ways in which an authenticated identity can be used in mail management.
+
+Where did DKIM come from?
+People noticed Internet mail’s lack of authentication a long time ago. Phil Zimmerman’s Pretty Good Privacy (PGP) was used to sign mail messages as long ago as 1991, and by 1998 the Internet Engineering Task Force (IETF) had defined the S/MIME standard for signed messages. Each allows every individual email address to have its own signing key. Even though S/MIME is now built into every popular user mail program, neither it nor PGP has gained more than niche acceptance. Both require each individual user to install signing keys into his or her own mail program, and this key distribution has proved to be a major barrier to acceptance.
+In 2003, a number of different domain path authentication schemes were proposed, the most successful of which were Meng Wong’s SPF and Microsoft’s Sender-ID. Unlike PGP and S/MIME, their granularity is the domain, the part of an email address after the ‘@’ sign. They attempt to authenticate a domain in the message (the envelope sender domain for SPF, and the From: or Sender: domain in Sender-ID) against a list of IP addresses of servers that are allowed to send messages from the domain in question.
+While path authentication can work reasonably well for some kinds of mail, such as commercial mail sent in bulk from a fixed source, it is a less-than-adequate authentication technology. For example, many professional societies offer permanent email addresses to their members, who can arrange for mail sent to the society address to be forwarded to whatever ISP or work address they are currently using. This means that the member’s ISP sees the incoming mail sent from the society’s mail-forwarding server, not the system that originally sent it – which makes path authentication that depends on matching the original sending system fail. Even worse, the members send mail with their society address from their own ISPs, not through the society’s mail server, which means that for path authentication to work, the paths for the society’s domain would need to include every ISP and other server that any of the members use. There are some proposed workarounds to the forwarding problem, but they are worse than the disease they attempt to cure.
+Signing systems like DKIM don’t care what path the message has taken, since authentication is based on the signature which is part of the message itself, rather than its path.
+Yahoo’s Mark Delany developed the DomainKeys (DK) message-signing system in 2003. Experiments with it were sufficiently promising that Yahoo offered it to the IETF as a candidate for standardization. In 2004, Jim Fenton at Cisco developed a similar system called IIM, Identified Internet Mail. The IETF DKIM working group started with DK, added some bits of IIM, and made a variety of other changes to develop DKIM, which was published as RFC 4871 in 2007 (http://www.ietf.org/rfc/rfc4871.txt).
+
+How DKIM works
+DKIM is a domain-level message authentication system. Unlike PGP and S/MIME, but like SPF and Sender-ID, DKIM is intended to provide authentication of mail in transit from one mail system to another, not long-term end-to-end security. A message can have a signature added as it is sent or at any other stage as it is relayed through the mail system, and that signature can be verified at any stage until the message is displayed to its recipient(s). However, the signature is most often added by the sender’s outgoing mail server and checked at the recipient’s incoming mail server (Figure 1).
+Figure 1. Typical message flow.
+A DKIM signature is a message header added to a mail message, usually at the beginning, like this:
+DKIM-Signature: v=1; a=rsa-sha256; c=simple; d=taugh.com;
+h=date:message-id:from:subject:to:mime-version:content-type:content-transfer-encoding;
+s=k0903; bh=5o0hMsSoDxzLnalxFjRtVg5UjkyYctOb5I8vMpc6h60=;
+b=53KLFMz5RX06C/nX3uTiaR5dWuYw083+jBkb1jOKsejSBTw7CWrZdFV1unbb6pGbIELAaWywCVQxB+DDhk
+XpDGXaa7oedMJud/xwmOdqCZAsFBlTOh+0DpF1B81LjfPClsgNoNpKIh2HuzxX0TwJr3gIck6cYS4EpwdIrARA=
+
+Date: 19 Mar 2009 22:10:36 -0000
+Message-ID:
+<
+[email protected]
+>
+
+From: John Levine <
+[email protected]
+>
+
+Subject: DKIM article
+
+To: Helen Martin <
+[email protected]
+>
+
+Mime-Version: 1.0
+
+Content-type: text/plain; charset=iso-8859-1
+
+Content-transfer-encoding: 7bit
+
+I agree, it’s one of the finest works ever written in the English language.
+The verifier can first check whether the message has been modified since it was signed, and if it hasn’t been modified, check if the signature validates using a verification key found in the DNS.
+The signature is created in such a way it can be verified even if the message suffers minor changes (caused by mail relay software) between the time it is signed and the time the signature is verified.
+
+Domains and selectors
+The choice of identity is a major way in which DKIM differs from its predecessors. Sender-ID and DK both used the address in the From: or Sender: header to get the domain for authentication. A DKIM signer, on the other hand, can sign with any domain for which it has a signing key. This matches the structure of Internet mail much better than tying the identity to a message header. The mail server that applies the signature may belong to a mail provider that handles thousands of customers with their own domains. Even free mail providers such as Google and Yahoo (both early adopters of DKIM) allow their users to use any return address they want, subject only to a simple one-time verification (they are required to click on a URL sent to the address in question).
+DKIM does not inherently assert that anything in the message is ‘real’, or that the From: address belongs to anyone in particular, but rather than the signing domain is taking responsibility for the message as it was at the time the signature was added.
+DKIM signatures include selectors – arbitrary names used for key management. Each DKIM signature includes both a domain name and a selector, and the key is specific to the domain+selector pair. Typical uses of selectors are for key rotation, periodic switches from an old selector and key to a new one, or to allow organizations that have many physical locations to use different keys at different locations.
+Since the signature identity is not tied to addresses in the message, it is possible, and often useful, to put several signatures on the same message. For example, a mail service bureau sending mail on behalf of a client might add both its own signature and that of its client when it sends the mail.
+
+The mechanics of message signing
+Creating a DKIM signature is a multi-stage process. The signer conceptually divides the message into two parts, the header and the body. First, it computes a hash value of the body. Then it selects some of the message headers, creates a second hash of the headers, signs that, and puts the signed value into a DKIM-Signature: header. The header is a sequence of field names and value pairs, in which the body hash and signed header hash are two of the fields.
+Before the signer creates the body hash, it canonicalizes the message body, putting it into a standard form intended to deal with possible modifications in transit.
+Two different algorithms can be used to perform body canonicalization, simple and relaxed. The simple one discards any blank lines at the end of the message and otherwise leaves the body as it is, while the relaxed one also removes white space at the ends of lines and squashes each sequence of white space to a single space. Either way, the signer computes a hash of the canonicalized body. The current version of DKIM uses the standard SHA-256 hash, although the spec allows for new hashes to be added in case SHA-256 turns out to have security weaknesses (as its predecessor SHA-1 did). The body hash is encoded using MIME-style base64 to become the value of the bh= field in the DKIM signature.
+Next, the signer creates the header hash. Since it is quite common for headers to be added, changed and deleted in transit, the signer picks a subset of headers, leaving out the ones that are either likely to change or are not very important. The list of headers included in the signature make up the h= value in the DKIM signature.
+Although not listed in the h= value, the DKIM-Signature header itself is always the last header in the list to be signed. Again, there is a canonicalization step with two options, simple and relaxed. The simple header canonicalization algorithm takes the headers exactly as they are, while the relaxed one turns all of the header names into lower case, makes each header a single line by removing the CR/LF between continuation lines, and squashes white space into a single space. It computes a SHA-256 hash of the canonicalized headers, which includes the body hash as part of the DKIM-Signature header. It then signs the hash using its private signing key. DKIM currently uses the RSA signature algorithm but allows for new algorithms to be added in the future. It then inserts the signed hash into the DKIM-Signature header and adds it to the beginning of the message.
+Having been designed by a committee, DKIM signatures have a large number of optional fields, many of which are of debatable utility at best, so I won’t try to cover them all. In this example the signature includes v=1 for DKIM version 1 (in case there are future versions), a=rsa-sha256 to identify the RSA signature and SHA-256 hash, c=simple to indicate simple canonicalization for the header and body, d=taugh.com to identify the signing domain, h= the list of signed headers, s=k0903 for the key selector, bh= the body hash, and b= the signed message hash.
+A controversial feature of DKIM is i=, the ‘identity of the user or agent on behalf of which this message is signed’. The i= value has the syntax of an email address, and must be in the same domain as or a subdomain of the d= signing domain, but it doesn’t actually have to be an email address, since there are plenty of computer systems where addresses and identities don’t directly map onto each other. At the time the DKIM standard was drafted, the committee wasn’t really clear whether the i= was supposed to be an email address, an address-like thing that should make sense to recipients, or an opaque token – basically a private note from the signer to itself to help track internal mail sources. (I am on the DKIM committee so this lack of clarity was partly my fault.)
+An errata document likely to be published by the DKIM working group clarifies that i= is an opaque token for the signer, and verifiers should use the d= domain as the responsible identifier. Even without depending on i=, signers can still use a variety of identifiers to sign their mail if they want, since subdomains are cheap. For example, my main domain is iecc.com so I put d=iecc.com on all my outgoing mail, but my mailing lists are in lists.iecc.com, so I also put a d=lists.iecc.com signature on mail from the list manager.
+
+Mechanics of signature verification
+Verifying a signature involves first checking that the signature matches the message, then that it matches the verification key. The verifier computes the body hash in the same way as the signer. If it doesn’t match, it stops, since the message it is attempting to verify isn’t the one that was signed.
+Then it computes the header hash in the same way as the signer, and checks that the decrypted version of the hash in the DKIM-signature matches. It looks up the decryption key (also called the verification key) in the DNS. Each key record is identified by the combination of selector and domain, named <selector>._domainkey.<domain>. (The _domainkey token ensures that the name won’t conflict with names used for other purposes. Names of hosts and mail servers can’t contain underscores, only names used for other purposes.)
+The key record used to verify the signature shown earlier is:
+k0903._domainkey.taugh.com. IN TXT “v=DKIM1; h=sha256; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDo
+LLTbRvOcbGSFujXff4R08XXMxE5kJhFpIxBd/n/O7+YOTfg7lUWO8D14J6bXfOC0Bm93WHj1Dj3yXfJ/QTO5TjcmsjBNwW/
+XItJ4dFnEHWUg6Ta8g7intJMtdVvMjW86/LpmFy/x3wxtHrbzifbjh0hxi54pAsCeIRuhfWyeKQIDAQAB;”
+The key record is formatted similarly to the signature: a series of key=value pairs separated by semicolons. Once again, there are a lot of options of limited usefulness, but this key record is typical with a v=DKIM1 to indicate DKIM version 1, h=sha256 to say that this key is only to be used with SHA-256 hashes, and p= the verification key. The key type defaults to RSA, but an optional k= field will allow new keying schemes.
+If the DNS key lookup succeeds, the verifier performs an RSA decryption of the b= signature using the public key from the DNS, and checks that it gets the proper header hash. If it does, the signature verification has succeeded. A message may have multiple signatures, all of which are checked in the same way. All the signatures that use the same canonicalization algorithm should have the same body hash, so the checker needs to compute the body hash at most once for each algorithm.
+The result of each verification is a single bit – either it succeeds or it fails. In particular, the presence of a signature that doesn’t verify doesn’t imply that the message is forged or anything else bad about the message, since there are plenty of innocent reasons why a signature could break.
+
+Mail-handling and related technologies
+In next month’s instalment we will look at the ways in which a DKIM-authenticated domain fits into a mail-handling system, and at some related technologies that build on DKIM to help recognize good mail senders and deter phishing.

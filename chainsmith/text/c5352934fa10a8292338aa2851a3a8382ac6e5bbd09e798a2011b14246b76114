@@ -1,0 +1,451 @@
+Exepacker blacklisting
+2007-10-01
+
+Gabor Szappanos
+VirusBuster
+,
+Hungary
+Editor:
+Helen
+
+Martin
+Abstract
+The blacklisting of exepackers by AV products is a controversial subject with opinions among the AV community varying widely. Gabor Szappanos takes a balanced view and discusses the pros and cons of exepacker detection.
+Copyright © 2007 Virus Bulletin
+
+Introduction
+Undisputedly the most controversial subject at this year's International Antivirus Testing Workshop in Reykjavik [1] was the detection (or not) of exepackers. Opinions ranged very widely among attendees, with some of the most common comments being:
+Detecting exepackers is a bad thing, because we are saying something about the sample without any information about the main code.
+The presence of the exepackers should be indicated in the scan log, but there should be no detection.
+Exepacker information can be used to further heuristic evaluation.
+Exepackers should be detected only in special scan modes.
+It is OK to detect exepackers, because these are mostly used in malware.
+I won't pretend to be unbiased on this topic. VirusBuster introduced exepacker blacklisting in December 2006. It was preceded by a long period of preparation, and it is an ongoing development project as new exepackers are added to the list. However, I understand and accept the other opinions, and in this article I will try to summarize the pros and cons of exepacker detection and relate some of our experiences.
+The article will also provide a detailed examination of different types of packer, look at how to handle packers during analysis, as well as what may happen in the future.
+
+Summary
+Exepacker blacklisting was introduced by VirusBuster for the following reasons:
+Because it is a good indication of malware.
+Because we felt we couldn't afford not to do it.
+Because other vendors were already doing it.
+Let us learn from real life. When a customer brings to our support team a PC that is suspected to be infected, the first thing we look for is the presence of exepacked files in the %Windows% or %System% directory. If we find any, they are almost certain to be malware.
+If this common sense approach works for our support engineers, perhaps our AV engine can use the same argument.
+
+Origins
+Runtime executable compressors have been around since the early days of PC computing. Even MSDOS 6 used PKLITE for packing some of its system files. The reason for the use of compressors was to save disk space - hard disk space was precious back then, and any method that could free up some disk space was welcome.
+Later, in the modem era, download bandwidth became a valuable commodity, thus executable packers or archivers were used to decrease the package size.
+Of course, none of this spares any RAM - since the decompressed executable is expanded in the memory during runtime.
+I wouldn't say that the detection of exepackers by anti-malware products is a revolutionary idea. In fact, the first discussion I recall on the subject was with McAfee's Peter Morley, at VB2005 in Dublin. He reasoned that if a sample is detected with a 'black' packer, or multiple layers of packers, then it must be a very suspicious sample. Back then I thought this was an unlikely scenario, but times have changed.
+
+What are the exepackers?
+Windows executable programs are typically very large. In order to save disk space and download bandwidth, shareware/freeware applications have been compressed with runtime packers for many years. These runtime compressors (also called exepackers) unpack the original program in memory, and transfer the execution. Typical exepackers include UPX and ASPack.
+Commercial programs have different requirements. In order to protect intellectual property these are encrypted with different runtime tools, which are not designed (primarily) to spare the size of the executable, but to make it difficult to reverse engineer it. Commonly used encryptors include ASProtect and Armadillo.
+The basic types of packer are as follows:
+Compressors: designed to decrease the size of the executable disk image.
+Cryptors: designed to hide the original executable from reverse engineering through the use of simple encryption.
+Installers: designed to create a single self-installing executable package of a set of files.
+Protectors: designed to hide the original executable from reverse engineering through the use of anti-debugging tricks and more complex cryptographic algorithms.
+Before VirusBuster started blacklisting runtime packers, we had an extensive discussion with experts from other AV companies. We were able to do so because about two years ago, recognizing the need for some coordinated effort to handle exepackers, a communication forum was set up for experts in this field. The discussion helped us (and I believe others) to determine which packers should be blacklisted and which should not.
+Not all packers are equal. Roughly, there are three groups:
+1. Custom-made packers, with no public release. The packers in this group (UPC, Tibs packer, NSPM, etc.) have never been released for public use - these are developed and maintained by malware authors. We blacklist them without question - whatever comes from malware authors is not to be trusted. We have never had a false positive from this group.
+How do we know that there is no public release? As mentioned previously, exepacker experts communicate on this subject. Many of the experts follow discussion groups closely, check websites regularly for new versions of packers, and if something new comes up in a malware sample, they take the time to hunt the packer down. One of them may miss a new packer, but if none of them finds the source for a new packer, then it is very likely not available.
+2. Publicly released exepackers, which are commonly used in proprietary programs (Themida, ASProtect, Armadillo, UPX etc.). We realize that these packers are used in legitimate programs, so we don't blacklist them. Therefore we don't have any false positives here. Most protectors belong to this category. It is unfortunate that the most complicated packers (Armadillo, Themida, ASProtect) belong in this category - we can't blacklist them and we are not able to unpack them.
+Once again, communication with the exepacker experts helps us to determine which packers are used in legitimate programs.
+3. Packers which are publicly released, but which are used mostly in malware. This is the problematic category. These packers (UPack, NsPack, PeX, etc.) are popular with malware authors, but some legitimate programs also use them. Here we have to make a decision based on the prevalence of these packers. It's a tough decision, because as soon as we start blacklisting one of the packers in this category, we are certain to generate false positives - but we judge that the benefit will outweigh the cost.
+(Note: the use of the term 'false positive' is not strictly correct in this instance - we state that the file is packed with a certain packer, which is often used by malicious programs, and that statement is true. However, a grammatical argument will not make our users happy when their favourite applications are quarantined, no matter what the accompanying log message says.)
+There is some transition between the three packer categories. For example, Bagle authors started to use PeX in order to avoid detection by anti-virus scanners. Later, since they had access to the publicly available source code of the packer, they started to modify it. Some AV scanners still recognized and unpacked the first variations, but after a while the modifications became so extensive that we were faced with what was effectively a custom-made packer.
+
+Exepackers are a good indication of malware
+Like professional software developers, malware authors are also interested in minimizing size (e.g. when they have to transfer their executables from one PC to another during infection) and in making their programs difficult to reverse engineer. If a malicious program is difficult to analyse, then it is more difficult to develop a generic detection using emulation, and the malware has a better chance of survival.
+As a result, malware authors tend to use protectors/cryptors. Typically the products they use are different from those used by professional software developers for three reasons:
+They don't have to pay for a licence (though some could easily afford it).
+Custom packers are less likely to be recognized and uncompressed by AV programs.
+Custom packers can be changed more frequently if the malware authors have the source code themselves.
+
+How should the exepackers be handled?
+AV engines use two basic approaches for handling exepackers (and many of them use a combination of both).
+A generic approach is to unpack the packer/cryptor layer using an emulator, which is a standard accessory of contemporary AV engines. This approach has the advantage of being able to unpack unknown packers, or tweaked versions of known packers, but since running code in the emulator is at least a couple of times slower than running native code, it tends to be a performance killer.
+For this reason, AV developers use native unpacker modules for common exepackers. This is a lot faster than running the code in an emulator, but the recognizers can be fooled, so tweaked versions of known packers will avoid native unpacking.
+A hybrid approach can also be used. When the code is executed in an emulator and a common packing/crypting algorithm is detected during execution, the engine switches to native execution of the algorithm, then back to emulation.
+
+False positives
+We must be mindful of the fact that exepackers are used in legitimate applications as well, so before we start any blacklisting, we have to investigate them thoroughly to minimize user impact.
+The following are Bit9's statistics of clean files as revealed in Mario Vuksan's presentation on maintaining a whitelisting database at the Antivirus Testing Workshop [1].
+archive_type
+found_count
+
+Total count: 2,897,804
+
+PACK/UPX 0.8x - 2.xx
+2319
+0.08%
+PACK/Private exe Protector 2.0
+808
+0.02%
+PACK/ASPack 2.12
+463
+0.01%
+PACK/ASProtect 1.33 - 2.1
+284
+0.00%
+PACK/ASPack 2.11 - 2.11d
+237
+0.00%
+PACK/PKLITE32 1.1
+189
+0.00%
+PACK/CExe 1.0a
+155
+0.00%
+PACK/PECompact 2.xx
+138
+0.00%
+PACK/ASPack 2.1
+68
+0.00%
+PACK/Petite 2.2
+46
+0.00%
+PACK/PECompact 1.68 - 1.76
+40
+0.00%
+PACK/ASPack 2.000
+33
+0.00%
+PACK/ASPack 1.08.03
+33
+0.00%
+PACK/Themida 1.0.0.0 - 1.8.0.0
+28
+0.00%
+PACK/UPX 0.72
+25
+0.00%
+PACK/ASPack 2.11
+22
+0.00%
+PACK/ASPack 2.001
+19
+0.00%
+PACK/ASPack 1.07b
+16
+0.00%
+PACK/ASPack 1.08.02
+15
+0.00%
+PACK/EXECryptor 2.2 - 2.3
+14
+0.00%
+PACK/ASPack 1.06b - 1.061b
+14
+0.00%
+PACK/HASP HL Protection 1.x
+11
+0.00%
+PACK/PEBundle 2.x
+9
+0.00%
+PACK/ASProtect 1.0
+8
+0.00%
+PACK/Reflexive Arcade Wrapper
+7
+0.00%
+PACK/Thinstall Embedded 2.312
+6
+0.00%
+PACK/PE Pack 1.0
+5
+0.00%
+PACK/ASPack 1.08.04
+4
+0.00%
+PACK/WinUPack 0.37 - 0.39
+4
+0.00%
+PACK/EXECryptor 2.xx
+4
+0.00%
+PACK/EXE Stealth 2.72
+4
+0.00%
+PACK/ACProtect 1.4x
+4
+0.00%
+PACK/UPX-Scrambler RC1.x
+4
+0.00%
+PACK/UPX 0.62
+4
+0.00%
+PACK/EXECryptor 2.0 - 2.1
+4
+0.00%
+PACK/PC-Guard 4.0x
+3
+0.00%
+PACK/Petite 1.2
+3
+0.00%
+PACK/FSG 2.0
+3
+0.00%
+PACK/FSG 1.33
+3
+0.00%
+PACK/Yoda's Cryptor 1.2
+2
+0.00%
+PACK/PC Guard 5.00
+2
+0.00%
+PACK/UPX 0.70
+2
+0.00%
+PACK/UPX Protector 1.0x
+2
+0.00%
+PACK/EXE32Pack 1.38
+2
+0.00%
+PACK/PECompact 1.47 - 1.50
+2
+0.00%
+PACK/WinUPack 0.28 - 0.3x
+2
+0.00%
+PACK/PECompact 0.978.1b
+1
+0.00%
+PACK/Petite 1.4
+1
+0.00%
+PACK/PECompact 1.40 - 1.45
+1
+0.00%
+PACK/PECompact 1.67
+1
+0.00%
+PACK/Thinstall Embedded 2.42x -
+1
+0.00%
+PACK/HidePE 1.1
+1
+0.00%
+PACK/ASPack 1.03b
+1
+0.00%
+PACK/ProActivate 1.0x
+1
+0.00%
+PACK/SDProtector 1.1x
+1
+0.00%
+PACK/Thinstall Embedded 1.9x
+1
+0.00%
+PACK/FSG 1.0
+1
+0.00%
+PACK/Thinstall Embedded 2.62x
+1
+0.00%
+PACK/tElock 0.71
+1
+0.00%
+PACK/yodas Protector 1.03.3
+1
+0.00%
+PACK/Thinstall Embedded 2.609
+1
+0.00%
+PACK/PECompact 1.30 - 1.32
+1
+0.00%
+PACK/tElock 0.60
+1
+0.00%
+PACK/ASPack 1.08.00 - 1.08.01
+1
+0.00%
+PACK/eZIP 1.0
+1
+0.00%
+PACK/ASProtect 1.1
+1
+0.00%
+PACK/Yoda Cryptor 1.2
+1
+0.00%
+PACK/PECompact 1.55
+1
+0.00%
+PACK/UPX 0.60 - 0.61
+1
+0.00%
+Table 1.
+Most of the samples in the recent WildList use some sort of exepacker [2]. Of the 739 files there are only 54 that do not use an exepacker. The remaining 92% use over 30 different packers. The top packers in use in the WildList are:
+UPX: 167 files
+Morphine: 72 files
+MEW: 59 files
+FSG: 50 files
+PESpin: 32 files
+Recent network worms have also shown extensive use of packers. The prevalence of packers among new malware is as follows:
+Packer
+Count
+UPX
+398
+Obsidium
+162
+PECompact
+155
+FSG
+120
+Themida
+108
+UPack
+103
+ASPack
+89
+NSPack
+89
+Armadillo
+88
+Enigma
+86
+MEW
+86
+UPC
+62
+Packman
+58
+PolyCrypt
+56
+Molebox
+50
+Morphine
+29
+ASProtect
+27
+Expressor
+23
+Petite
+18
+NSAnti
+17
+PEBundle
+12
+PE-Shield
+12
+PELock
+11
+PE-Armor
+10
+WWPack32
+10
+Polyene
+8
+PESpin
+7
+TeLock
+7
+PE-Pack
+6
+SoftComp
+6
+Ezip
+6
+Pingvin
+5
+Yoda
+5
+PCShrink
+5
+Pex
+4
+YodaProt
+4
+NTPacker
+3
+PE-Diminisher
+3
+NakedPack
+3
+SimplePack
+3
+Exe32Pack
+3
+ExeStealth
+3
+YodaProtect
+2
+Kcuf
+2
+RadPack
+2
+Crypt.Kcuf
+2
+SDProtector
+1
+JDPack
+1
+PE-Crypt.Sqr
+1
+Thunder
+1
+BJFnt
+1
+Neolite
+1
+The packers listed within the top part of the clean file statistics (which are thus not suitable for blacklisting) are shown in bold italic. These packers are better handled by unpacking.
+Clearly, many white packers appear amongst the malware samples, but it is also clear that there are a large number of exepackers that are used frequently in malware families, but only rarely in clean applications.
+In the first quarter of this year, 20,000 samples from our incoming collections (samples we have mostly not seen yet) were detected using exepacker blacklisting. Most of these samples would otherwise go undetected, and would have to wait until a specific detection signature was produced. During the same period we had fewer than a dozen user complaints about false positives (which were fixed easily and quickly). The numbers may be different for other companies.
+I acknowledge that false positives are not good, and should be avoided wherever possible. But we don't false positive (at least not because of exepacker detection) on critical system files, which are never packed, or on the most widely used legitimate applications (using packers from category 2 described earlier). So the false positives caused by exepacker detection affect only a small percentage of users, not badly, and only temporarily. Meanwhile, exepacker detection stops common malware proactively, which may affect a very large number of users.
+The chart shown in Figure 1 illustrates VirusBuster's detection of the 'official' packers (in a large malware collection), providing us with an idea of the distribution of these packers.
+Figure 1. VirusBuster exepacker detections.
+
+Others are doing it
+Several other AV companies are blacklisting exepackers. Their detections range from suspicious file indications to clear indications of malware. And there have been a couple of definite 'false positives', where files packed with a certain packer are detected as being infected with a specific worm/trojan. Such cases arise as a result of the packer not being recognized during sample processing, and detection of the sample therefore being based around its code. AutoIT and MEW are known to have caused this type of mistake. In the case of a rare or brand new exepacker, it is not trivial to determine just by looking at the sample whether it is a commercial packer, or a custom-made loader for the specific malware.
+Extra care is needed to interpret and test against false positive detections in the case of exepackers. It is very easy to generate thousands of false positives simply by packing innocent files e.g. with Morphine. In fact, you can generate as many false positives this way as you wish, thus making the product's performance appear poor in a comparative test.
+But these are not real-life examples; real users would never encounter these files. However, shareware/freeware applications, downloadable from Internet repositories, also use exepackers, and if one of those is detected by an AV scanner then it is clearly a very genuine false positive. In short, fabricated samples should not be used to test for exepacker false positives.
+
+We can't afford not to do it
+Figure 2 illustrates the role of exepacker detection across incoming new samples. These are derived from the monthly collections that we receive - each collection is checked as it arrives. Some of the samples are recognized as the result of specific detections - these are samples that we have already received and processed, and for which we have developed specific detection signatures. Others are picked up using generic detection, which is designed to recognize new members of known virus families. The third class of detection consists of the samples that are detected via exepacker blacklisting. The latter two types of detection (generic and exepacker) represent proactive detection of samples we have not seen before.
+Figure 2. Incoming sample detections.
+Of these detections, 14.2% of the new samples are only detected because they include a blacklisted exepacker. These samples would otherwise go undetected and infect users' computers. Yes, we could work harder, support the unpacking of more packers, and detect the underlying code more efficiently. This is also done, and it is another of the weapons we can use. But adding support for a new exepacker to an AV engine is usually a more complicated and time-consuming process than blacklisting it.
+Blacklisting is an opportunistic approach, but I try to be realistic. We don't have enough resources to build engine support for all new packers (and experience shows that whenever a packer becomes supported, malware authors switch to another, more complicated one); so blacklisting helps us relieve some of the burden - and we still have thousands of undetected new samples to process.
+Another advantage of blacklisting exepackers is the detection of older samples. This is advantageous when comparative anti-virus product tests are performed on large collections which often contain old samples. In this case, we don't have to waste precious analysis and processing time working on old samples, rather we can concentrate on the new samples that affect our users (while at the same time keeping our marketing department happy, too).
+In the scanning of older collections, exepacker blacklisting means about 60,000 additional detections. While it can be argued that these samples could be processed by the virus lab to yield the same result, I think anyone would agree that it is better (both for us and for the users) to process 60,000 new samples than to spend the same effort processing the old collection samples.
+Figure 3. Large collection test result.
+The use of generic and packer detection also means the size of the virus definition database can be kept to a minimum. From the same large collection we can compare how many virus definitions we need in the database for the specific detections, the generic detections and the exepacker detections (numbers are approximate):
+
+Detected samples
+No. of virus definitions
+Specific
+240,000
+140,000
+Generic
+60,000
+800
+Packer
+60,000
+20
+
+'Server-side polymorphs'
+In 2005 a new threat related to exepackers was introduced, which is popularly known as server-side polymorphism (although it has nothing to do with what we traditionally call polymorphism).
+In this scenario, 'polymorphic' packers (i.e. packers which generate randomly different output from the same input file) were used to change the shape of the particular malware frequently. The technique was typically applied to malware which had one or more (or several hundred in the case of Bagle) hardcoded update URLs, which they visited for their updates. The content behind the URL was changed after a certain period of time.
+All three types of packer were observed in this scenario.
+A custom packer (UPC) was used in the case of the Swizzor trojan. Eset reported [3] that in a one-week period in September 2005, they observed 38,261 different variants of Swizzor - not directly downloading from the update server.
+A publicly released 'black' packer was used in the Boxed (Robobot) trojans in July 2005. The trojan used Yoda Cryptor combined with UPX compression to change the content of the URL http://zone.megaspaware.com/3/scpr32e.exe approximately every 10 minutes.
+And it was a very remarkable and unpleasant surprise for the AV community when the Bagle authors switched to using ASProtect (which has not been supported properly by AV engines since then) in March 2006, and repacked it approximately once every five minutes.
+What can we do in these cases? It makes very little sense (some say absolutely none) to detect these samples one by one using specific detections. This would inflate the size of the virus database, and would have no practical advantage: by the time the virus database update for the 1,243rd variant was out, the user would already be infected with the 1,856th variant (and downloading the 1,865th). Generic detections are possible if the AV engine supports the packer either by native unpacking or emulation. But in the case of a custom packer, or even more in the case of ASProtect, it is not possible. (OK, nothing is impossible, but I have yet to see an AV engine that unpacks ASProtect.)
+
+The price we pay for it
+There is an obvious disadvantage (or design flaw) in packer detection: we don't detect the malicious code, only the packer code which is external to it. It may be that legitimate applications are detected just because they are packed with a blacklisted packer. In general we handle this (as do many other anti-virus companies) by whitelisting these applications to avoid detection. So far we have added a couple of dozen applications to our whitelist.
+Compared to the advantage of detecting tens of thousands of new samples, though, the price is not high - especially if we consider that the false detections are fixed within one day, so users are not badly affected.
+In our opinion, the benefits of exepacker blacklisting outweigh the costs. Exepacker blacklisting is not an ideal solution. Not even a proper solution. But it does help to protect our customers better against unknown malware samples.
+
+Bibliography
+[1] http://www.f-prot.com/workshop2007/index.html.
+[2] Morgenstern, M.; Brosch, T. Runtime packers: the hidden problem? Black Hat USA 2006.
+[3] Marko, R.; Bockay, M.; Lee, A. The secret life of malware - what's really out there? AVAR 2005.

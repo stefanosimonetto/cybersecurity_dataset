@@ -1,0 +1,85 @@
+Multiple Vulnerabilities in the WordPress Ultimate Member Plugin
+Security Risk: Easy / RemoteDREAD Score: 8.4 | 7.4 | 6.8Vulnerability: Arbitrary file read, delete; stored XSSPatched Version: 2.0.46
+The Ultimate member plugin version 2.0.45 and lower is affected by multiple vulnerabilities, among them is a critical vulnerability allowing malicious users to read and delete your wp-config.php file, which can lead to a complete website takeover.
+All of our clients behind our website firewall are already protected, and are not at risk.
+The three vulnerabilities have the following DREAD score:
+
+Arbitrary file read and delete: 8.4
+Admin dashboard XSS: 7.4
+User Profile XSS: 6.8
+
+Disclosure / Response Timeline:
+
+2019/05/07: Initial disclosure
+2019/05/08: Partial patch released (2.0.45)
+2019/05/10: Complete patch released (2.0.46
+
+File Leak and Delete
+If an admin added a File upload or Image upload input field on one of the forms (such as on the user profile), the user can use it to download any file of the server.
+These type of inputs can be created by an administrator using the Form Builder from this plugin.
+A form builder page
+By modifying  certain data on the form, a malicious user can make the plugin pass along the content of the wp-config.php file instead of the original file or image.
+Technical Details
+When a file has been uploaded on the profile, it is uploaded into the member’s directory.
+As the file location is semi-static and located in the user uploads folder, the plugin doesn’t need to store the whole location. Instead, only the filename is added as a hidden input on the form, which is automatically populated when you upload a file or image.
+The profile form and its hidden input
+The plugin creates a nice route to access the file itself, by rewriting the following URL:
+/um-download/[form-id]/[input-name]/[userid]/[field-id]
+In  order to rewrite  the route, the plugin needs to fetch information from the URL, as well as act as a proxy for the file you’re trying to access.
+The details of this route can be found under the download_routing method of class-files.php.
+There will be few verifications done, ensuring the nonce, user and files are valid.It will end up with either the image_download or file_download methods depending on the type of uploaded file.
+Part of the validation logic of the download_routing method
+Finally, the field id given to the URL will be converted to the field value for this user, which is the filename provided in the previous form.
+The absolute file path will be found using the following code:
+Code in the absolute file path
+Where $field_value is the filename we gave the form.
+The vulnerability here lies in the lack of validation when changing the file name from the profile form.
+As there is no validation, we can perform a path traversal, and replace our file with wp-config.php instead.
+Replacing the wp-config file
+Then, by visiting our profile, the server generates the nice rewritten links to access the file or image, which we can be used to download wp-config.php.
+Finally, since the plugin will delete old files after you update it, we can trick it into deleting files on the server, such as wp-config.php
+To do so, once we used the previous vulnerability to read the content of wp-config.php, we can either remove the existing file from our profile or upload a new, regular file to trigger the cleanup mechanism of the script.s
+Since the website thinks our file is actually wp-config.php, it will delete it.
+Multiple XSS Due to Lack of Sanitization
+Profile – Non-text fields
+When an admin creates a form, he can add many different types of fields for the user to fill.
+Types of non-text fields
+These inputs include the following:
+
+Dropdown
+Radio button
+Checkbox
+Select
+Multiselect
+Rating
+
+Most of these fields should have the values defined by an administrator, or only numeric values in the case of Rating.
+Due to a lack of validation by the plugin, when filling the form an attacker could replace the value of these fields with his own data and the server would still accept them without ensuring they are valid choices.
+As the values are not sanitized before being displayed, an attacker could inject raw HTML as his values, which would be executed upon looking at a profile.
+Due to another bug, any user can overwrite the profile data of any other user.
+This means that an attacker can inject his own malicious code on the profile of other users, such as the site administrator.
+Technical  details
+All fields of the profile will be sanitized with the um_profile_field_filter_hook__ filter, among which is the um_profile_field_filter_xss_validation method in um-filter-fields.php.
+um_profile_field_filter_xss_validation
+Based on the conditions of this method, a field will only be sanitized if its type is text or a url.
+As there are  many other field types which do take a string value, but are not text or a URL, these won’t be sanitized.
+Since there is no verification for the value to be numeric, or to be a valid drop down choice, any value given by an attacker will not be escaped and therefore trigger the XSS.
+The other bug mentioned in the previous post occurs when updating a profile.
+When updating your profile, there are two ways of finding which ID to update.
+The original way, where you use user_id and the permissions are checked.
+Or, you can use the generous _user_id argument, which will completely ignore the permissions and arbitrarily update the user of your choice when provided.
+These actions happen in the um_user_edit_profile method, in um-actions-profile.php.
+um-actions-profile.php
+Admin – Viewing Users Info
+This attack vector requires an image input on the user profile, as well as an admin to visit the user profile.
+When an admin goes on the user information list, he can view the regular information of a user.
+User Information List
+Certain of the custom file fields defined by the admin, such as the image upload fields are among the user information.
+The file itself will be renamed, once uploaded, to something in the following format:
+stream_photo_6844e3f7_ed18...67b15.png
+The original file name will be stored in the field metadata on the user_metadata table.
+The original file name is not sanitized properly when being displayed into the administrative page.
+This means an attacker could upload a file with a specially crafted payload and execute JavaScript code on the admin browser.
+Update as Soon as Possible
+If you’re using a vulnerable version of the Ultimate Member WordPress plugin, update to version 2.0.46 as soon as possible.
+In the event where you cannot do this, we strongly recommend leveraging the Sucuri Firewall or equivalent technology to have the vulnerability patched virtually.

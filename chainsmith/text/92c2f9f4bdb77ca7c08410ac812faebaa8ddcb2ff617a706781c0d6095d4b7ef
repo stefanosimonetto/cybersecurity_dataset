@@ -1,0 +1,93 @@
+Uncovering an Android botnet involved in SMS fraud
+Last week we blogged about how 79 percent of mobile malware was directed at Android and that SMS Trojans represent half of all malicious applications.
+While most SMS messages are free or very cheap, there’s a special category called “Premium SMS” where each message you send can cost you up to $10.
+But there’s a SMS fraud network that is particularly active in Eastern Europe and involves trojanized apps luring users with the usual culprits: fake software updates and porn.
+Our journey starts with a standard (non-rooted) Nexus 4 phone:
+
+We navigate to a site pushing a fake Skype update for Android phones (and tablets).
+
+We proceed to download the app which is fairly big in size, but is within what we would expect for Skype anyway.
+
+Before installing the application, we are going to reverse engineer it.
+Static analysis
+The first thing we need to do is convert the APK file into a jar archive so we can view its source code.
+For this, I used dex2jar, a simple command-line utility:
+
+We now have a java archive which we can open with the excellent JD-GUI:
+
+Here we see a list of modules, some pertaining to the actual Skype program such as “skype.raider” but another one called “sx.jolly” looks intriguing because it is not documented in Skype’s SDK for Android.
+Let’s expand that module for greater detail:
+
+The code is well-structured and each class is named appropriately, quite different when we compare it to malicious Java applets used in exploit kits where everything is obfuscated and encrypted.
+What we have here is the backbone for an SMS Trojan that can – among other things -automatically send costly (premium) SMS messages while running silently in the background.
+The Trojan is activated with this function:
+Timer function to check with mothership
+This piece of code ensures proper communication between the infected mobile phones that ‘call home’ at regular intervals back to the command and control server (95.211.108.18).
+Java’s TimerTask function, takes 3 parameters:
+public void schedule(TimerTask task,long delay,long period)
+
+The task to be executed
+The delay to wait before it is executed (milliseconds)
+The time to wait before another execution (milliseconds)
+
+In this case, the task is executed after 10 seconds from the moment it was triggered and then again every 10 minutes.
+Making money from premium SMS messages:
+An SMS with a unique identifier from the victim’s mobile phone is sent to a number located in the Ukraine :
+Send bot SMS
+Other interesting features include logging the phone’s activity and storing it on a remote server.
+Stealing SMS messages with contacts’ addresses, names, etc.:
+Stealing SMS messages
+Recording the phone’s activity by checking the running apps:
+Code to send a list of all running apps (monitoring user activity?)
+A summary of all the command and stats is displayed in another class. That includes functions that check if payments were made, at which interval, etc.
+A list of commands used by each bot
+Evasion techniques and persistence have not been left out. First of all, the bad guys want to make sure that the malicious program is reloaded in case the victim reboots their phone.
+The RebootReceiver.class checks for an instruction that the Android phone has finished booting and then relaunches its malicious service:
+Making sure the phone is always under control, even after a reboot
+The SMS Trojan needs to operate silently without arousing suspicions. It some cases, when you are sending a premium (several dollars) SMS message, you will receive a warning.
+The bad guys have coded instructions that hide that warning from the user:
+Hiding warnings from the user, a clever way to fly under the radar
+The abortBroadcast function will hide SMS notifications if one of the conditions listed above is met.
+Most are text strings from mobile services that help you to check the cost of an SMS. And then you’ve got this:  “Извините, на балансе вашего телефона недостаточно средств.”
+It’s Russian for “Sorry, the balance of your phone is not enough money.”
+There are other bits of code that perform various checks for issues with the connection, SIM card, etc.. which make this SMS Trojan quite well engineered.
+Runtime analysis
+It is time to run this fake Skype app and see it in action, so let’s continue with the regular installation process.
+We will be routing the communications from our phone through a proxy so we can do packet analysis later with Wireshark.
+
+Since this app was downloaded from a website and not the Google Play Store, it is considered to be from an “unknown source”. By default, our phone will not allow such an installation:
+
+In order to proceed with the installation, you must enable the “Unknown sources” option:
+
+If you are going to enable that setting you need to know what you are doing. The main reason is that most malicious apps will be distributed outside of the Play Store and therefore you are taking chances by going down that route.
+Many people choose to ‘downgrade’ the security settings in their devices for various reasons. Sometimes you do need to install a program from a third-party but then you might forget to re-enable the setting.
+Of course, you can also be tricked through social engineering or simply really want the app (especially if it is a paid one that you can get for free).
+
+The app is now installed and we can start looking for odd behaviours by sniffing all the traffic coming in and out of the phone.
+
+Other than the typical requests for Skype itself, we can see some ‘interesting’ ones that contain keywords such as ‘operator’ and ‘botnumber’.
+Let’s take a look at this GET request:
+
+The Skype application is talking back to partnerslab.com and it looks rather suspicious that our phone has been assigned a bot number.
+A quick look up for PartnersLab (translated from Russian) confirms our suspicions. What we have here is an affiliate network for SMS fraud:
+
+The site claims:
+
+a 90% profit-sharing model
+more than 500 apps to choose from
+on-demand customizations
+etc
+
+The affiliate business is simple: you distribute your software through any means at your disposal and get paid a commission.
+Popular apps such as Skype or Facebook will undoubtedly offer some of the best conversion rates.
+But pornography apps are also very coveted and constantly used to lure end users.
+So, how well is this pay per SMS scam doing? Not bad, according to some stats published on their own website.
+We should take those numbers with a bit of caution, but there are some peaks at over one thousand installs per day (one thousand phones/tablets downloading the fake apps).
+The Android operating system comes with certain safeguards and given the current malware landscape it is a very good idea to make sure they are enabled.
+The rule of thumb is that you should avoid installing any app that is not in the Play Store. Right there it will dramatically reduce your chances of getting infected.
+Perhaps the fake security updates are the most dangerous ones because the majority of people think they are doing the right thing by keeping their device up-to-date.
+If you ever receive an update notification, make sure to check where it comes from. Is it from a web page instead of the Android OS itself?
+In doubt, close all applications and restart the device. If you can, ask around or do a bit of research online. It’s better to be safe than sorry.
+As far as Premium SMS messages are concerned, you can proactively disable that ‘feature’ through your mobile operator (Verizon, Rogers, Bell, etc). That way, you won’t be sending or receiving messages without your explicit consent.
+
+Jerome Segura (@jeromesegura) is Senior Security Researcher at Malwarebytes.

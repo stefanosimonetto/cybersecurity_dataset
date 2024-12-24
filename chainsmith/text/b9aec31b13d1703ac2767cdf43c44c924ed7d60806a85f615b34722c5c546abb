@@ -1,0 +1,20 @@
+Finding good keywords
+July 21, 2019 in Batch Analysis, Clustering, Malware Analysis
+
+When we analyze malware one of the best tools we have at our disposal are signatures (in any form, doesn’t need to be yara or peid). Generating signatures is an art, an art that takes a lot of human cycles & would be interesting to automate this process. While binary signatures are kinda hard to extract automatically (you typically need to eyeball the code first), the ANSI/Unicode strings are pretty straightforward.
+In this post I will run through a couple of strategies one can use to generate good keyword sets for malware research.
+The first thing we can do is to focus on whitelisting. If we just run strings over the whole clean OS install we will end up with a long list of strings that you should not include in your production signatures. Once you have such a keyword list, you could run strings on a malware sample and exclude all the whitelisted strings from the output.
+Of course, this is not a very good idea, because the ‘good’ strings will include lots of important stuff we actually want to see e.g. API names. The list will also be quite bulky, because every file including non-PE files will add tones of strings. All these useless keywords will affect performance.
+To optimize this process we can narrow down our focus to PE files only.  We can also try to be a little more specific — we can add some context to each string. This is a bit more time consuming, because we need to write a tool that can provide string metadata. For example, a tool like PESectionExtractor.pl can help — it parses PE files and extracts strings in a context of each PE file section.
+Okay, so now we have a list of all good strings, with a context.
+This is good for exclusions, but not for inclusions. If you want to write e.g. yara signature, or your own signature scanner we need to find the juicy stuff.
+How to do it?
+In my experimental string extraction tool I introduced a concept of string islands. It exploits the fact that important strings are typically grouped together in a close proximity of each other inside the samples. Both in genuine, legitimate software, and in  malware. The easiest examples where this principle works are PE file resources. Most of resource strings are obviously grouped together in this place. Import tables, export tables follow the same principle. And depending on a compiler, we will often find many strings used by the program in a very specific place of the file (e.g. .data section).
+So… finding new keywords that could indicate the file as malicious can start with parsing a file, extracting its sections, extracting islands within each section, extracting strings within each island, and then using a short list of ‘needle’ keywords to determine if that specific island is ‘interesting’. We can use whitelisted strings as an exclusion as well (also, if we have the context, e.g. section where they come from, we can use surgical exclusion applied only to matching sections).
+Now we have a very rich data set to work with. We excluded tones of non-interesting strings. We can do some stats, add interesting keywords back to the ‘needles’ pool and repeat the process. After few iteration you will observe a nice pattern emerging and your keyword list will quickly improve.
+Using this principle  I extracted thousands of very useful keywords and artifacts. The most attractive findings are islands where we can find clusters of keywords belonging to a single category. This helps to classify them on the spot.
+An example of a ‘good’ island found this way is shown below. By the look of it it’s a typical infostealer. Using its built-in strings identifying targeted programs / password we can collect lots of juicy keywords in one go. These can make it directly to automatically generated yara rules & of course our ‘needle’ pool.
+
+Comments Off on Finding good keywords
+
+Comments are closed.

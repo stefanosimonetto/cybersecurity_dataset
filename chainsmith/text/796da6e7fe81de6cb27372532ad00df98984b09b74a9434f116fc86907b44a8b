@@ -1,0 +1,24 @@
+SQL Injection Vulnerability in Joomla! 3.7
+Security Risk: SevereExploitation Level: Easy/RemoteDREAD Score: 8.6/10Vulnerability: SQL InjectionPatched Version: 3.7.1
+During regular research audits for our Sucuri Firewall (WAF), we discovered a SQL Injection vulnerability affecting Joomla! 3.7 – CVE-2017-8917. The vulnerability is easy to exploit and doesn’t require a privileged account on the victim’s site.
+Are You at Risk?
+The vulnerability is caused by a new component, com_fields, which was introduced in version 3.7. If you use this version, you are affected and should update as soon as possible. This vulnerable component is publicly accessible, which means this issue can be exploited by any malicious individual visiting your site.
+Given the nature of SQL Injection attacks, there are many ways an attacker could cause harm – examples include leaking password hashes and hijacking a logged-in user’s session (the latter results in a full site compromise if an administrator session is stolen).
+Technical Details
+The public-facing com_fields component borrows some views from the administrative side component of the same name. While this may sound like an odd thing to do, it serves a very practical purpose – it allows the reuse of generic code that was written for the other side, instead of writing it from scratch again.
+
+As you can see from the snippet above, it sets the $config[‘base_path’] variable with the JPATH_COMPONENT_ADMINISTRATOR constant value which represents the local path to the administrator component directory. Doing this will cause Joomla! to grab views and models from this path instead of the public facing one. As this action is conditional to the view parameter containing fields and layout to contain modal, we know the URL to access this view must look like this:
+/index.php?option=com_fields&view=fields&layout=modal
+Visiting this URL leads to a listing of all the custom fields available on the site which can be ordered based on various parameters.
+The only administrator view that can be accessed is fields – and this will grab its data from an admin-side model (due to the $config[‘base_path’] trick we discussed earlier). In this case, the vulnerability we discovered was located in the FieldsModelFields model, in ./administrator/components/com_fields/models/fields.php.
+The culprit can be found in the getListQuery method.
+
+For those not familiar with how Joomla! deals with SQL queries, the $query->order() really is just a method whose input will be concatenated to a query’s ORDER BY statement, so you can guess that leaving non-sanitized user input in there is the last thing you want. Unfortunately, this is exactly what happened.
+
+The list.fullordering state can be populated with user input because the FieldsModelFields model inherits from the JModelList class, which contains the snippet above. You may notice that it performs some verification on the content and then sets the list.direction and list.ordering state accordingly, but what about list.fullordering?
+
+After the switch statement, this instruction sets the state we were looking for with a value that we can control, regardless of whether it generated a valid list.direction or list.ordering state.
+So in order to exploit this vulnerability, all an attacker has to do is  add the proper parameters to the URL in order to inject nested SQL queries.
+In Conclusion
+If you have not already, update as soon as possible!
+This is a serious vulnerability that can be misused in different ways to compromise a vulnerable site. Update now. If you believe your Joomla site is hacked, you can follow our free DIY cleanup guide.

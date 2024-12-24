@@ -1,0 +1,93 @@
+Evasions used by The Shadow Brokers' tools DanderSpritz and DoublePulsar (Part 2 of 2)
+
+There are some very interesting network-level evasions used related to DoublePulsar and DanderSpritz. We were not able to find a complete resource with focus on these evasion techniques. So as a spin-off from the DanderSpritz/PeddleCheap research, we decided to assemble information from different resources into a blog post about these evasions.
+
+Forcepoint recently published a whitepaper related to how DanderSpritz/PeddleCheap communicates with malicious implants. This is a follow-up blog post related to evasions used in DoublePulsar and DanderSpritz.
+Most of the following material is reiteration of work done by other researchers (see References below), where the evasions are explained in more detail. Also included is some material on evasions related specifically to DanderSpritz/PeddleCheap, taken from our recently published white paper. At the end of this post we provide a list of tools from the Shadow Brokers dumps that appear to perform some level of evasion.
+In summary, we will look at the following evasions:
+
+Custom extensions of the Server Message Block (SMB) protocol.
+Concealing valid responses as error messages.
+SMB port reuse.
+Overlapping TCP packets
+Port rotation
+Port knocking
+Presenting binary data as an image
+
+Evasions in DoublePulsar
+FuzzBunch is a framework from the April 2017 Shadow Brokers leak. It can be used for uploading an executable to a victim that has been backdoored with DoublePulsar. For uploading an executable to DoublePulsar, FuzzBunch uses the SMB protocol. Communication starts with a standard SMB handshake, and then continues by using DoublePulsar-specific extensions to the SMB protocol.
+DoublePulsar extends the SMB protocol by using SMB subcommands that are reserved but not implemented in the standard SMB protocol, as well as by assigning a special meaning to certain SMB fields. The following SMB fields are used for DoublePulsar-specific purposes: timeout, multiplex ID, signature, and session setup parameters. Although some rudimentary encryption is added on top, this custom extension of the SMB protocol is an evasion technique that essentially hides the malicious traffic in plain sight.
+In the case of FuzzBunch uploading an implant to DoublePulsar, the communication looks like this:
+
+A host infected by DoublePulsar does not open any new ports, making DoublePulsar very stealthy. Traffic interacting with DoublePulsar is cleverly disguised in the form of unimplemented SMB calls, and DoublePulsar even replies with STATUS_NOT_IMPLEMENTED. At the same time the SMB port keeps providing service for any benign use of the SMB port. This is an innovative technique.
+Timeout indicates Command
+The timeout value is used in any SMB request to indicate what DoublePulsar command to execute. The sum of the bytes ANDed by 0xff gives the command:
+command = ((t) + (t >> 8) + (t >> 16) + (t >> 24)) & 0x000000ff
+DoublePulsar accepts the following commands:
+
+0x23: ping
+0xc8: execute
+0x77: kill
+
+Multiplex ID increment indicates Status Code
+According to the normal SMB protocol, the SMB Multiplex ID should be the same in the request and response. However, if DoublePulsar is installed, the Multiplex ID is incremented by a certain amount in the response, giving status codes back to FuzzBunch:
+
+0x10: success
+0x20: invalid parameters
+0x30: allocation failure
+
+Signature contains XOR key and architecture
+In an SMB ping response, an XOR key can be calculated from the SMB signature according to the following formula:
+xor_key = (2 * sig ^ (((sig & 0xff00 | (sig << 16)) << 8) | (((sig >> 16) | sig & 0xff0000) >> 8))) & 0xffffffff
+Another piece of information given out in the signature of the SMB ping response is the architecture of the target. If the last four bytes are 0x00000000, then the architecture is x86, otherwise it is x64.
+The SMB signature (and thus the XOR key) is not static, but instead varies over time.
+Session setup parameters contain XOR key
+When sending a file to execute to DoublePulsar, an XOR key is included in the upload request. The XOR key is in the last four bytes of the session parameters to the SESSION_SETUP SMB subcommand. It is the same XOR key that was obtained in the signature field of the SMB ping response.
+Example interaction with a DoublePulsar backdoor
+To make practical use of the DoublePulsar backdoor, an executable that does something useful needs to be uploaded. Here we’ll look at an example interaction with a DoublePulsar backdoor and point out how the evasions/SMB protocol extensions previously described are used in practice.
+SMB ping to DoublePulsar
+FuzzBunch does an initial SMB handshake and then sends a special SMB ping request to see if DoublePulsar is actually running at the victim:
+
+The ping request is a Trans2 SMB request using the reserved but unimplemented subcommand SESSION_SETUP (0x000e). Note that this special DoublePulsar SMB ping is not related to the existing SMB Echo request/response. The Multiplex ID of the special DoublePulsar SMB ping is 65 (0x41). Calculating the DoublePulsar command for the above value of the timeout (0x866c3100), we get 0x23, meaning ping.
+Since the SMB ping request uses an unimplemented SMB subcommand, DoublePulsar running on the victim recognizes this as being a special command to itself (as opposed to a normal SMB subcommand issued from a benign client).
+SMB ping response
+DoublePulsar responds to FuzzBunch with a STATUS_NOT_IMPLEMENTED:
+
+A casual observer of the network traffic would be tempted to believe the client sent some malformed data and the server just gave an error in the response. However, this is a valid DoublePulsar response, concealed as an error message.
+Notice that the Multiplex ID was 65 in the request and 81 in the response. The difference is 16, which is 0x10 in hex, indicating success.
+As earlier explained, an XOR key can be calculated from the signature. Doing the calculation for the signature 0x018d2d0a6f gives an XOR key of 0x75503953 that can be used to encrypt a payload when sending it to DoublePulsar. FuzzBunch includes this XOR key in the data that it sends to DoublePulsar.
+Sending the implant to DoublePulsar
+FuzzBunch next sends an executable to DoublePulsar. The payload starts with a few kilobytes of kernel shellcode, followed by the DLL/EXE to run on the target. Multiple SMB packets are used for transferring the payload. Parts of the first SMB packet are shown below:
+
+The XOR key 0x75503953 can be found at the end of the session setup parameters, which is the same key DoublePulsar gave in the signature of the ping response. Encryption is rudimentary: the XOR key is used as a simple cipher to encrypt the payload.
+Timeout has the value 0x61056200. Calculating the command from the timeout value using the formula described earlier, we get 0xc8, meaning execute. Based on this, DoublePulsar understands that the file to be uploaded should be executed.
+The Data Count of the SMB packet is 4096 bytes, which is split across several TCP packets. Each SMB packet except the last one has a data count of 4096 bytes.
+Additional evasions used in DanderSpritz/PeddleCheap
+Overlapping TCP packets
+When the PeddleCheap implant communicates with DanderSpritz using standard TCP, the implant resends data, appending more data in the resent packet. With these overlapping packets, part of the TCP stream is overwritten with the same data, and then more is appended. While in accordance with the TCP standard, this behavior is uncommon and could be an attempt to evade detection.
+Port rotation
+When the implant listens for incoming connections from DanderSpritz, it does not open a new port and listen on that port forever. Instead, it has a configured set of ports to listen on temporarily. The implant first listens on one port for some time, then closes the port and listens on another, rotating through all the ports in the set. Listening on ports in this manner is likely to draw less attention from monitoring systems than listening on a port indefinitely. Another benefit of using different ports is that it increases the chance of getting through any firewalls sitting between PeddleCheap and the operator.
+Port knocking
+Port knocking is also used to conceal the triggering of the PeddleCheap implant. Instead of opening any new listening ports, PeddleCheap monitors its host's network traffic and wakes up when a special sequence of "knocks" is detected.
+Presenting binary data as an image
+When using HTTP, the response payload is binary data instead of clear-text HTTP. To ensure that the traffic is not blocked, this binary data is presented as an image (albeit not a validly formatted one). This is done by setting the Content-Type to image/jpeg.
+Indications of additional evasions in the Shadow Broker’s dump
+There are indications of used evasions in other tools released by The Shadow Brokers as well. Here we provide a list of potential topics for additional research:
+
+The Ebbisland exploit payload appears to reuse the same socket so that no new ports need to be opened.
+In the sploit.py script of the ExtraBacon exploit are references to fragmentation in the create_socket() function.
+The tipoff tool has a --bypass-firewall parameter that could be implemented using evasions.
+The ExpiredPayCheck and EasyFun payloads have references to raw sockets (SOCK_RAW).
+The prout Linux binary uses a function named make_raw_socket().
+The firewall implants BananaGlee and BarGlee reference function names that appear to indicate the use of fragmentation.
+The sttunmod object file contains a function that appears to handle fragmented packets.
+
+These items may or may not indicate use of evasions. The list is provided as-is.
+References
+Work done by others documenting evasions used in DoublePulsar:
+https://github.com/countercept/doublepulsar-c2-traffic-decryptor/blob/master/decrypt_doublepulsar_traffic.py
+https://zerosum0x0.blogspot.fi/2017/04/doublepulsar-initial-smb-backdoor-ring.html
+https://github.com/countercept/doublepulsar-detection-script/blob/master/detect_doublepulsar_smb.py
+Detailed How-To document describing how to run FuzzBunch for exploiting a target: https://dl.packetstormsecurity.net/papers/attack/exploiting-ebdp-en.pdf
+Kernel shellcode used to load implant: https://www.countercept.com/our-thinking/analyzing-the-doublepulsar-kernel-dll-injection-technique/
+Script for interpreting traffic from a PCAP file related to initial DoublePulsar infection and subsequent implant communication: https://github.com/johnbergbom/PeddleCheap/

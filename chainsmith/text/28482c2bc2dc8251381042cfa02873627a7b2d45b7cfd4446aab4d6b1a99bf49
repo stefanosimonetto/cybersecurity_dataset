@@ -1,0 +1,65 @@
+Decompiling compiled AutoIT scripts (64-bit), take two
+January 8, 2015 in Malware Analysis
+
+A while ago I posted a short description on how to decompile 64-bit autoit scripts. Someone pinged me asking on how to actually do it, so I thought it will be handy to simply write a script to do the dirty work for us.
+
+Download 32-bit AutoIt (older version has the 32-bit stub separately, so it’s handy to use it)
+
+https://www.autoitscript.com/autoit3/files/archive/autoit/autoit-v3.2.8.1.zip
+
+Unpack it
+You will find the 32-bit stub here:
+
+autoit-v3.2.8.1.zip\Aut2Exe\AutoItSC.bin
+
+Copy it to the folder where your 64-bit compiled autoit executable resides
+Now you have to build a 32-bit executable using the autoit script blob you need to extract from the 64-bit executable
+
+you can do it manually, or
+you can run the perl script below (what it does it extracts the autoit script blob from the 64-bit autoit executable and builds the 32-bit equivalent using the AutoItSC.bin stub mentioned above which is 32-bit); the created file will have a file name:
+
+<filename>.a32.exe
+
+Now you can download the Decompiler for AutoIt script from https://exe2aut.com/?download
+Drop it into some virtual environment (VMWare/VirtualBox/Virtual PC)
+Drop your newly created 32-bit executable into exe2aut decompiler
+It should decrypt the script for you
+
+And the 64-to-32 conversion script is shown below (call it autoit64to32.pl or whatever and run perl autoit64to32.pl <64-bit exe>):
+use strict;
+use warnings;
+
+my $f=shift || die ("Gimme a file name!");
+
+print STDERR "Processing '$f':\n";
+print STDERR "- Reading 'AutoItSC.bin'\n";
+open F,"<AutoItSC.bin";
+binmode F;
+read F,my $a, -s 'AutoItSC.bin';
+close F;
+
+print STDERR "- Reading '$f'\n";
+open F,"<$f";
+binmode F;
+read F,my $d, -s $f;
+close F;
+
+print STDERR "- Looking for the script\n";
+if ($d=~/\xA3\x48\x4B\xBE\x98\x6C\x4A\xA9\x99\x4C\x53\x0A\x86\xD6\x48\x7D/sg)
+{
+my $pd=(pos $d)-16;
+print STDERR "- Script found @ ".sprintf("%08lX",$pd)."\n";
+print STDERR "- Creating 32-bit version '$f.a32.exe'\n";
+open F,">$f.a32.exe";
+binmode F;
+print F $a.substr($d,$pd,length($d)-$pd);
+close F;
+}
+else
+{
+print STDERR "- Script not found !\n";
+}
+
+Comments Off on Decompiling compiled AutoIT scripts (64-bit), take two
+
+Comments are closed.

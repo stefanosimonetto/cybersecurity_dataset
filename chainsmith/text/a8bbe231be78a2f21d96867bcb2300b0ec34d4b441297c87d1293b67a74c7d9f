@@ -1,0 +1,67 @@
+From server hack to client side ransomware
+Insecure websites are responsible for most malware infections. In this post I will show you how a typical WordPress site that was poorly configured got hacked, leading unsuspecting visitors to a very bad surprise.
+
+If you can browse the underlying structure of a site, it is usually not a good sign. It does not mean the site has been hacked (yet!), just that whoever set it up does not really know what they’re doing… Unfortunately that makes the site a prime target for automated hacks. Let’s take a look at why this happens and what it can lead to.
+
+File / directory permissions and ownership are crucial to a website’s security. They determine who is allowed to view, edit and run programs. If they are not managed well, they can lead to a compromise of the entire website.
+Permissions are divided into:
+
+Read
+Write
+Execute
+
+Ownership has the following categories:
+
+User
+Group
+Others
+
+When looking at permissions and ownership on a Linux server, you will see something like this:
+-rw-rw-r– 1 apache web 1208 Jan 29 09:48 index.html
+In this case, we have Read and Write for the user, Read and Write for the Group, and Read for others. The user is apache and the user group is web.
+File permissions are also often represented with numbers (one number for each owner):
+
+1 – EXECUTE
+2 – WRITE
+3 – WRITE, EXECUTE
+4 – READ
+5 – READ, EXECUTE
+6 – READ, WRITE
+7 – READ, WRITE, EXECUTE
+
+So, we need to add the 3 types of ownership to translate -rw-rw-r– into 664.
+There are certain rules to go by when applying security permissions and ownership. You want to give the least amount of permissions needed by each owner and only add them as required.
+So what exactly is the problem then? Well, many web apps can be a pain to configure if permissions are too strict. A lot of people will just enable all permissions to bypass this inconvenience. This is the infamous 777 (Read, Write, Execute for everybody). In fact, you will see such bad advice on many forums and while it may be helpful to set files or folders to 777 for debugging, it should never be done on a live site (only an offline test site).
+As a rule of thumb, files should be set to 644 and directories to 755. That will work on most configurations but can certainly be hardened even more for specific files (for example .htaccess) or folders (wp-admin).
+Case in point, when a website is poorly configured, someone can upload backdoors (program used to completely take control of a server) as well as alter core files. By injecting malicious code (iframe or other type of redirect), the bad guys will leverage a site’s traffic and send anyone browsing to it to some exploit site (i.e. a BlackHole Exploit page).
+This is what happened here. Content was injected inside a legitimate JavaScript within the wp-includes folder (a prime location for malware because it often requires more laxed permissions). When the website loads, it calls various plugins to launch and render the page. Keep in mind that JavaScript is client side scripting, meaning that it will execute on the end user’s machine. So by infecting one single JavaScript, you can essentially load the malicious payload from any page of the site.
+Here, a jquery.js has been injected with an encrypted piece of code for some evil purpose…
+
+If you decode that mumbo jumbo, you can see a redirect to a bad site: {removed}charlotteclassifieds{removed}.com/k. When that URL is requested it immediately sends you to img.growmy{removed}.com/links/demands-lower.php
+
+This is the URL that will launch the exploit. We recognize the BlackHole toolkit version 2 using PluginDetect version 0.7.9 (which is a legit program by the way).
+
+By going to PluginDetect’s official website, you can generate your own version of the script:
+
+What’s the purpose of using this? Well, it allows the bad guys to quickly find which software and versions are installed on the victim’s computer and launch the appropriate exploit(s) against it.
+Here is one for a malicious PDF:
+
+Here is one for a malicious JAR (Java applet):
+
+Here is one for a malicious Flash:
+
+And how about that function, labeled ‘makeSense’ that does them all:
+
+As always the exploit files are poorly detected (even after a few days of being in the wild):
+spn.jar (VirusTotal 3/44)
+spn2.jar (VirusTotal 2/44)
+The actual payload is getting decent coverage: wgsdgsdgdsgsd.exe (VirusTotal 22/44)
+In case you are not familiar with that file name, you may recognize this:
+
+FBI Moneypack ransomware (Reveton) is just everywhere these days. A little too obvious in my opinion, it will probably ruin other bad guys’ harvests when infected users fix up their computers.
+Some tips:
+If you own a website, bear in mind that just like a car, if you don’t maintain it, some bad things are going to happen. You should start with keeping the website software (WordPress, Joomla, etc..) up to date and of course make regular backups. Be sure to only log in as the administrator from a safe connection (avoid public wifi and other hot spots where your username and password can be harvested by eavesdroppers). Needless to say passwords should be hard to guess and changed every few months.
+As a PC user, unfortunately you are going to come across sites that are actively pushing malware. As shown in this post, the majority of websites that lead to an infection are absolutely legitimate but simply poorly configured. But that’s not all, even sites with high traffic which are well maintained also occasionally deliver malware through malicious advertisements (malvertising).
+Malwarebytes’ Anti-Malware PRO offers malicious website protection that blocks access to known and zero day  (never seen before) malicious web content so you can surf at ease.
+
+Until next time, stay secure.

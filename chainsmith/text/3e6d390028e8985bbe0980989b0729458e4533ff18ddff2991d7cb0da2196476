@@ -1,0 +1,148 @@
+The problem of backscatter – part 2
+2008-09-01
+
+Terry Zink
+Microsoft
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+In the previous part of this series, Terry Zink introduced the problem of backscatter spam, describing what it is and why it is such a problem. He also looked at why it is so difficult to stop. Fortunately, the situation is not hopeless and this month he looks at some of the methods at our disposal to help combat this irritating type of spam.
+Copyright © 2008 Virus Bulletin
+
+Last month, we introduced the problem of backscatter spam, describing what it is and why it is such a problem. We also looked at why it is so difficult to stop. Fortunately, the situation is not hopeless and this month we will look at some of the methods we have at our disposal to help combat this irritating type of spam.
+
+Special content filtering
+One technique we can use to help combat backscatter is to block all NDR messages, or at least tag the phrases and characteristics that commonly occur in NDR backscatter as inputs to a spam filter decision. The Spamnation website [1] recommends some fields to examine, in order of usefulness:
+Field
+Test
+String
+From
+contains
+Mailer-Daemon
+From
+contains
+[email protected]
+From
+contains
+Mail Administrator
+Subject
+contains
+Returned mail
+Subject
+contains
+Failure notice
+Subject
+contains
+Blocked by our bulk email filter
+Subject
+starts with
+Delivery Status Notification
+Subject
+starts with
+Undelivered Mail Returned to Sender
+Subject
+starts with
+Undeliverable
+Subject
+starts with
+Delivery Notification
+Body
+contains
+Status: 5.1.1
+Body
+contains
+Status: 5.7.1
+Table 1.
+If a spam filter were to look for the above characteristics and block mail based on them, there’s a good chance that it would block a very healthy portion of NDR backscatter. The problem is that it would also block a lot of legitimate NDR mail.
+Another, riskier, blocking strategy would be to block all mail with a null sender, <>, in the SMTP MAIL FROM field. As many MTAs will send bounces with null senders (so as not to receive a bounce back if the NDR cannot be delivered), blocking all mail with a null sender will succeed in blocking the bulk of NDRs. However, there are some drawbacks to this:
+Like the first strategy, blocking on null senders means you will block some legitimate NDRs.
+Not all null sender messages are NDRs. Some other messages, such as automated reports, use them as well. Other types of quickly written processes, or processes that generate email alerts also use null senders, simply for convenience. Out of office (OOF) notifications also have null senders. Thus, if you block on null senders, you are likely to incur substantial collateral damage.
+This method is not guaranteed to catch all NDR backscatter. Some MTAs will bounce messages with something like [email protected], [email protected], or similar.
+There are some mail delivery systems that already refuse to route mail with an empty sender due to the excessive abuse of backscatter. These systems are prone to the false positive problems described above. You can get around this by setting inbound ‘allow’ policy rules for other characteristics, for example, you could have ‘allow’ rules for certain IPs and ‘reject’ rules for null MAIL FROMs. The inbound ‘allow’ rule could supersede the ‘reject’ rule. The drawback of this strategy is that it creates large numbers of ‘allow’ rules that become impossible to manage because of all the exceptions to the rule.
+So, content filtering based upon From/Subject/Body examination is one way to fight backscatter, albeit with false positive problems. If you have a handle on who you want to accept mail from (no pun intended) then you can create exceptions. But remember, managing exceptions can become a real pain after a while.
+
+Use SPF
+Another trick for combating backscatter is to use SPF records. SPF records are designed to help combat backscatter on the theory that the recipient mail server will be able to figure out that your server didn’t send it. Here’s how it works:
+Bob has his own mail server and creates an SPF record for the domain bobsdomain.com:
+v=spf1 ip4:256.18.19.0/24 -all
+Properly interpreted, this means that any message that comes ‘from’ bobsdomain.com must originate from the IP range 256.18.19.0 – 256.18.19.255.
+Notorious spammer I.M. Obnoxious sends a message to my email address at my domain [email protected] and says it is from my other domain, [email protected]; he spoofs the sender. But [email protected] doesn’t exist. My mail server can’t do the recipient lookup in real time so it has to '250' accept the body contents of the message.
+Upon trying to deliver the message, my mail server figures out that [email protected] doesn’t exist. In a normal world, my mail server would send a message back to [email protected] (with null sender <> in the MAIL FROM field) with a '55x' level error indicating that the message could not be delivered.
+However, my mail server is smarter than that. When it accepts the message, it does some spam filtering. It sees that the sending IP for the message is 288.41.18.19. It then looks up the SPF record for example.com and sees it is 256.18.19.0/24. It determines that the sending IP is not in the SPF range for the domain in the MAIL FROM. My mail server sees that any mail coming from example.org that fails the SPF check has a hard fail, '-all'. It assumes that the message is spoofed/forged and decides not to send an NDR back to [email protected], the purported sender. Instead, it simply drops the message. No backscatter is sent back to me.
+The use of SPF records is a way to avoid contributing to the backscatter problem, but this technique is entirely dependent upon the recipient MTA. The recipient MTA must perform an SPF check on the message and then decide not to take its normal course of action on non-deliverable mail. Thus, logic must be built into the MTA to perform custom actions depending on the authentication results.
+Not every MTA will do this. SPF checks require DNS queries which are somewhat computationally expensive. It is quicker and easier simply to check to see if the message can be delivered and then take action, rather than check, verify, and then take action. Still, using an SPF record with ‘-all’ in it means that you have given receiving MTAs the help they need in order to determine whether you actually sent the message. Whether or not they use this information is up to them.
+
+Check to see if you sent the message in the first place
+There is another way to combat backscatter – check to see if you sent the message in the first place. We have already seen that NDR messages and backscatter contain a notice from the bouncing email server as well as all, or part, of the original message. We can use this bounce message to figure out whether or not you sent the message in the first place.
+Suppose that my email address is , and my mail server is mail.example.com. My mail server always sends mail like this:
+HELO: mail.example.com
+MAIL FROM:
+[email protected]
+
+RCPT TO:
+[email protected]
+
+DATA
+<etc>
+.
+QUIT
+If [email protected] were to see this message in his inbox and look at the message headers, he would see a line something like the following:
+Received: from mail.example.com (mail.example.com [188.24.229.80])
+Properly interpreted, the part in parentheses says that this SMTP transaction came from 188.24.229.80 and the mail server HELO’ed as mail.example.com. The recipient mail server did a reverse DNS lookup of 188.24.229.80 and it said mail.example.com. Thus, mail coming from me has Forward-Confirmed Reverse DNS set up.
+Suppose the message headers said the following:
+Received: from host.example.com (unknown [188.24.229.80] helo=example.com)
+...
+My mail servers don’t do it that way. They don’t HELO with nothing (that’s what unknown means).
+Received: from [188.24.229.80] (port=12345 helo=example.com)...
+My mail servers don’t HELO with example.com or with a port in the HELO. My reverse DNS is not the IP that I sent it from. Suppose it said the following in the bounced body content Received headers:
+Received: from mail.example.com (HELO mail.example.com)
+[123.123.122.101]...
+This one comes close, but notice that the IP it came from is not one of my IPs. I can see that the IP should have failed an SPF check (and the recipient mail server should have detected this and not bounced it... tsk, tsk). What if the body contents had said this:
+Received: from host.example.com (EHLO example.com) ...
+I also don’t HELO with an EHLO. These are all examples of anomalies in the way that my mail servers send mail. You could spot similar abnormalities in the Message-ID tag. If it doesn’t conform to the way I generate them, then I know that I didn’t send it and that the bounce message did not originate from me.
+This method of fighting backscatter is to do it when it hits your inbound server and handle it in a different way from the regular inbound filtering. Verify first that it is a bounce message, for example by looking for the Content-Type: multipart/report; report-type=delivery-status; header.
+Next, look for some tell-tale characteristics that say the message came from you. What do the Received headers look like? The HELO line is usually pretty distinctive, and so is the Message-ID. Do you sometimes insert a special X-Header into your outbound messages?
+If the message is a bounce message and lacks some of these distinctive features, you can be fairly certain that the message is backscatter (i.e. bounce-back spam that did not originate from you). The advantage of this feature is that you don’t have to rely on someone else to do the spam filtering as in the SPF model. Messages that are uniquely yours are difficult to spoof and it is unlikely (though possible) that a spammer would spoof something unique to you in order to spam you. Of course, you wouldn’t actually accept a message simply because it looks like it comes from you, you would only not reject it. You would need a stronger method of authentication.
+The downside is that you have to insert special distinctive features into your outbound mailer that you can recognize, and you need to have special handling for NDRs that implement custom logic that you wouldn’t normally perform on inbound messages. Rejecting mail in this way again imports additional risk because some MTAs will bounce messages back to you and won’t conform to the Pirates’ Code (see part 1 of this article, VB September 2008, p.S2) of sending DSNs; they may not send back all of the headers or they may modify some of them. In this case you could end up rejecting messages that legitimately came from you, when the recipient MTA just did a lousy job of letting you know.
+
+Don't make the problem worse
+It would be remiss of me not to include a section on how mail administrators can make sure they do not contribute further to the problem of backscatter [3].
+Don't accept mail, and then bounce. The primary problem of general backscatter is when email servers accept a message, discover they can’t deliver it and then send a bounce notification back to the person who ‘sent’ the message without verifying that they really sent the message. Remember that if a recipient mail server cannot deliver the mail and figures this out during the SMTP conversation, it rejects delivery and the sending mail server has to generate the bounce. After the recipient mail server has accepted it, it’s too late. Make sure you configure your mail server to not do this.
+Don't use Challenge/Response (or allow your users to). While Challenge/Response spam filters fix your spam problem, they irritate and annoy everyone else. They offload the spam filtering onto the sender (I send you a message and you expect me to filter it? Hey, filter your own mail!). But even worse, if a spammer spoofs an email address and you send a challenge back to the sender in the MAIL FROM, you are sending piles of challenge notifications to people who never sent mail. In other words, you become a source of backscatter.
+Configure your virus scanner to silently strip or discard malware instead of sending a notification back to the sender. Viruses and worms that send via email do not have valid sender addresses, they are spoofed. If your mail filter catches the malware and sends a notification back to the sender, it goes to the wrong person, an innocent third party. This is backscatter. This is the same as the Challenge/Response problem.
+Be careful regarding autoresponders, out-of-office notifications, etc. The issue with autoresponders is the same as the above: a spammer sends a mail to your autoresponder which bounces a message back to the ‘sender’ (who thinks ‘Who is this guy? I don’t care if he is out-of-office!’).
+(I have mixed feelings on this one. While on the one hand I can see the point of those who are against the use of autoresponders, on the other hand I find OOF notifications very useful. When I send an email to someone at my company and I get an OOF notification, I am glad to know that their response will be delayed. Similarly, when I go on vacation and people send me mail, it is useful to let them know that my response will be delayed. So, in the business world I believe that there is a place for the autoresponse/OOF notification. Maybe you should only send auto-responses to senders who pass a DKIM or SPF check.)
+Even if we all can’t stop backscatter, let’s not make it worse by contributing to it. Don’t send mail automatically if you can’t deliver it or without verifying that whoever sent the message actually sent it.
+
+An Idiosyncrasy
+There are a number of competing mail transfer agents out there, including Microsoft Exchange, Postfix, Sendmail, qmail, Exim, and so forth. I am not an expert on MTAs but I know a few things about them.
+Qmail is a mail transfer agent that runs on Unix. It was written by Daniel J. Bernstein [4] as a more secure replacement for the popular Sendmail program. When first published, qmail was the first mail transport agent that was written with security in mind. Other MTAs with security concerns addressed have been written since then.
+Qmail is designed to accept mail for all of its domains and not perform any recipient validation. If the recipient doesn’t exist, it generates an NDR. In other words, it accepts, then bounces. This, of course, can generate backscatter.
+Another thing about some older versions of qmail is that it doesn’t put in the following header in a bounce:
+Content-Type: multipart/report; report-type=delivery-status;
+I know this because recently I had to investigate a customer complaint. They claimed that because the bounce message did not have that header (which is required by the Pirates’ Code), the message was not backscatter; rather, it was a spammer spoofing backscatter and getting through the filters. While it’s certainly possible that a spammer would do this, it turned out to be a qmail-generated bounce message that did not include the header.
+Qmail does put this in the bounce message, however:
+Hi. This is the qmail-send program at mail.someorganization.com.
+
+I’m afraid I wasn’t able to deliver your message to the following
+addresses.
+
+This is a permanent error; I’ve given up. Sorry it didn’t work out.
+It also inserts the following header:
+Received: (qmail 9999 invoked for bounce);
+So, it is quite interesting that some qmail implementations do not include the Content-Type header but do include the above bounce message. It does not quite comply with the RFC (or Pirates’ Code), but it’s part way there.
+The moral of the story is: if you are running qmail, don’t just use the default implementation. There are some patches out there [5] that will fix the accept-then-bounce behaviour.
+
+Summary
+In this article we have seen some techniques for minimizing the backscatter issue. In the next article, we will examine a technique that has a much greater success rate at blocking backscatter – Bounce Address Tag Validation.
+
+Bibliography
+[1] http://www.spamnation.info/notes/guides/BackscatterFAQ.html.
+[2] http://www.postfix.org/BACKSCATTER_README.html.
+[3] I have borrowed and paraphrased these suggestions from: http://www.spamresource.com/2007/02/backscatter-what-is-it-how-do-i-stop-it.html.
+[4] http://cr.yp.to/qmail.html.
+[5] See http://marc.theaimsgroup.com/?l=qmail&m=108605073822238&w=2 or http://qmail.jms1.net/patches/validrcptto.cdb.shtml.

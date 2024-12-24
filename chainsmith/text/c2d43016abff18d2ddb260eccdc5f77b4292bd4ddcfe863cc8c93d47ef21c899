@@ -1,0 +1,50 @@
+PCVARK plays dirty
+Recently, Jérôme Segura forwarded me a link to a fake virus scam page that seemed to be Mac-related. I began to look into it, and very quickly found myself in a deep rabbit-hole of Mac crapware, all from a major developer of Mac PUPs (potentially unwanted programs), PCVARK.
+PCVARK is responsible for gems like Advanced Mac Cleaner, Mac Adware Cleaner, et al. Although I could go on at length about these products behaviors and why we detect them as PUPs, that is beside the point. Because within this rabbit-hole lay one special nugget of… well, not gold. And it is that strange and malicious app that will be our focus today.
+It began here, on a scam page hosted on the official Advanced Mac Cleaner website:
+
+If I were being cautious, I would have closed this page immediately, rather than doing anything it said. But, of course, I was determined not to be, so I clicked the green button to install the “security update.”
+This resulted in an installer file named “amc_rb_mfm1.pkg” being downloaded, which I proceeded to open. It looked like an ordinary Advanced Mac Cleaner installer… which is not to say it looked like anything I’d want on my computer, but still, I was determined to do the wrong thing, so I clicked right through and installed it.
+Once I had installed it and was poking around to see whether it had installed anything new – perhaps a shiny new piece of adware, for example – I discovered an odd app, named Mac File Opener, tucked away where the average user would never see it. Even more intriguing, this app didn’t have any apparent mechanism for being launched. It hadn’t been added to my login items. There wasn’t a new launch agent or daemon designed to load it. It simply seemed to be sitting there, doing nothing.
+This piqued my curiosity, so I poked a little deeper, and found something very interesting. Inside all Mac apps, there is a file called Info.plist, which defines a number of characteristics of the app. One of the things that file does is allow the developer to identify what file types the app is capable of opening, using an array of data given the key “CFBundleDocumentTypes” that defines all the file types.
+It turns out that Mac File Opener defines a list of 232 different file types, covering all the common ones and many that aren’t so common:
+<key>CFBundleDocumentTypes</key>
+<array>
+<dict>
+<key>CFBundleTypeExtensions</key>
+<array>
+<string>7z</string>
+</array>
+<key>CFBundleTypeName</key>
+<string>DocumentType</string>
+<key>CFBundleTypeOSTypes</key>
+<array>
+<string>????</string>
+</array>
+<key>CFBundleTypeRole</key>
+<string>Viewer</string>
+<key>LSHandlerRank</key>
+<string>Alternate</string>
+<key>NSDocumentClass</key>
+<string>Document</string>
+</dict>
+...
+Essentially, what this app had done is set itself up as an app that can open most files that are at all likely to be on the typical user’s system. Worse, if there is no other app to open a specific file, this app would be the default. It turns out that this is exactly what that app wants, and it takes full advantage of that fact.
+Suppose, for example, a friend sent you a file that was created by the 3-D modeling software SketchUp, but you don’t actually have a copy of SketchUp on your computer. Normally, when you double-click such a file, Apple is very helpful, and shows you something like this:
+
+This allows you to choose an application to open it if you like, or to do a search of the Mac App Store to find apps that can open it.
+However, with Mac File Opener present, double-clicking the SketchUp file will instead present the following message:
+
+This is because when you open the file, it’s actually opening the Mac File Opener app, which displays a dialog made to imitate the real thing. (Although it’s a rather amateurish effort, if you look closely. The differences may be minor, but to someone familiar with Apple’s Human Interface Guidelines, all the errors in this window hurt the eyes.)
+In this case, the option to choose an application is not usable, presumably because that would take away from the scam. The Search App Store button has been replaced with a Search Web button. Clicking that button takes you to a scam page on the macfileopener[dot]com website:
+
+This page suggests that the “error” may have been caused by malware, and offers software to “run a free scan” of the system.
+In some cases, the page will get a bit more pushy, and will show something like this:
+
+In either case, these pages will download other junk PCVARK apps, such as Mac Adware Remover or Mac Space Reviver.
+One interesting thing to note about Mac File Opener is that it appears not to actually be made by PCVARK. Advanced Mac Cleaner, and other PCVARK products, are code signed with a certificate belonging to “PCVARK software Private Limited,” while the Mac File Opener certificate belongs to “Techyutils Software Private Limited.”
+Since this may lead to the question of whether Techyutils and PCVARK are actually related, or if Techyutils hijacked an Advanced Mac Cleaner installer for their own purposes, I began to do a little research. On the surface, there are many superficial similarities – file naming conventions, similarity of icons, references to PCVARK on the Mac File Opener website, etc. However, those are all things that could be faked to imply a relationship that didn’t exist.
+I looked at the code for Advanced Mac Cleaner and for Mac File Opener, and didn’t find too many similarities. But then I realized that I have a copy of a different PUP, also signed by the same Techyutils certificate, called Mac Optimizer. Examining the application code of Mac Optimizer (from Techyutils) and Advanced Mac Cleaner (from PCVARK) side-by-side shows that they are nearly identical for the most part.
+Thus, two supposedly different apps, from supposedly different companies, both share the same code (and nearly identical user interfaces). More compelling, that code is signed by an official, Apple-provided certificate owned by each of these “companies.” This provides the final link that proves that PCVARK and Techyutils are actually one and the same, and that Mac File Opener is in fact a product of PCVARK.
+We consider Mac File Opener to be malware, and Malwarebytes Anti-Malware for Mac will detect it as OSX.FakeFileOpener. All the other PCVARK and Techyutils products mentioned here are detected as PUPs.
+(Update: the SHA256 hash for the Mac File Opener app on VirusTotal is e7af2bd1ea722a1fc6f8012a7472c8e6583406166509135b35ef001827fd55b3.)

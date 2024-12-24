@@ -1,0 +1,67 @@
+The proof is in the cookie
+During the past few weeks, we have a heard a lot about malvertising, this technique of delivering malware through booby-trapped adverts.
+Ad networks and ad agencies of all kinds have been involved in massive campaigns that serve malware onto visitors.
+Google’s DoubleClick.net was used to display malicious ads on examiner.com, and was involved with ad agency Zedo in attacks on popular music site last.fm; while infamous torrent site The Pirate Bay exposed users to malware through a rogue ad.
+In the majority of these attacks, malicious redirections were hidden within a Flash-based advert. This method is particularly effective because while the ad looks legitimate, it can perform silent re-directions through embedded ActionScript code.
+The case we are going to talk about today seemed rather typical and not particularly interesting at first sight. It turned out to be the exact opposite, and showed us how far the bad guys can go to disguise an attack. The picture below illustrates the overall workflow:
+
+The attack originates from a pornographic site that is displaying adverts through an ad agency called AdXpansion.
+This slideshow requires JavaScript.
+An advertiser ({removed}com) won the bid to display their own ‘creative’ (pun intended) on the adult site.
+What we know is that this ad is malicious and it redirects the browser to an exploit kit landing page to infect the visitor. However, the mechanism used to perform this action is not clear and it is keeping a security researcher up at night.
+The ad is not made in Flash, instead it is a GIF animated picture which in theory should make reading the underlying code much easier. The raw code is displayed below:
+
+To make this more readable we can ‘beautify’ it and obtain a cleaner version (click to enlarge):
+
+After several functions, we can see some general variables being declared:
+
+One that particularly stands out is this one:
+
+The JavaScript exec method is used to search on a string with a regular expression. In this example, it will use the regular expression:
+/usid=([\s\S]*)--/
+It will try to match the letters ‘u’, ‘s’, ‘i’ and ‘d’ followed by the ‘=’ sign. The parenthesis indicate a group that can contain multiple tokens. The tokens are any white space characters ‘\s’ and any non white space characters ‘\S’. Finally the ‘*’ means it will match one or more of the preceding token. The regular expression ends with the character ‘-‘ repeated twice.
+The searched data is represented by the ‘b.cookie’ expression. The ‘b’ variable is actually defined earlier as ‘document’, so what we have is ‘document.cookie’. The document.cookie property allows to read the browser’s cookies as a string.
+In our case, this piece of code will read the cookie dropped:
+
+And here is the match it is looking for:
+
+If you paid close attention to the regular expression you will notice that this is not technically a match. It is missing the ‘=’ sign. However the browser’s response headers show the correct format. Thanks to @jonathansampson for pointing this out.
+
+Using the excellent RegExr.com site, we can confirm the match:
+
+This is all fun and games but why would this JavaScript want to read this cookie and what exactly is it doing with it? To find out, we need to run through the several string operations that follow:
+
+"jAvASCriPT:Z='<mETa/HtTP-eQuIv=REfREsh\\x20coNTeNT=0;uRL=hTtpS://%67%6f%6f%2e%67%6c//"
+The interesting stuff is starting to come out with in particular the meta refresh, and the iframe. That URL is still somewhat obfuscated (thanks again to JavaScript wizard @jonathansampson for the help on this!):
+https://%67%6f%6f%2e%67%6c//
+But this is hex for “https://goo.gl//” which turns out to be Google’s URL shortener. So now we know that in addition to loading the GIF advert, it also loads an iframe, except that the URL is somewhat incomplete. It is yet another attempt at masking the destination URL by using a function to build the rest of the URL:
+
+In particular this line:
+if (!a.localStorage.e) t.src = e[2][13] + b.body.id + ">'", a.localStorage.e = 9847
+The b.body.id contains the missing piece, as defined earlier in the html source:
+
+body id is equal to “AcmR1b”, which finally gives us: https://goo.gl//AcmR1b
+As mentioned earlier, this is a short URL created using the Google URL shortener service. The one million dollar question at this point is: “where does it go to?”. Here’s the answer:
+
+http://morelsjayewardene.epnethost.com/ent1nzvwqm.php
+This is an Angler Exploit Kit landing page. The bad guys hid the URL inside a cookie and rebuilt it on the fly to redirect unsuspecting users to a malicious site.
+I reported the shortened Google URL immediately and it is now backlisted:
+However, there are automated processes that generate new Goo.gl URLs on-the-fly:
+
+Other similar URLs:
+hxxps://goo.gl//am4DI1 -> hxxp://sprokkeldenaladak.dancedancedance.com:32886/09n6wi9po1.php
+hxxps://goo.gl//K6X4ux -> hxxp://apocentr.ridate.com:32886/c823jyya5g.php
+hxxps://goo.gl//kOBDrH -> hxxp://sesam-hormoniurheilijoiden.nickprestel.com:59622/nqzt37nl6s.php
+hxxps://goo.gl//mXB6tU -> hxxp://alentumisellebewogener.housecallchiropractic.com:32886/wp45gwnfly.php
+hxxps://goo.gl//PcoqRH -> hxxp://technotrax10.modernmoparts.co:32886/4yie6cpsn8.php
+
+This could easily turn into a whack-a-mole game, although there are some suspicious patterns here:
+
+Port number: 32886 (not always though)
+All are sub-domains
+The URLs end in /\/[0-9a-z]{10}\.php$/
+
+Those unlucky to browse the site were hit with a drive-by download attack but those lucky enough to have Malwarebytes Anti-Exploit were protected:
+
+There is literally no limit to the imagination when it comes to hiding malvertising attacks. While it makes for a good rainy Sunday night of reversing, these sneaky ways are delaying detection and infecting many users in the process.
+In this particular case the URL was built dynamically from a browser cookie rather than being stored in the HTML source itself. This is quite smart as it will bypass traditional security scanners looking for particular patterns or blacklisted URLs.

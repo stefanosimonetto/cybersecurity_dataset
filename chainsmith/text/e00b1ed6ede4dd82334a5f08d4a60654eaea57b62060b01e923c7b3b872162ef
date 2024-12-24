@@ -1,0 +1,155 @@
+The current state of ransomware: VirLock, ThreatFinder, CrypVault and PowerShell-based
+
+Written by
+Editor
+
+January 11, 2016
+
+Network Products & Services Security Tips Threat Research CrypVault malware Ransomware ThreatFinder VirLock
+
+In our blog series on the current state of ransomware, we have presented an in-depth analysis of the four most prevalent variants and described various aspects of their operation, their infection mechanisms and the geographic distribution of each variant across the globe.
+Those variants are: CryptoWall, TorrentLocker, CTB-Locker and TeslaCrypt.
+Now we will explore several less common but more novel variants: viral ransomware (VirLock), ThreatFinder, CrypVault and PowerShell-based ransomware (Los Pollos Hermanos).
+
+Viral Ransomware
+In late 2014, we started to see ransomware that infects most file types, including binaries, and locks the user desktop, making it the first of its kind.
+The VirLock family of file-infector ransomware is not only a polymorphic virus, it has a multi-layer protection code that is encoded using xor and xor-rol as a two-stage encryption. By doing this, traditional antivirus emulation would fail halfway through during its emulation before reaching the actual viral code and clean host file.
+Apart from infecting the usual documents and image related files, it also infects binary files.
+Execution
+Once executed, VirLock launches multiple copies of itself for various purposes. One of the copies registers itself as a Windows service and runs persistently. Another copy runs the file infector thread, while an additional copy is launched to monitor the previously-launched process and relaunches if the process gets terminated by any other processes.
+Once infection is complete, it launches a GUI window as shown below.
+It also monitors and terminates taskmgr.exe, and other applications by disabling explorer.exe. The below winlocker image is painted and shown based on the geolocation of the user machine and embedded within the malicious binary itself – meaning it doesn’t need a working internet connection for infection or to display the payment GUI window.
+It adds autorun key values to ensure it runs during windows startup.
+It then creates an .rsrc section and puts the encrypted HOST file in that section. While executing any infected file by the user, it drops the clean HOST file and executes it after running the virus code. It changes system folder settings by changing it to hidden, so that all the dropped files are not shown visibly.
+It saves all the infected file names in a text file under the %AllUsers% profile.
+Even though the infection mechanism looks simple, it is very much a polymorphic virus with many spaghetti codes, and the decryption keys are uniquely generated for each instance.
+It also enumerates all the available network drives and infects files in them too.
+There two main differences from other ransomware:
+
+It doesn’t delete the volume shadow copies used for backup.
+No ransom notes are dropped anywhere.
+
+It only shows the payment GUI window by executing an infected file as shown in Figure 1 below.
+
+Payment
+Like many other ransomware variants, it uses bitcoins for payment. The payment currency is shown based on the geolocation of the user machine. It charges 250 GBP to decrypt the files whereas the disinfection can be done without paying it to the malicious author.
+Protection
+Sophos detects and disinfects these variants using the below signatures:
+W32/VirRnsm-A, W32/VirRnsm-C, W32/VirRnsm-D, W32/VirRnsm-E, W32/VirRnsm-F
+Sophos can also protect proactively from these file infector ransomware using:
+HPmal/Ransom-P, HPmal/VirLock-A
+
+ThreatFinder
+ThreatFinder ransomware is a DLL component that encrypts certain file types as shown in Figure 1 below. It is usually downloaded by other malware supposedly via the Angler exploit kit.
+
+ThreatFinder is unique as there isn’t a known DLL-based file encrypting ransomware.
+Execution
+It copies itself into the %Temp% folder and adds an auto-run key entry. It also downloads the image file shown below from 65.49.8.104 instead of appending itself into the binary.
+It then waits for the command and control connection and encrypts certain file types. As of writing, there is no active command and control connection available – we also couldn’t confirm exactly the encryption algorithm (ransom notes says it uses RSA-2048) used as there are no crypto-specific APIs used or any known encryption algorithm.
+After a successful connection to the command and control server, it encrypts the aforementioned file types, then creates html with ransom notes shown in Figure 2 and Figure 3 on the disk and launches it using the shellexecute API.
+
+Payment
+Similar to other ransomware, ThreatFinder also uses bitcoins for payment. The Bitcoin address to send payment is hardcoded in the binary itself.
+“1NadLTgZHFGJmqUuQ58dGsB7ADCbe5N6z1”
+Below are the few sites suggested by the ThreatFinder author for purchasing bitcoins:
+blockchain.info/en/wallet
+LocalBitcoins.com
+coincafe.com
+coinmr.com
+bitquick.co
+cashintocoins.com
+coinjar.com
+zipzapinc.com
+Protection
+Similar to viral ransomware, it doesn’t delete the local backup copy using vssadmin.exe, which allows the users to revert their machine back to its previously healthy state.
+Sophos detects ThreatFinder using below signatures.
+Troj/TFinder-A
+Troj/TFinderM-A
+
+CrypVault
+CrypVault is a type of ransomware that is written in a simple batch script that encrypts user files using an RSA-1024 public key and renames the encrypted files by adding extension “.vault.”
+Execution
+We’ve seen variants where the actual batch file is downloaded by another javascript, or embedded into an installer binary which contains 7zip.exe, gpg.exe (open source encryption tool) and batch script (main script file that encrypts user files) as shown in Figure 1 below.
+
+The script file is a password protected 7zip file which is extracted using a hardcoded password.
+The script file then drops the 7zip.exe and gpg.exe into the %TEMP% folder.
+Once the batch file is executed, the gpg.exe carries out the encryption using an RSA -1024 public key that is generated.
+It encrypts the file types mentioned below in all available drives in the user machine from A-Z as shown in Figure 2.
+xls, doc, pdf, rtf, psd, dwg, cdr, cd, mdb, 1cd, dbf, sqlite, jpg, zip
+
+In one if its many variants, it also adds junk code in between the script to avoid static AV detection.
+It finds a certain folder name using findstr to avoid encrypting any files in those folders which would cause system instability, as shown in Figure 3.
+
+Once all the mentioned file types are encrypted, it renames these files with a .vault extension as shown in Figure 4.
+
+If the user tries to execute these files, it shows ransom notes in a GUI window as shown in Figure 5. The user needs to provide the key file dropped under the %desktop% folder.
+
+Once all encryption is done, it deletes all the dropped/created files. Some variants use the sDelete utility provided by Sysinternals and other variants just delete using a del command in the batch script as shown in Figure 6.
+
+CrypVault also adds a run key registry entry to the messagebox to show the ransom notes using mshta.exe and deletes remaining run key entries that contain javascript, which it has already executed as shown in Figure 7.
+
+It also deletes volume shadow copies, if any, using wmic.exe in the batch script as shown below.
+echo objShell.ShellExecute “wmic.exe”, “shadowcopy delete /nointeractive”, “”, “runas”, 0 >> “%temp%\aae53d47.vbs”
+Finally, it downloads a password dump utility belonging to SecurtyXploded into %TEMP%. It is actually using a custom packed binary to protect the actual password utility which then gets unpacked in memory after executing the binary. It collects browser passwords from various browsers as shown in Figure 8 and uploads to its command and control server.
+
+Protection
+Sophos protects customers using, but not limited to, the below signatures:
+JS/Ransom-ASS
+JS/Xibow-A
+Troj/Xibow-B
+Troj/Mdrop-GSY
+Troj/Ransom-Bt-A
+Troj/KrypVlt-A
+
+PowerShell-Based Ransomware
+PowerShell is a scripting language that lets administrators perform tasks both locally as well as remotely. We began noticing PowerShell-based ransomware in early 2013 and since then we have seen few other examples of ransomware that have abused PowerShell.
+Recently, we’ve come across a new variant that mimics popular TV show “Breaking Bad.” Their ransom notes contain an image of “Los Pollos Hermanos” and uses quotes from the TV show in their email address to contact the malware author as shown in Figure 1.
+Execution
+The PowerShell script is downloaded by a VBS downloader script and also downloads a fake .pdf file which later executes to pretend it executed nothing malicious. However, in the background the ransomware script is downloaded and executed.
+The PowerShell script has base-64 encoded images, reflective DLL module for both x86 as well as x64 platform and ransom html based notes.
+
+The reflective DLL module is a custom compiled Dll used to bypass UAC elevation prompt.
+The script also contains base-64 encoded sprep86.dll and sprep64.dll which is executed by injected reflective dll module into the explorer process to perform the below actions:
+
+Delete volume shadow copies using vssadmin.exe
+Disable windows startup repair
+Disable System Restore
+
+It encrypts certain file types found in the user machine as shown below in Figure 2.
+
+It uses AES (Advanced Encryption Standard) encryption to encrypt files and further protect them with an RSA public key that was generated previously, as shown in Figure 3.
+
+Payment
+Figure 4 below is the ransom note that is embedded in the PowerShell that is shown after encryption.
+
+Users need to make the payment using bitcoins via a uniquely generated Bitcoin address. Alternatively, the user can contact the sender via a given email ID as shown in Figure 5.
+
+Protection
+Sophos customers are protected from PowerShell ransomware using the below signatures:
+VBS/LPoLock-A, Troj/LPoLock-A, Troj/LPoLock-B, App/PShellInj-A.
+Recommendations
+Having Sophos HIPS technology enabled is strongly recommended to block ransomware proactively.
+If you suspect you’ve been compromised by ransomware, you can remove the malware using our Free Virus Removal Tool. Sadly, there’s not much you can do to get your files back except to pay the ransom – the encryption is too strong to crack.
+Apart from having your antivirus up to date, there are additional system changes to help prevent or disarm ransomware infections that a user can apply.
+1. Back up your files.
+The best way to ensure you do not lose your files to ransomware is to back them up regularly. Storing your backup separately is also key – as discussed, some ransomware variants delete Windows shadow copies of files as a further tactic to prevent your recovery, so you need to store your backup offline.
+2. Apply windows and other software updates regularly.
+Keep your system and applications up to date. This gives you the best chance to avoid your system being exploited using drive-by download attacks and software (particularly Adobe Flash, Microsoft Silverlight, Web Browser, etc.) vulnerabilities which are known for installing ransomware.
+3. Avoid clicking untrusted email links or opening unsolicited email attachments.
+Most ransomware arrives via spam email either by clicking the links or as attachments. Having a good email anti-virus scanner would also proactively block compromised or malicious website links or binary attachments that lead to ransomware.
+4. Disable ActiveX content in Microsoft Office applications such as Word, Excel, etc.
+We’ve seen many malicious documents that contain macros which can further download ransomware silently in the background.
+5. Install a firewall, block Tor and I2P, and restrict to specific ports.
+Preventing the malware from reaching its call-home server via the network can disarm an active ransomware variant. As such, blocking connections to I2P or Tor servers via a firewall is an effective measure.
+6. Disable remote desktop connections.
+Disable remote desktop connections if they are not required in your environment, so that malicious authors cannot access your machine remotely.
+7. Block binaries running from %APPDATA% and %TEMP% paths.
+Most of the ransomware files are dropped and executed from these locations, so blocking execution would prevent the ransomware from running.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+4

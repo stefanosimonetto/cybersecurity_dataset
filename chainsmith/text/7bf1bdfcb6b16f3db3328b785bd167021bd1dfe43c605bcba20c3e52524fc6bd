@@ -1,0 +1,15 @@
+Adobe Reader zero-day discovered alongside Windows vulnerability
+During the first half of 2018, we have witnessed some particularly interesting zero-day exploits, including one for Flash (CVE-2018-4878) and more recently for Internet Explorer (CVE-2018-8174). The former was quickly used by exploit kits such as Magnitude, while it is only a matter of time before we see the latter being weaponized more widely.
+We can now add to that list an Adobe Reader zero-day (CVE-2018-4990), which was reported by ESET and Microsoft and has already been patched. Although it has not been observed in the wild yet, it remains a dangerous threat considering it is coupled with a privilege escalation vulnerability in Microsoft Windows.
+To exploit the Windows vulnerability, the attacker must write to an arbitrary address in kernel space, which will not work for Windows 8 and above, as newer security features prevent this kind of mapping. Those two combined zero-days were necessary to escape the Acrobat Reader sandbox protection, which to its credit has been improving the security of the software drastically, so much so that malicious PDFs that were once common as part of drive-by download attacks have all but vanished.
+Let’s take a quick look at the malicious PDF using pdf-parser:
+python pdf-parser.py --content CVE-2018-4990.pdf
+
+We can see a suspicious obfuscated blurb that most likely contains the JavaScript code we are looking for. We can decode and dump the output to a raw file:
+python pdf-parser.py -c CVE-2018-4990.pdf --object 1 --filter --raw > output.raw
+
+The exploit code is now visible in clear text. For a good explanation on how it is used for the ROP chain and shellcode execution, please refer to the ESET article.
+We tested this zero-day against Malwarebytes, which was already stopping it without the need for any additional updates. The mitigation happens at the very beginning of the exploitation chain (stack pivoting):
+
+We recommend users patch their systems to prevent this threat, which will most likely be weaponized in the wild soon. A very plausible attack scenario would be a PDF attachment in a malspam campaign.
+The Adobe security bulletin (CVE-2018-4990) can be found here, while Microsoft’s (CVE-2018-8120) is here.

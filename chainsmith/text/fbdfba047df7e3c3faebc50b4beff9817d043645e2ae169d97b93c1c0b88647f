@@ -1,0 +1,135 @@
+Proxies for the underworld: I-Worm.Locksky.AS
+2006-03-01
+
+Ferenc Laszlo Nagy
+VirusBuster
+,
+Hungary
+Editor:
+Helen
+
+Martin
+Abstract
+The Locksky email worm first appeared in October 2005. Its aim is to install proxies on victims' machines, which can then be sold. Ferenc Laszlo Nagy has the details.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+The Locksky email worm first appeared in October 2005 as a successor to Trojan.Tofger. The aim of both Tofger and Locksky is to install proxies on victims' machines, which can then be sold. The prices of the proxies are listed on a website (http://proxy4u.ws:8080/) which also provides two ICQ contact addresses for prospective buyers – one for home users and small businesses, and the other for clients looking to purchase more than 500 proxies.
+
+Versions and variants
+The first version of Locksky was disguised as an Internet phone utility named 'Skylook' (from which the worm's name was derived). Several new variants have appeared since then, mainly incorporating changes designed to help the virus bypass anti-virus detection.
+The most active variant at the time of writing is I-Worm.Locksky.AS (internal version number 0039). The following analysis will cover this variant, but most of what is described here also applies to the previous versions. Also note that while I refer to internal version numbers, these may not be unique – for example, there are two variants with version number 0034: I-Worm.Locksky.AC and I-Worm.Locksky.AI.
+
+The encryptor
+The main file and six dropped components are all encrypted by a unique encryption routine. The decryptor is added to the end of the last section. The new entry point is the same as in the original program. The code starts with an anti-emulation routine using MMX instructions, then jumps to the decryptor at the end of the file.
+The decryptor code itself is encrypted by a long chain of elementary operations. These operations can be considered to be part of the key, and change in every instance.
+The (decrypted) decryptor then writes the original (but encrypted) 80 bytes to the entry, decodes the whole encoded part and relocates the section if needed. Through the decoding, every 32-bit value is xored by a constant key, then incremented by 1.
+Interestingly, we have seen a small number of seemingly unrelated pieces of malware (such as TrojanSpy.Banker.CAU and Trojan.DL.Tibs.I) encrypted in a similar way. It is likely that these are malware files that have been developed independently, then encrypted and distributed by the group responsible for writing the Locksky worm.
+
+Dropper component: sachostx.exe
+This is the main file that arrives in the Locksky-infected email. Its icon is a white arrow on a red box, and in this version it is named ebay_info.exe.
+If the operating system is not NT-based, the file exits immediately. Otherwise, it checks the system folder for 'hard.lck' and deletes it if it finds it, thus causing any older versions of the worm to exit. Then it enables network access for hard.lck – which seems to be a bug. To continue cleaning up after older versions, it then terminates processes where the name of the exefile contains 'sachostc', 'sachosts', 'sachostw' or 'sachostm'.
+Next, it copies itself to the Windows folder as sachostx.exe, and sets the 'HKLM\SOFTWARE\Microsoft\Windows\ CurrentVersion\Run\HostSrv' registry entry to this file, thus ensuring that the file will run every time the machine is booted.
+Next, it drops a keylogger component named msvcrl.dll and activates it by calling the hide_get and hook_kbd functions. It also drops and runs a password collector named sachostp.exe. This will write the initial content of the file SYSDIR\attrib.ini.
+Finally, it creates the hard.lck file and enters the main loop. One responsibility of this loop is to watch hard.lck, and terminate the worm if it disappears. The other is to wait for an Internet connection and perform various tasks (described below) once there is one.
+First, it drops and runs the sachostw.exe worm component. If the computer is connected directly to the Internet, it also drops the sachostc.exe and sachosts.exe proxy servers with a random port as the parameter. (Port numbers must be larger than 10,000, and different for the two programs.) All three programs require network connections, so the worm opens the firewall by running the 'netsh firewall set allowedprogram <filename> enable' command for them. The programs are not executed directly, but the worm loads the Windows system file svchost.exe, injects the starter code into its address space, and runs it. On Windows 2000 (where svchost.exe is a console application), this will be manifested in console window popups.
+
+Updating and reporting
+If the current time is 10 minutes past the hour, the worm will try to update itself. It tries two web servers, proxy4u.ws:8080 and usproxy2u.ws:8080, the first of which currently works. It checks the advertised version number of the update, and if it is greater than its own version number (in this case 0039), it will download and run the new executable. It is no surprise that the downloading itself is performed by svchost.exe. If the file runs successfully, the worm exits.
+If the spy components (keylogger msvcrl.dll and password collector sachostp.exe) have collected enough information (attrib.ini is larger than 150,000 bytes), the worm drops sachostm.exe, opens the firewall for it, and runs it through svchost.exe.
+The worm also reports back to its authors. If the machine is behind a proxy (as reported by the InternetGetConnectedState API function), then every five hours, if it is connected directly to the Internet, it downloads the following URL every 10 minutes: 'http://proxy4u.ws/index.php?IP=%u.%u.%u.%u&Port1=%d&Port2=%d&ID=%x&Ver=%s&con=%s&speed=%d', where:
+IP: victim IP address
+Port1: sachosts.exe port number
+Port2: sachostc.exe port number
+ID: unique ID created from machine name and disk volume serial number
+ver: worm version number (0039 in this case)
+con: connection type (P: proxy, L: LAN, M: modem, U: unknown)
+speed: download speed in kilobytes/sec (downloads the www.microsoft.com home page, and divides the number of downloaded bytes by the number of whole seconds elapsed, if that is not 0).
+
+Password collector component: sachostp.exe
+This component writes the passwords it finds to 'attrib.ini'. If started from Windows 9x it will write passwords returned by mpr.dll's undocumented WNetEnumCachedPasswords function. If started from an NT-based system (which is always the case when started by the Locksky worm), it collects data from the registry and from the Protected Store (P-Store).
+In the registry, subkeys below the 'HKCU\Software\Microsoft\Internet Account Manager\Accounts' key are investigated. If the 'HTTPMail User Name' entry (which contains Hotmail account data) exists, then it is logged together with the 'HTTPMail Password2' value. If the 'POP3 User Name' entry exists, then it is logged along with 'POP3 Password2'.
+The Protected Store COM object is also queried for the following categories (as named by the worm):
+Deleted OE Account
+IE:Password-Protected sites
+OutlookExpress
+MSN Explorer Signup
+IE Auto Complete Fields
+AutoComplete Passwords
+
+Spy component: msvcrl.dll
+This key and web traffic logger also operates as a rootkit. It implements four functions: hook_kbd, un_hook_kbd, hide_get and un_hide_get.
+The hook_kbd function installs a GetMsgProc hook, which logs the keypresses and text placed on the clipboard together with the title of the active window and current time. These are all written to attrib.ini.
+The hide_get function tries to hide the processes whose names start with 'sachost', and the registry entries named 'hostsrv'. This is achieved by hooking CBTProc and patching NtQuerySystemInformation and RegEnumValueW functions in every process to which it is mapped while servicing CBTProc messages.
+By patching ws2_32.dll in memory, it filters network traffic and logs GET and POST HTTP requests and the answers returned by the server if the URL contains one of the following keywords:
+abbey
+bank
+barclay
+cahoot
+egg
+e-gold
+forex
+halifax
+hsbc
+ktb
+lloyds
+log
+mail
+money
+nationet
+nationwide
+natwest
+nwolb
+openplan
+passport
+password
+PayPal
+rbs
+secret
+secure
+sell
+sign
+woolwich
+Additionally, all POST requests are logged.
+The un_hook_kbd and un_hide_get functions uninstall the mentioned routines. The operations performed by msvcrl.dll can make the system very unstable, and the rootkit function does not work in most cases.
+
+Info mailer component: sachostm.exe
+If the machine is not currently connected to the Internet, it waits for a connection by sleeping in a loop. Then it sends the content of attrib.ini in an email to the address [email protected] using the smtp.list.ru SMTP server. (This is one of the few changes from the 0034 version, where the email address was [email protected])
+The file will be base64-encoded, and named '00000000-00000000.txt', where the first number is made from the machine name and disk volume serial number (by a different algorithm from that in the main file), and the second number depends on the number of clockticks since power on.
+Finally, it deletes attrib.ini and exits.
+
+Worm component: sachostw.exe
+When started, the worm component will copy sachostx.exe (the main file, which contains all parts) to its own directory (the SYSDIR) as temp.bak. Then it waits for an Internet connection if necessary.
+To simplify base64 encoding, 1 to 3 bytes are added to the worm copy, so the number of bytes will be divisible by 3. This means that the worm will become longer in every generation. The termination of base64 encoding is not standards compliant (CRLF is missing before the boundary line), so some MIME extractors may have difficulties with it.
+Further characteristics of the Locksky-infected emails are as follows:
+The subject line is 'Your Ebay account is suspended' appended with spaces – possibly because one can update it this way without recompiling.
+The message body (also space padded) is:
+Dear eBay Member,
+
+We regret to inform you that your eBay account could be suspended
+if you don't re-update your account information.
+
+To resolve this problem please see details in attached file.
+
+If your problems could not be resolved your account will be suspended
+for a period of 24 hours, after this period your account will be
+terminated.
+The dropper component is attached as ebay_info.exe.
+The boundary is always 'zl'.
+Messages are sent to three groups of addresses:
+The worm will search for *.htm* files in the administrator's documents (the folder to which the 'HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders\Personal' registry entry points), and collect the addresses by searching for "mailto:xxx" strings, where xxx is the email address.
+It gets the value of 'HKCU\Software\Microsoft\WAB\WAB4\Wab File Name' and reads email addresses from the WAB file by interpreting the file format.
+It reads 'The Bat!' mailer configuration from the registry (keys below HKCU\Software\RIT\The Bat!), and searches for lines containing 'To:' in the file messages.tbb.
+It will use the SMTP and sender settings defined in the 'HKCU\Software\Microsoft\Internet Account Manager\Default Mail Account' registry folder, in order to lend the 'From' addresses some authenticity. The SMTP connection is managed by the worm's engine.
+Finally, it deletes temp.bak and exits.
+
+Proxy components: sachostc.exe and sachosts.exe
+These components are fully-featured proxy server applications. They may have been developed by others, but they have been stripped down to become perfect for malware purposes.
+Sachostc.exe is a SOCKS5 proxy. It supports username/password authentication, but no password is compiled in it. It supports connect, bind and udp association modes.
+Sachosts.exe is an HTTP proxy. It supports CONNECT and generic requests.
+With the help of these components, the infected machines can be instructed remotely to connect to given target hosts and carry out actions such as downloading web pages or sending email messages.
+
+Conclusion
+This worm is one of the profit-oriented malicious programs to which we are becoming accustomed. Instead of advertising, its authors chose a more direct way of making money: selling the availability of infected machines.
+There is nothing revolutionary in this worm's code, and its development had been limited to trying to prevent it from being detected by anti-virus products.
+Regarding the future, we have just captured a variant with version number 0044 – although this one does not have a worm component. It seems as if this spreading method may have generated too much attention from the anti-virus field, and that the authors have switched back to producing Trojans as a result. Alternatively, the switch could be a transient idea and there might be more aggressive variants to follow – who knows?

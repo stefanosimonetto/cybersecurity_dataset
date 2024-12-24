@@ -1,0 +1,76 @@
+Linux Covert Channel Explains Why NSM Matters
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+November 14, 2013
+
+I just read a post by Symantec titled Linux Back Door Uses Covert Communication Protocol. It describes a new covert channel on Linux systems. A relevant excerpt follows:
+
+[T]he attackers devised their own stealthy Linux back door to camouflage itself within the Secure Shell (SSH) and other server processes.
+
+This back door allowed an attacker to perform the usual functionality—such as executing remote commands—however, the back door did not open a network socket or attempt to connect to a command-and-control server (C&C).
+
+Rather, the back door code was injected into the SSH process to monitor network traffic and look for the following sequence of characters: colon, exclamation mark, semi-colon, period (“:!;.”).
+
+After seeing this pattern, the back door would parse the rest of the traffic and then extract commands which had been encrypted with Blowfish and Base64 encoded.
+
+:!;.UKJP9NP2PAO4
+
+Figure. Example of injected command
+
+The attacker could then make normal connection requests through SSH or other protocols and simply embed this secret sequence within some otherwise legitimate traffic to avoid detection. The commands would be executed and the result sent back to the attacker.
+
+Symantec then recommends:
+
+To identify the presence of this back door on your network, look for traffic that contains the “:!;.” string (excluding quotes).
+
+How are you supposed to do that? If you implement NSM operations, perhaps using Security Onion, you could do something like the following:
+
+$ for i in `ls`; do echo $i && ngrep -q -I $i \:\!\;\.; done
+
+If you run that command in the directory where you store your full content data traffic (i.e., raw pcap files), Ngrep will search each packet for the string of interest.
+
+You might also want to use the -O flag to dump matching packets to a pcap-formatted file.
+
+Results look like the following:
+
+input: snort.log.1384440248
+match: :!;.
+
+T 192.168.2.104:62696 -> 31.13.69.160:443 [AP]
+....H{.n.......\,i3.gb....h%.....Cb'..._..H.....VO..Vr.....K7.N.`;O..@...<.
+...A..h.8:..Jf.%5d.%.oO.|.=}0.8......z.w................'..)...t,.1^.:...4.
+P..............^.......$...4-..*.-.?^?.0......SI..3`....4i).C~H{.D.?SR..&4.
+?...T.<...x&~...F.:.d..`.Vg/h.........rN.....a.......yq...q.f..N_m.D.F@C>v.
+.x......x.R.nz...U.B.]&...l{....m ..4.......`.f..Y.u...WQq.(...9........qq.
+}...)..VB.......(........Th.DY~.......J..........(......Q%].....Y....;`4...
+_p|dO..5g.IS~.E".L.w............p.X.WV....G+...M...........C....m9.oU*Qz).l
+.M....]o/.;.t3S...O......S....JB0.......0.#I.e.....Z.?"..n=Hq>....(...$*...
+0...SO./]........'...wa.....q&>..>.:!;.....FJ.)..s|.9x.U.<6......3`...[...K
+--- SNIP ---
+
+This appears to be part of a SSL-encrypted session. Running through some of my lab traffic, the :!;. string appears several times in encrypted traffic involving Windows computers.
+
+This method doesn't provide prima facie evidence of compromise. For example, you might have to reference personal knowledge or an asset inventory to determine that the system in question is a Windows computer, not a Linux system. You are more likely to see a stream of commands involving this string and follow that trail to identify compromise. You could also cross-reference using the memory-based indicators of compromise Symantec includes in the post.
+
+Regardless, the fact that you are already collecting as much full content data as your technical, legal, and political processes allow means you have a chance to perform retrospective security analysis, thanks to the collection of pcap within an NSM operation.
+
+Without taking an NSM approach, you would have to set up new signatures or data collection from this point forward and hope the adversary doesn't change his covert channel, now that Symantec has publicized it.
+
+The point of this approach is to help you determine the scope of the compromise as efficiently and rapidly as possible, so that you can conduct effective remediation once the scope is understood.
+
+If you want to know how to set up a NSM operation, check out my Network Security Monitoring 101 class at Black Hat Seattle next month. The class outline is here. You may also like my latest book on NSM. Use code "NSM101" to save 30% off, and get the digital edition free with a print copy.
+
+Thank you to Symantec for sharing their IOCs for this covert channel.
+
+Tweet

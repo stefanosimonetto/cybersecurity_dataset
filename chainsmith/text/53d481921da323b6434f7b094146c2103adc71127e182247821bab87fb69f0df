@@ -1,0 +1,78 @@
+Fake SUPEE-5344 Patch Steals Payment Details
+
+Update 2/17: This post is not about hackers tricking webmasters into installing fake Magento security patch. It’s about malware that pretends to be an applied security patch.
+In case you don’t know, SUPEE-5344 is an official security patch to the infamous Magento shoplift bug. That bug allows bad actors to obtain admin access to vulnerable Magento sites. While the patch was released February 2015 many sites unfortunately did not update, this gave hackers an opportunity to compromise thousands of Magento powered online stores.
+The anatomy of the hacks attributed to the vulnerability allowed hackers to create admin users within the Magento application. Afterwards, they would append JavaScript to the files allowing them to strip payment information right from the order forms, or in some instances, they would modify a series of PHP files that would disseminate the payment information during the payment processing phase. Regardless of technique employed, the results were the same; customer credit card information was being stolen and siphoned off to the hackers.
+This is why SUPEE-5344 is the most important patch that should be applied to all Magento versions released prior to February 2015.
+Fake SUPEE-5344 Patch
+Because of the severity of the vulnerability, many hackers know how important that patch is and some are even trying to piggyback on it. We found this comment in app/Mage.php
+/**
+
+Mage Patch SUPEE-5344 – initial check if not compromised
+
+@author Magento Core Team <core@magentocommerce.com>
+
+*/
+While it looks like the patch is legitimate (it mentioned its code and stated that the Magento Core Team as the author), the code actually belonged to a Magento credit card stealing malware which exploited the very bug that SUPEE-5344 is supposed to be fixing.
+Fake SUPEE-5344 patch
+This malware is more sophisticated than other types of similar Magento injections.  First of all, it’s big – about 160 lines of code.  Other campaigns inject just a few dozen lines or even a single line of encrypted code.
+Smaller Injections
+This attack has smaller encrypted injections in other files:
+
+./app/code/core/Mage/Customer/Model/Session.php
+./app/code/core/Mage/Checkout/Model/Type/Onepage.php
+./includes/src/Mage_Checkout_Model_Type_Onepage.php
+
+It looks like this:
+Malicious injection in Onepage.php
+The two highlighted lines of code are the encrypted malware that uses eval(base64_decode(strrev…))) functions to decode and execute the code that sends an email with the stolen payment information at “perampokcc @ gmail.com“. Such emails have the following subject line “Logger CC Magento From $store“. This is convenient to track which hacked site the data comes from.
+Stealing Customer Credentials
+The app/code/core/Mage/Customer/Model/Session.php also has a similar two-line encrypted injection. This time it hunts for customer credentials, not the payment details. It emails username, password, IP address, date, browser and server name to “imamlogs @gmail .com” and “perampokppl @gmail .com“. The subject is “User Login ($country_name) ($server_ip)“, and the “From” header is “Logger User Magento From $server_name <$server_ip @$server_name>“.
+This way hackers collect databases of credentials that may be used to hack accounts on other sites/services (email, social networks, etc.), given that many people reuse the same passwords on multiple sites. Moreover, the credentials also provide access to the account data such as shipping and billing addresses which can be used in social engineering attacks.
+Public Key Cryptography
+Let’s get back to the fake SUPEE-5344 patch and see what it does.
+The first thing that meets the eye is the public key embedded into the code. It’s something that we see very seldom in malware (the most well known example is CryptoPHP). How do they use this public key?
+This code intercepts POST requests with parameters such as “billing” and “payment” and save the data in the publicly accessible file media/shop.jpg. As we already know, Magento thieves are also concerned about security of the data they steal, so they encrypt the intercepted data before saving it to the shop.jpg file. Every stolen chunk of data consists of the following elements:
+JPEG-1.1<base64_encoded(<encrypted_key>:::SEP:::<encrypted_data>)>
+Whereas encrypted_data is the intercepted data encrypted using the AES-128 with a random key, the encrypted_key is the random key encrypted with the embedded public key. JPEG-1.1 is used both as a separator between individual chunks of data and as a “red herring” to make it resemble a header of a real JPEG file (which is actually not JPEG-1.1).
+Backdoor Functions
+Intercepting POST requests with sensitive data is not the only function of this fake SUPEE-5344 patch. It can also:
+
+steal customer data from the sales_flat_quote_payment and customer_entity tables (this time without encryption whatsoever).
+execute arbitrary PHP code on the server: shell_exec($_REQUEST[‘jpg’]);
+change permissions of all Magento files (the default setting is 777 – full access to anyone)
+delete the media/shop.jpg file when it is no longer needed.
+
+All these extra functions only work if a request comes from a browser with the “Mozilla/5.0 (compatible; Yahoo!xSlurp; +//help.yahoo.com/help/us/ysearch/slurp)” user agent string. (note xSlurp).
+Magento Under Attack
+As we can see, the Magento malware ecosystem is maturing and attracting more hackers, and they’re bringing their arsenal of tried and true tricks and methods from WordPress and Joomla! malware with them. The growing market share of Magento ecommerce sites (#1 CMS in ecommerce and #4 CMS overall) and potential access to money flows, make attacks even with low success rates worthwhile.
+When we inspect access logs of Magento sites we see:
+
+Constant probes for various vulnerabilities (and the shoplift vulnerability is the most popular one)
+Constant brute force attacks trying to guess admin user credentials (after all even owners of fully patched sites sometimes choose weak passwords)
+Cross-infections from other compromised CMS applications like WordPress blogs that share the same server account with the Magento sites.
+
+Dear Webmasters
+If you have an online store powered by Magento, please, make sure you properly secure it. It’s not just about your site and your money (on some sites hackers hijack order forms so that site owners don’t receive any money from orders). You also put your customers money and information at serious risk.
+
+Make sure to keep your site up-to-date and fully patched all the time.
+Monitor integrity of Magento files. Any changes in core files should be investigated as soon as possible.
+Review all users with admin privileges. Delete any of them if you don’t recognize them.
+Change passwords of all admin users. Seriously, change passwords.  They may have already been compromised during past attack, or they may be just too weak.
+Isolate your eCommerce site from your other sites, especially from those that you don’t update,  and protect. Even your store blog should live on a separate hosting account.
+Consider using a website firewall that will save your site from exploits, brute force attacks and unauthorized access.
+
+Dear Online Shoppers
+Lots of eCommerce sites fail to properly protect customer data and secure transactions that go through their servers. It’s virtually impossible to tell if you can trust any particular site. HTTPS, badges from security companies, PCI compliance claims (even valid) won’t help if a site is hacked. All you can do is minimize risks:
+Stay away from sites that have visible problems that may affect security:
+
+No HTTPS
+Old versions of site software (SiteCheck can provide you with this information)
+Malware warning from anti-virus software, browser and search engines.
+Suspicious behavior (e.g. long load times may be a sign of a page contacting a third-party server behind the scenes)
+
+Prefer sites that don’t require you to enter payment details on their own page and  redirect you to a payment gateway site (e.g. PayPal) to complete transaction.
+
+Use a dedicated credit card with low/adjustable limits for online shopping. If its number is stolen, you won’t lose much.
+Don’t re-use passwords if you have to create a customer account.
+Specify only the bare minimum information when you create a customer account.

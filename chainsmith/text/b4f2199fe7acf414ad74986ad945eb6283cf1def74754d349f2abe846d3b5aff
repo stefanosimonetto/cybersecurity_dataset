@@ -1,0 +1,49 @@
+New Apache Module Injection
+
+For the last few months we have been talking about the Darkleech Apache Module injection that is being used to insert malicious iframes into every site hosted on a compromised Linux server.
+However, this past week we detected a new type of Apache module injection that is more subtle and increasingly difficult to detect. We don’t know if it is a new and improved version of Darkleech or a completely different tool  written by a different group. Our team is still working on the binary and trying to scope the reach of this infection, so we will only post our preliminary analysis here.
+Identifying the injection
+The first sign of this injection can be identified remotely by an iframe injection like this one:
+
+<iframe src=httpx://ajaxfamilies[.]org/go[.]php?sid=3 width=1 ..
+
+That gets randomly prepended at the top of the pages loaded from the compromised server. That injection is conditional, so depending on the browser, referrer or IP address it may not show up. Google also says that 500+ sites have been distributing malware through this domain (ajaxfamilies.org):
+
+Has this site acted as an intermediary resulting in further distribution of malware? Over the past 90 days, ajaxfamilies.org appeared to function as an intermediary for the infection of 562 site(s) including ajbridalwear.co.uk/, global-lcs.com/, trattamento-acque.net/.
+
+Note that the domain ajaxfamilies.org might not be the only one being used (and it might change or rotate soon). However, from the servers we were able to gain access to, it was the main domain being used.
+Apache Module injection
+The injection is being done in the same way was before, by modifying one of the httpd configuration files (either conf/httpd.conf or conf.d/*.conf) and inserting a new module to be loaded:
+
+LoadModule suphp5_module modules/mod_suphp5.so
+
+Note that mod_suphp5 is a false module and not the popular mod_suphp one. We have also seeing it injected by overwriting the default mod_version.so with a fake one:
+
+LoadModule version_module modules/mod_version.so
+
+Those new modules are very small in size and have 0 detection rate by common anti virus software, according to virus total.
+This is their identifier (size and md5 checksum):
+
+$ ls -la *.so
+-rwxr-xr-x  1 dcid  dcid  15472 19 Jun 14:03 mod_suphp5.so
+-rw-r–r–  1 dcid  dcid  15472 17 Jun 18:53 mod_version.so
+$ md5 *.so
+MD5 (mod_suphp5.so) = 0a64f8d809d0a73d1b0b4139126e8f94
+MD5 (mod_version.so) = 71e800af61521ff4390bf9845befa33a
+
+It uses Apache’s portable memory pool to store the list of IP addresses that visited the site before and to decide when to inject the malware. It also has a backdoor part of it, allowing the remote attacker to run any command as the user Apache.
+This module has some unique signatures that you can use to search for it. At this point we recommend looking for AWAVAUATUS1 on the modules directory:
+
+$ grep -r AWAVAUATUS1 /etc/httpd/modules
+Binary file /etc/httpd/modules/mod_version.so matches
+
+You can also search for execl or getppid on the module directory and see if any suspicious file comes up. On the default Apache/PHP install, only libphp5 would have a call for execl or getppid on it.
+If you suspect a site might be compromised, our sitecheck scanner should be able to identify this type of injection.
+What’s next?
+It seems the switch from site-level injections to server-level injections is really here to stay. If you don’t know how an attacker with just basic FTP or restricted access can get root, take a look at this series of posts we are doing:
+
+From a Site Compromise to Full Root Access – Symlinks to Root – Part I
+
+From a Site Compromise to Full Root Access – Local Root Exploits – Part II
+
+We will also provide more information as we learn more about it.

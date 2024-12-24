@@ -1,0 +1,203 @@
+Stealing Credit Cards – A WordPress and vBulletin Hack
+
+What better way to celebrate Thanksgiving than to share an interesting case that involves two of the most popular CMS applications out there – vBulletin and WordPress.
+Here is a real case that we just worked on this week, involving an attacker dead set on stealing credit card information. Enjoy!
+The Environment
+The client runs a fairly successful e-commerce website. They run two main applications within their architecture – vBulletin and WordPress.
+vBulletin is used for their support and collaboration forums, while WordPress for their main website and e-commerce. This appears to be a pretty standard configuration across most larger web application environments these days.
+Everything is sitting on a LAMP (Linux / Apache / MySQL / PHP) stack, so nothing too special there. For the most part, things are up to date, they might be a version or two behind, but none of it earth shattering or something worth writing home about.
+In regards to security, they are running CloudFlare.
+All in all, it probably sounds a lot like your environment[s].
+
+Synopsis – Stealing Credit Cards
+Client had been alerted via our Server Side scanner of a modified WordPress core file wp-admin/admin-ajax.php. This one event triggered a series of events that will wrap this entire case into a nice little bow.
+The attacker then used that backdoor to create two files:
+
+/wp-admin/includes/list.php
+
+and
+
+/htdocs/css/css/shop.txt
+
+You’re probably wondering why, and that’s where it gets to the fun stuff. Remember that I said they were an e-commerce website? Well, the attacker wasn’t trying to inject a malware payload, they were stealing credit card information for the buyers using this code:
+
+As you can see, the code drops the information into the /htdocs/css/css/shop.txt file where the attacker can then later retrieve it, as seen in these raw logs:
+
+[21/Nov/2013:16:32:47 +0000] "GET /css/css/shop.txt HTTP/1.1" 200 118
+[21/Nov/2013:16:33:32 +0000] "GET /forum/ajax.php?edit=/[path]/htdocs/css/css/shop.txt HTTP/1.1" 200 103284
+[21/Nov/2013:16:33:35 +0000] "POST /forum/ajax.php?edit=/[path]/htdocs/css/css/shop.txt HTTP/1.1" 200 4638
+[21/Nov/2013:16:33:36 +0000] "GET /forum/ajax.php?edit=/[path]/htdocs/css/css/shop.txt&show HTTP/1.1" 200 103166
+[21/Nov/2013:16:34:01 +0000] "GET /css/css/shop.txt HTTP/1.1" 200 106
+[21/Nov/2013:16:34:07 +0000] "GET /forum/ajax.php?edit=/[path]/htdocs/css/css/shop.txt&show HTTP/1.1" 200 103272
+[21/Nov/2013:16:34:11 +0000] "POST /forum/ajax.php?edit=/[path]/htdocs/css/css/shop.txt&show HTTP/1.1" 200 4626
+[21/Nov/2013:16:34:12 +0000] "GET /forum/ajax.php?edit=/[path]/htdocs/css/css/shop.txt&show HTTP/1.1" 200 103166
+....
+....
+....
+
+In that file, css/shop.txt, it appends to the bottom of the file the following information for each transaction:
+
+billing_first_name
+billing_last_name
+paypal_pro_card_type
+paypal_pro_card_number
+paypal_pro_card_expiration_month
+paypal_pro_card_expiration_year
+paypal_pro_card_csc
+billing_country
+billing_state
+billing_city
+billing_address_1
+billing_postcode
+billing_email
+
+We don’t have to be a developer to understand this information.. 🙂
+But wait, that’s weird? We can see them going straight to the file here GET /css/css/shop.txt but then what is this /forum/ajax.php?edit=/[path]/css/css/shop.txt?
+At first glance you’d think that the vBulletin ajax.php file has some vulnerability that is allowing for a Local File Inclusion (LFI) attack. But is it?
+Following the Cookie Trail
+Something didn’t sit well here. We had found the payload, understood what it was doing, yet we were no closer to understanding how they were able to get the file list.php into the wp-admin directory. Fortunately, we had logs going back to January for this client, which made the forensics a bit more fun.
+The first step was to identify where and when this list.php came from, so we got to work parsing through the logs:
+
+[21/Nov/2013:15:45:30 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php HTTP/1.1" 200 103216
+[21/Nov/2013:15:58:47 +0000] "POST /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php HTTP/1.1" 200 4580
+[21/Nov/2013:15:58:48 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php&show HTTP/1.1" 200 104363
+[21/Nov/2013:16:28:20 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php HTTP/1.1" 200 104363
+[21/Nov/2013:16:28:35 +0000] "POST /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php HTTP/1.1" 200 5726
+[21/Nov/2013:16:28:36 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php&show HTTP/1.1" 200 104365
+[21/Nov/2013:16:31:51 +0000] "POST /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php&show HTTP/1.1" 200 5729
+[21/Nov/2013:16:31:52 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php&show HTTP/1.1" 200 104363
+[21/Nov/2013:16:33:26 +0000] "POST /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php&show HTTP/1.1" 200 5727
+[21/Nov/2013:16:33:27 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/includes/list.php&show HTTP/1.1" 200 104259
+
+This gave us an idea of when that file was first accessed. Knowing that allows us to look back at what the specific IP did, or was doing to see if we could build a chronological order of events. Unfortunately, we quickly learned that because the site was behind CloudFlare and their Apache module had not been configured correctly all the data we were getting was coming from the same IP, making the analysis that much harder.
+This required us to get extra creative in our work to better understand what was going on.
+Something we noticed was this recurring theme, where the logs kept showing ajax.php being used and variables being passed. It just didn’t seems right. We looked over the file numerous times and nothing seemed out-of-place, it was a normal file included in the core of vBulletin.
+We began doing our homework and in the process it hit us, when you add a plugin in vBulletin you have the option to define the Hook Location. Defined as:
+
+A hook is a location in the vBulletin PHP code that triggers events, which can be used to execute external scripts or code; such as for a plugin. The code is executed within the context and scope of the location of the hook. – Source
+
+This is pretty normal, most CMS applications provide developers a number of hooks to work from. What this did though was made us curious about their plugins.
+That’s where we had our epiphany.
+Looking at the plugins, we found this little gem:
+
+From the outside looking in, it looks benign, right? But the first red flag was it was leveraging the ajax_complete hook location. And so it begged to be opened, what harm could come of that?
+When editing we find:
+
+When going through the code you find:
+
+The part that sticks out is this piece:
+
+#пароль на авторизацию
+$aupassword="test";
+
+It’s the password I need to see how the hooks were being used.
+When you would visit any of the log entries above, like this one:
+
+/forum/ajax.php?edit=/[path]/htdocs/css/css/shop.txt
+
+You would always be greeted with a password panel like this:
+
+But typing in our new password, test, opened a whole new world to us:
+
+There were two things that popped out at me when I looked at the panel. It was the URL structure, when you first log in you can see the URL redirects to this: /forum/ajax.php?pass=test. This is a signature, something we can scan for, so that’s what we did. It was the signature we needed to see when they first logged into the shell.
+
+# cat /[path]/logs/access_log | grep "/forum/ajax.php?pass=test"
+[19/Oct/2013:21:05:38 +0000] "GET /forum/ajax.php?pass=test HTTP/1.0" 200 102098
+[21/Nov/2013:13:36:33 +0000] "GET /forum/ajax.php?pass=test HTTP/1.1" 200 102098
+....
+....
+
+This told us that the first time that shell was used was going back to October 19th. Following this trail we were then able to piece together what happened.
+Using the shell, the attacker was set on attacking the WP install to steal credit cards. To do so they had to get into WordPress core to modify the incoming post requests. They did so by modifying the wp-admin/admin-ajax.php file via the Cyber Shell. Doing so allowed them to add a backdoor payload to the file, which they then later accessed to upload the wp-admin/includes/list.php file.
+Logs showing attackers going after admin-ajax.php
+
+[21/Nov/2013:14:11:28 +0000] "POST /forum/ajax.php?edit=/[path]/wp-admin/admin-ajax.php HTTP/1.1" 200 8782
+[21/Nov/2013:14:11:30 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/admin-ajax.php&show HTTP/1.1" 200 107516
+[21/Nov/2013:14:12:05 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/admin-ajax.php HTTP/1.1" 200 107516
+[21/Nov/2013:14:12:10 +0000] "POST /forum/ajax.php?edit=/[path]/wp-admin/admin-ajax.php HTTP/1.1" 200 8877
+[21/Nov/2013:14:12:10 +0000] "GET /forum/ajax.php?edit=/[path]/wp-admin/admin-ajax.php&show HTTP/1.1" 200 107515
+
+The real interesting part is when they go right after WooCommerce DB tables:
+
+[21/Nov/2013:17:07:55 +0000] "GET /forum/ajax.php?d=/[path]/htdocs&show HTTP/1.1" 200 100645
+[21/Nov/2013:17:08:01 +0000] "GET /forum/ajax.php?edit=/[path]/htdocs/wp-config.php HTTP/1.1" 200 107011
+[21/Nov/2013:17:08:21 +0000] "GET /forum/ajax.php?d=/[path]/htdocs/forum&tools HTTP/1.1" 200 107547
+[21/Nov/2013:17:08:33 +0000] "GET /forum/ajax.php?db_server=localhost&db_user=[root user]&db_pass=[root password]&showtables= HTTP/1.1" 200 105754
+[21/Nov/2013:17:08:45 +0000] "GET /forum/ajax.php?showtables=wp_store&db_server=localhost&db_user=[root user]&db_pass=[root password] HTTP/1.1" 200 107987
+[21/Nov/2013:17:08:53 +0000] "GET /forum/ajax.php?dbname=wp_store&table=wp_woocommerce_order_items&db_server=localhost&db_user=[root user]&db_pass=[root password] HTTP/1.1" 200 105853910
+[21/Nov/2013:17:10:02 +0000] "GET /forum/ajax.php?edit=/[path]/htdocs/forum/index.php&readonly HTTP/1.1" 200 103039
+[21/Nov/2013:17:10:09 +0000] "GET /forum/ajax.php?dbname=wp_store&table=ds_orders&db_server=localhost&db_user=[root user]&db_pass=[root password] HTTP/1.1" 200 361296
+[21/Nov/2013:17:10:16 +0000] "GET /forum/ajax.php?d=/[path]/apache2/htdocs/forum&tools HTTP/1.1" 200 107547
+
+If you’re not familiar with WooCommerce, it’s a WordPress plugin used for e-commerce. What you also see is the attacker going to the wp-config.php which stores all the configuration data for the WordPress install, including the database credentials. From there they are then using the vBulletin hooks to log into the database and perform dumps of any content inside the wp_store table. Fortunately, client data was not stored in there saving the website owner a very big headache.
+The Plugin
+Now that we know that they are getting into the site via a malicious plugin, the next obvious question was how did the plugin get in. Was it a software vulnerability? Was it an access control issue? What we did know was that they weren’t getting in via the server itself, we had locked that down.
+The first step to answering this was figuring out the plugin ID. If you know how the vBulletin log structure looks like, then you know that when adding or editing a plugin all you see in the logs is something like this:
+
+/forum/admincp/plugin.php?do=edit&pluginid=##
+
+The question here became what was the ID of the plugin. To my surprise there was no real easy way to pull it in the administrator dashboard without going to the DB, so I did what any good log guy would do. I edited the plugin and waited to see what came across in the log screen.
+Sure enough, the ID presented itself:
+
+/forum/admincp/plugin.php?do=edit&pluginid=580
+
+The next step was to see when that plugin had first been added / edited, a quick query showed us this:
+
+95.188.54.170 - - [22/Sep/2013:21:12:17 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 38198
+95.188.54.170 - - [22/Sep/2013:21:12:58 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 53329
+95.188.54.170 - - [22/Sep/2013:21:13:36 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 53326
+95.188.54.170 - - [22/Sep/2013:21:13:53 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 53329
+95.188.54.170 - - [22/Sep/2013:21:14:08 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 53330
+95.188.54.170 - - [23/Sep/2013:19:46:38 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 17612
+95.188.54.170 - - [23/Sep/2013:19:47:48 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 50549
+95.188.54.170 - - [23/Sep/2013:19:48:10 +0000] "GET /forum/admincp/plugin.php?do=edit&pluginid=580 HTTP/1.1" 200 50552
+
+This bugger had been added back in September 2013, but had stayed dormant for months before being used maliciously. This was kind of good for us because it was pre-CloudFlare configuration. This is good because that meant we could finally get an idea of where the attacker was coming in from and better hone in on what they were doing.
+With this new information we were able to ascertain that the attacker was coming in from Russia:
+
+host 95.188.54.170
+170.54.188.95.in-addr.arpa domain name pointer dnm.170.54.188.95.dsl.krasnet.ru.
+
+person:         Hostmaster KRASNET
+address:        KRASNET Regional Telecommunications Network
+address:        80, Karl Marks str.
+address:        660049 Krasnoyarsk
+address:        Russia
+
+Granted this is not a definitive, this could have been a proxy server, but it does give us a little better idea of where it could be coming from. More importantly, it gave us a unique IP to investigate.
+Now that we knew when the plugin was first installed, we then wanted to see when the attacker logged in. So we parsed the log ins by the IP and the date / time range of the install.
+They logged in September 2013 about 12 minutes before they installed the plugin:
+
+95.188.54.170 - - [22/Sep/2013:21:07:33 +0000] "POST /forum/login.php?do=login HTTP/1.1" 200 13172
+
+The key to making it stop was simple, disable the plugin and update all the administrative passwords in the system. As a precaution, we’d recommend all of them, to include WordPress and vBulletin, but that is your prerogative.
+Summary
+While most of this will be speculative, it’s also likely very close to reality.
+It appears that the attacker did not need to get fancy with their attack. There were no secret zero day vulnerability exploited or server level weakness that granted the attacker access to the site. Instead, the attacker was able to leverage existing credentials for a power user that allowed them to log into their forums as a privileged user.
+With this account, they went on to create a new plugin in the vBulletin install and leverage the Ajax Hooks built into the core of the application. Using these hooks they were able to perform a Local File Inclusion (LFI) attack that allowed them to pull up files from the neighboring application, in this case WordPress.
+As they did not have escalated permissions in WordPress, they needed another way in, they were able to do this via vBulletin. They modified a core file of WordPress with a shell. That shell was used to upload another file into the root of wp-admin, allowing the attacker to intercept the incoming Credit Card transactions. Those transactions were recorded in a local file on the server and later retrieved by the attacker.
+In the process, the attacker was able to further compromise the environment by performing a complete dump of the existing e-commerce tables pulling order forms with client information for their use later.
+Could the website owner have done anything to protect themselves?
+The answer is yes and no. In this scenario it’s pretty evident that the attacker was able to make use of credentials, whether they are strong or weak it’s hard to say. Was it from a word / password list pulled from hacks like the ones that vBulletin forums just went through? Or, was it more simple, and associated with poor administration of accounts? Those are likely questions we’ll never have answers to.
+If I were a betting man though, I would say that this was a trial run for Black Friday and Cyber Monday transactions.
+Defense in Depth
+One of the best defenses though would be blocking access to your administration panel for vBulletin and WordPress. Something as simple as:
+
+order deny,allow
+deny from all
+allow from YOURIP
+
+In your .htaccess would do the trick.
+Unfortunately that’s not always the case, especially when you use a platform like WordPress where all your users, admins and subscribers alike, use wp-admin / wp-login.php to log in and make purchases. So in cases like that you need a layered defense in place.
+In this scenario, the website owner had two pieces n place. A firewall in the form of CloudFlare, and a detection service in the form of Sucuri.
+The attacker made the mistake of modifying core files that triggered two events:
+
+Modified the integrity of the core
+Added a shell to the server, triggering a backdoor event.
+While the firewall would have never prevented what appeared to be a legitimate user logging in, the second layer was in place to identify anomalies.
+What the firewall should have stopped though were the LFI attacks, and it didn’t, which led to a 24 hour period in which the website owner was severely compromised.
+If you’re on vBulletin and / or WordPress and find yourself in a similar predicament, not to worry, we built a Web Application Firewall / Intrusion Detection System (WAF/IDS), Sucuri Website Firewall – CloudProxy, specifically for your applications. Attacks like the one in this story would have been stopped in its tracks, and the attacker would have been greeted with this:
+
+Another very important action would have been, and is, segmentation and isolation. If possible, we’d recommend segmenting key applications from one another. Case in point, in this scenario, isolating vBulletin onto it’s own server would have served as an additional layer of security that would have prevented this specific attack.
+
+As always, if you have any interesting cases or need help you can always contact us directly via email at soc@sucuri.net. If you think you’re infected and need help remediating the case you can always sign up here Sucuri Signup.

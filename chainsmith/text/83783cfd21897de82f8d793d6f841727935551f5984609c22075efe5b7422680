@@ -1,0 +1,411 @@
+A deeper look into the ZeroAccess clickbot
+2013-04-03
+
+Wayne Low
+F-Secure
+,
+Finland
+Editor:
+Helen
+
+Martin
+Abstract
+Click fraud has been one of the biggest concerns for online advertisers for many years, and as researchers invest effort into developing pattern recognition and detection mechanisms to identify the fraudulent patterns, so the attackers tweak and evolve their click fraud methodologies. Wayne Low takes a look at the internal workings of the click fraud module of ZeroAccess.
+Copyright © 2013 Virus Bulletin
+
+Automated systems for clicking on advertisements that are displayed online for monetary gain – essentially, click fraud – has been one of the biggest concerns for online advertisers for many years. The major advertising networks, such as Google’s AdWords/AdSense, put significant effort into developing pattern recognition and detection mechanisms to identify the click patterns typically used by spammers and/or botnets engaging in click fraud.
+To avoid being detected by such mechanisms, the methodology for click fraud used by botnets such as ZeroAccess (also known as clickbots) has been evolving steadily. While there are plenty of comprehensive analyses of ZeroAccess (e.g. [1]), there has been no detailed elaboration of how the ZeroAccess clickbot works internally – looking at its actions on the client machine and how it performs the click fraud operation.
+The purpose of this article is to dissect the internal workings of ZeroAccess’s click fraud module and to highlight the following details of the botnet’s click fraud implementation:
+How it uses a ‘traditional’ method to initialize socket functions for overlapped I/O operations, which allows simultaneous connections that can also serve as an anti debugging feature.
+How it only targets specific countries, most likely because it is targeting country- or region-specific advertising networks.
+How it includes functionality to randomize the clicks performed, preventing an unnaturally regular pattern that could alert suspicion from advertisers or the advertising networks.
+How it uses a window-less browser to mimic legitimate clicks, making it appear as though the fraudulent clicks came from real users.
+Note: The analysis that follows uses a click fraud sample (sha1: 223b257f1e810bf106819c0ec33387712a56e175) that was downloaded from the botnet in January 2013 and differs from samples examined in previous ZeroAccess-related papers. As such, some details mentioned here, such as the TCP port, will vary from previous reports.
+
+Clickbot loader routine
+The ZeroAccess malware can arrive on a client machine via many different routes, but it does so most commonly through a dropper that includes the malware as part of its payload. Once the dropper has successfully infected the machine, it downloads additional plug-in files – including the click fraud module, which has the file extension ‘@’.
+This module acts as a loader for the click fraud binary, which is embedded immediately before the memcpy function. The binary is compressed as a Microsoft Cabinet file and encoded using a simple rotate left XOR algorithm with the key 0x12345678:
+key = 0x12345678u;
+do{
+*(DWORD*)szClickfraudCode ^= key;
+key = key << 1;
+szClickfraudCode = (char *)szClickfraudCode + 4;
+--dwClickFraudCodeSize;
+}while ( dwClickFraudCodeSize );
+
+After the decoding operation, the binary will be decompressed using Cabinet API functions. The result of the decompression consists of a single binary file named noreloc.cod.
+Noreloc.cod consists of a shellcode and an embedded DLL file (see Figure 1). This binary file will be injected into the svchost.exe process job created by the plug-in module.
+Figure 1. Decompressed embedded DLL module with shellcode.
+(Click here to view a larger version of Figure 1.)
+In older ZeroAccess variants, the shellcode was only found in the malware dropper. In more recent variants, similar shellcode can also be found in the click fraud module. Whatever the location, in general, it serves two purposes:
+Deploying an anti-debugging feature
+Loading an embedded MZ PE executable file.
+The shellcode will register a vectored exception handler (VEH) using RtlAddVectoredExceptionHandler. An exception must be triggered to invoke this exception handler. In order to achieve this, the shellcode sets a hardware breakpoint at debug register Dr3 through a context structure. This context is then set to the thread using ZwSetContextThread.
+The purpose of VEH is to intercept ZwMapViewOfSection in order to impersonate a legitimate process running malicious code (see Listing 1).
+.text:0100392F /*
+.text:0100392F Set DEBUG_REGISTER (Dr3) to ZwMapViewOfSection function addr
+.text:0100392F */
+.text:0100392F    xor  eax, eax
+.text:01003931    lea  edi, [ebp+Context]
+.text:01003937    mov  ecx, 0B3h
+.text:0100393C    rep  stosd
+.text:0100393E    mov  [ebp+Context.ContextFlags], CONTEXT_DEBUG_REGISTERS
+.text:01003948    mov  [ebp+Context.Dr7], 40h ; L3 bit set => local breakpoint (dr3) enabled
+.text:01003952    call GetZwMapViewOfSectionString
+.text:01003957    push eax ; eax = “ZwMapViewOfSection”
+.text:01003958    call _GetFunctionAddrByName
+.text:0100395D    mov  [ebp+Context.Dr3], eax ; eax = Function address of ZwMapViewOfSection
+.text:01003963    lea  eax, [ebp+Context]
+.text:01003969    push eax
+.text:0100396A    push 0FFFFFFFEh
+.text:0100396C    call _CallZwSetContextThread
+.text:01003971    pop  ecx
+.text:01003972    pop  ecx
+.text:01003973    call _GetSmssExeString
+.text:01003978    push 10h
+.text:0100397A    mov  esi, eax
+.text:0100397C    pop  eax
+.text:0100397D    call _StackspaceAlloc_0
+.text:01003982    lea  eax, [ebp+usSmss]
+.text:01003985    push esi
+.text:01003986    push eax
+.text:01003987    call _CallRtlInitUnicodeString
+.text:0100398C    lea  eax, [ebp+SmssAddrSpace]
+.text:0100398F    push eax
+.text:01003990    lea  eax, [ebp+usSmss]
+.text:01003993    push eax
+.text:01003994    xor  esi, esi
+.text:01003996    push esi
+.text:01003997    push esi
+.text:01003998    call _CallLdrLoadDll
+.text:0100399D    mov  edi, eax
+.text:0100399F    lea  eax, [ebp+Context]
+
+Listing 1: Code that intercepts ZwMapViewOfSection.
+LdrLoadDll has a function prototype as follows:
+NTSTATUS NTAPI LdrLoadDll(
+IN PWSTR DllPath OPTIONAL,
+IN PULONG DllCharacteristics OPTIONAL,
+IN PUNICODE_STRING DllName,
+OUT PVOID *DllHandle
+);
+
+When the shellcode executes the function LdrLoadDll with ‘smss.exe’ (Session Manager Subsystem) as the DllName, the hardware breakpoint on ZwMapViewOfSection will be hit. The reason the breakpoint is hit can be seen in the following call stack:
+0007cc08 7c91c3da 0000006c ffffffff 0007cce0 ntdll!ZwMapViewOfSection
+0007ccfc 7c916071 00000000 0007cd88 00000000 ntdll!LdrpMapDll+0x330
+0007cfbc 7c9162da 00000000 00000000 00000000 ntdll!LdrpLoadDll+0x1e9
+0007d264 00090314 00000000 00000000 0007d618 ntdll!LdrLoadDll+0x230
+WARNING: Frame IP not in any known module. Following frames may be wrong.
+0007d650 0009046f 00090688 0007ffa4 7c900000 0x90314
+0007ffc0 7c816fd7 00000000 00000000 00000000 0x9046f
+0007fff0 00000000 00090000 00000000 78746341 kernel32!BaseProcessStart+0x23
+
+If there is a debugger present and it handles the exception, no VEH will be triggered – ZwMapViewOfSection will continue execution and eventually, LdrLoadDll will return the original value of smss.exe in DllHandle. If a debugger is present, VEH will take over ZwMapViewOfSection’s execution flow and return the attacker’s desired DllHandle value to shellcode. This value holds the click fraud code and will be executed at the end of the shellcode.
+After the shellcode has accomplished its task, it will load and pass execution control to smss.exe, as shown in a process environment block (PEB) of svchost.exe (Listing 2).
+kd> !peb
+PEB at 7ffde000
+InheritedAddressSpace:    No
+ReadImageFileExecOptions: No
+BeingDebugged:            No
+ImageBaseAddress:         01000000
+Ldr                       001a1e90
+Ldr.Initialized:          Yes
+Ldr.InInitializationOrderModuleList: 001a1f28 . 001a35e0
+Ldr.InLoadOrderModuleList:           001a1ec0 . 001a35d0
+Ldr.InMemoryOrderModuleList:         001a1ec8 . 001a35d8
+Base  TimeStamp                      Module
+1000000  41107ed6 Aug 04 14:14:46 2004 C:\WINDOWS\system32\svchost.exe
+7c900000 411096b4 Aug 04 15:56:36 2004 C:\WINDOWS\system32\ntdll.dll
+7c800000 46239bd5 Apr 16 23:52:53 2007 C:\WINDOWS\system32\kernel32.dll
+77dd0000 411096a7 Aug 04 15:56:23 2004 C:\WINDOWS\system32\ADVAPI32.dll
+77e70000 46923520 Jul 09 21:16:16 2007 C:\WINDOWS\system32\RPCRT4.dll
+5cb70000 411096ba Aug 04 15:56:42 2004 C:\WINDOWS\system32\ShimEng.dll
+6f880000 4110968e Aug 04 15:55:58 2004 C:\WINDOWS\AppPatch\AcGenral.DLL
+7e410000 45f02d7c Mar 08 23:36:28 2007 C:\WINDOWS\system32\USER32.dll
+77f10000 47bbcdd9 Feb 20 14:51:05 2008 C:\WINDOWS\system32\GDI32.dll
+76b40000 411096d6 Aug 04 15:57:10 2004 C:\WINDOWS\system32\WINMM.dll
+774e0000 42e5be93 Jul 26 12:39:47 2005 C:\WINDOWS\system32\ole32.dll
+77c10000 41109752 Aug 04 15:59:14 2004 C:\WINDOWS\system32\msvcrt.dll
+77120000 47559e94 Dec 05 02:38:12 2007 C:\WINDOWS\system32\OLEAUT32.dll
+77be0000 411096cf Aug 04 15:57:03 2004 C:\WINDOWS\system32\MSACM32.dll
+77c00000 411096b7 Aug 04 15:56:39 2004 C:\WINDOWS\system32\VERSION.dll
+7c9c0000 47216027 Oct 26 11:33:59 2007 C:\WINDOWS\system32\SHELL32.dll
+77f60000 45091361 Sep 14 16:31:29 2006 C:\WINDOWS\system32\SHLWAPI.dll
+769c0000 411096b9 Aug 04 15:56:41 2004 C:\WINDOWS\system32\USERENV.dll
+5ad70000 411096bb Aug 04 15:56:43 2004 C:\WINDOWS\system32\UxTheme.dll
+76390000 411096ae Aug 04 15:56:30 2004 C:\WINDOWS\system32\IMM32.DLL
+629c0000 411096aa Aug 04 15:56:26 2004 C:\WINDOWS\system32\LPK.DLL
+74d90000 411096ba Aug 04 15:56:42 2004 C:\WINDOWS\system32\USP10.dll
+773d0000 44ef1b33 Aug 25 23:45:55 2006 C:\WINDOWS\WinSxS\x86_Microsoft.Windows.Common-Controls_6595b64144ccf1df_6.0.2600.2982_x-ww_ac3f9c03\comctl32.dll
+5d090000 44ef1b36 Aug 25 23:45:58 2006 C:\WINDOWS\system32\comctl32.dll
+6b0000   505ebd88 Sep 23 15:43:04 2012 C:\WINDOWS\system32\smss.exe
+71ab0000 411096f2 Aug 04 15:57:38 2004 C:\WINDOWS\system32\WS2_32.dll
+71aa0000 411096f3 Aug 04 15:57:39 2004 C:\WINDOWS\system32\WS2HELP.dll
+78130000 480eb81c Apr 23 12:16:28 2008 C:\WINDOWS\system32\urlmon.dll
+78000000 480eb822 Apr 23 12:16:34 2008 C:\WINDOWS\system32\iertutil.dll
+72d20000 411096c6 Aug 04 15:56:54 2004 C:\WINDOWS\system32\wdmaud.drv
+71a50000 41109758 Aug 04 15:59:20 2004 C:\WINDOWS\system32\mswsock.dll
+ffd0000  40eb5d28 Jul 07 10:17:12 2004 C:\WINDOWS\system32\rsaenh.dll
+435d0000 480eb81d Apr 23 12:16:29 2008 C:\WINDOWS\system32\mshtml.dll
+746c0000 45516526 Nov 08 13:03:34 2006 C:\WINDOWS\system32\msls31.dll
+76bf0000 411096ca Aug 04 15:56:58 2004 C:\WINDOWS\system32\PSAPI.DLL
+662b0000 411096a0 Aug 04 15:56:16 2004 C:\WINDOWS\system32\hnetcfg.dll
+71a90000 411096fd Aug 04 15:57:49 2004 C:\WINDOWS\System32\wshtcpip.dll
+SubSystemData:     00000000
+ProcessHeap:       000a0000
+ProcessParameters: 00020000
+CurrentDirectory:  ‘C:\WINDOWS\system32\’
+WindowTitle:       ‘C:\WINDOWS\system32\svchost.exe’
+ImageFile:         ‘C:\WINDOWS\system32\svchost.exe’
+CommandLine:       ‘\\.\globalroot\systemroot\Installer\{5e0dd525-1703-4a82-4e5e-73ea03452de4}\U’
+
+Listing 2: Smss.exe loaded in svchost.exe by shellcode.
+The PEB result shows that the malware has successfully disguised the Session Manager Subsystem running the click fraud code; indeed the PEB output raises the following questions:
+Why is a process address space allowed to contain two executable images?
+Shouldn’t only one instance of smss.exe be running as an independent process?
+On the other hand, these occurrences could be used as indicators that the machine has been infected.
+
+Yet another hardware breakpoint anti-debugging routine
+Once the click fraud routine has gained execution control, we immediately see another anti-debugging routine similar to the previous one; this routine, however, is slightly more straightforward. Again, it sets a hardware breakpoint at debug register Dr3, pointing to the WSPStartup function address (see Listing 3).
+.text:10002F8F  push  offset aWspstartup ; “WSPStartup”
+.text:10002F94  push  offset aSystem32Mswsoc ; “system32\\mswsock.dll”
+.text:10002F99  call  ds:LoadLibraryW
+.text:10002F9F  push  eax  ; hModule
+.text:10002FA0  call  ds:GetProcAddress
+.text:10002FA6  mov   edi, eax
+.text:10002FA8  test  edi, edi
+.text:10002FAA  jz    loc_1000303B
+.text:10002FB0  push  offset _VEHExecWSPSendRecvFunc
+.text:10002FB5  push  1
+.text:10002FB7  call  ds:RtlAddVectoredExceptionHandler
+.text:10002FBD  mov   ebx, eax
+.text:10002FBF  test  ebx, ebx
+.text:10002FC1  jz    short loc_1000303B
+.text:10002FC3  push  2CCh  ; Size
+.text:10002FC8  lea   eax, [ebp+Context]
+.text:10002FCE  push  0  ; Val
+.text:10002FD0  push  eax  ; Dst
+.text:10002FD1  call  memset
+.text:10002FD6  add   esp, 0Ch
+.text:10002FD9  lea   eax, [ebp+Context]
+.text:10002FDF /*
+.text:10002FDF Set DEBUG_REGISTER (Dr3) to WSPStartup function addr
+.text:10002FDF */
+.text:10002FDF  push  eax  ; Context
+.text:10002FE0  push  0FFFFFFFEh  ; ThreadHandle
+.text:10002FE2  mov   [ebp+Context.ContextFlags], CONTEXT_DEBUG_REGISTERS
+.text:10002FEC  mov   [ebp+Context.Dr7], 40h ; L3 bit set => local breakpoint (dr3) enabled
+.text:10002FF6  mov   [ebp+Context.Dr3], edi ; edi = WSPStartup
+.text:10002FFC  call  ds:ZwSetContextThread
+.text:10003002  lea   eax, [ebp+WSAData]
+.text:10003008  push  eax  ; lpWSAData
+.text:10003009  push  202h  ; wVersionRequested
+.text:1000300E  call  ds:WSAStartup
+.text:10003014  test  eax, eax
+.text:10003016  jnz   short loc_10003034
+.text:10003018  push  WSA_FLAG_OVERLAPPED ; dwFlags
+.text:1000301A  push  eax  ; g
+.text:1000301B  push  eax  ; lpProtocolInfo
+.text:1000301C  push  IPPROTO_TCP  ; protocol
+.text:1000301E  push  SOCK_STREAM  ; type
+.text:10003020  push  AF_INET      ; af
+.text:10003022  call  ds:WSASocketW  ; Triggered hardware breakpoint here
+.text:10003028  cmp   eax, 0FFFFFFFFh
+.text:1000302B  jz    short loc_10003034
+.text:1000302D  push  eax   ; s
+.text:1000302E  call  ds:closesocket
+
+Listing 3: Code that sets up second anti-debugging hook.
+Upon calling WSASocketW, a breakpoint exception will be triggered due to the previously set hardware breakpoint. If there is no debugger attached, the malware has the chance to handle the exception and execute its assigned code. Otherwise, the debugger will stop the program execution at the WSPStartup function, as shown in Figure 2. (Figure 2 also shows the call stack for WSASocketW.)
+Figure 2. Call stack for WSASocket.
+The intention of the exception handler is to initialize Windows socket callback functions. These callback functions are responsible for pre-processing the network data (for example, the data sent to the C&C server) and post-processing the data received from the server.
+
+What is ‘z00clicker3’?
+ZeroAccess’s clickbot is a multi-threaded DLL module that performs monetizing clicks. The main thread holds the major codes that generate huge numbers of clicks at regular intervals. It includes the following functionalities:
+Determines whether the clients originate from specific geographic locations
+Retrieves click fraud URLs from the C&C server
+Executes click fraud based on the URLs retrieved from the C&C server
+Sends click results to another remote server.
+In order to carry out its click fraud routine effectively, the module registers a class named ‘z00clicker3’, which acts as a core function in the whole click fraud operation. The main thread interacts closely with z00clicker by sending messages to it. For instance, when the main thread successfully receives ad URLs from the C&C server, it sends a message to tell z00clicker to carry out the click fraud routine. The main thread is run in a loop that will be terminated under certain conditions.
+
+Blocking client access by regions
+One of the routines found in the main thread indicates that z00clicker only targets certain countries and is capable of locating a victim’s geographic location. The initial country code and time stamp of the malware’s installation date are stored by another plug in DLL, [email protected], in the Extended Attribute (EA) of z00clicker’s root directory:
+\\.\globalroot\systemroot\Installer\{5e0dd525-1703-4a82-4e5e-73ea03452de4}\U
+The country code is retrieved from a third-party GeoIP location service provider every time the thread is executed. If the installation date is older than one day, the country code will be renewed. The renewal country code and current date will be saved to the EA of the U directory again.
+After the country code is determined, it is compared against the predefined string ‘USGBAUCADEINESFRITSGMYNLSE’, which appears to be a list of country codes. The click fraud operations appear to be targeting online advertising networks that are highly specific to these countries.
+Country code
+Country name
+US
+United States
+GB
+Great Britain
+AU
+Australia
+CA
+Canada
+DE
+Germany
+IN
+India
+ES
+Spain
+FR
+France
+IT
+Italy
+SG
+Singapore
+MY
+Malaysia
+NL
+Netherlands
+SE
+Sweden
+Table 1. Country codes.
+The predefined string also indicates that IP addresses from those countries are permitted to contact the C&C server. If it is determined that the victim’s system resides in a country outside of this list, the main thread will be aborted and no click fraud operation will be carried out.
+In fact, it appears that even if researchers manage to forge the country code by using proxy servers, the main thread will not perform its click fraud operation as the C&C server refuses to respond to any queries sent from the client. Clearly, the remote server has another layer of integrity checking to ensure that only actual infected clients in the targeted countries can perform the click fraud operation.
+
+Communicating with the C&C server
+Assuming the request from the victim machine is accepted, the response from the C&C server consists of URLs needed to perform the click fraud. An overview of how the clickbot performs this is shown in Figure 3.
+Figure 3. The click fraud operation.
+Before any of this can happen, however, the click fraud module on the infected machine has to find and communicate with one of the C&C servers.
+
+C&C server IP addresses
+The C&C server’s IP addresses are encoded and stored in the third IMAGE_RESOURCE_DATA_ENTRY in the resource section of the [email protected] plug-in DLL file saved in the U directory (Figure 4). These IP addresses are decoded using a simple XOR algorithm with the key 0x2CB7F6D5.
+Figure 4. Encoded C&C server IP addresses.
+An IP address is chosen randomly from the pool of addresses and stored in a global variable that will be used later in the click fraud operation.
+
+First contact with the C&C server
+The first step of the click fraud operation is to send the victim system’s information, retrieved from the Windows native API ZwQuerySystemInformation, to a C&C server on TCP port 12757. Each C&C IP address obtained from the resource section is attempted until a TCP response is received from the server (see Figure 5).
+Figure 5. Encoded (top) and decoded (bottom) TCP response.
+After that, the data will be obfuscated using a XOR algorithm with key 0x72 before sending it to the randomly selected remote server that was previously stored in the global variable.
+To avoid network latency, the main thread is suspended for a predetermined length of time specified in ZwDelayExecution. The suspended thread is resumed either when the time interval expires or when an alert is received from the ZwAlertThread API if the TCP data has been received and decoded successfully (see Listings 5 and 6).
+00960054   8a 00 05 01 fb 01 00 00-4d 59 6f 00 ff 00 4d 6f   ........MYo...Mo
+00960064   7a 69 6c 6c 61 25 32 46-34 2e 30 2b 28 63 6f 6d   zilla%2F4.0+(com
+00960074   70 61 74 69 62 6c 65 25-33 42 2b 4d 53 49 45 2b   patible%3B+MSIE+
+00960084   37 2e 30 25 33 42 2b 57-69 6e 64 6f 77 73 2b 4e   7.0%3B+Windows+N
+00960094   54 2b 35 2e 31 25 33 42-2b 2e 4e 45 54 2b 43 4c   T+5.1%3B+.NET+CL
+009600a4   52 2b 32 2e 30 2e 35 30-37 32 37 25 33 42 2b 2e   R+2.0.50727%3B+.
+009600b4   4e 45 54 2b 43 4c 52 2b-31 2e 31 2e 34 33 32 32   NET+CLR+1.1.4322
+009600c4   25 33 42 2b 2e 4e 45 54-34 2e 30 43 25 33 42 2b   %3B+.NET4.0C%3B+
+
+Offset   Description
+0x00     Length of TCP data to be sent
+0x02     Fixed value
+0x03     Number of processor
+0x04     Unknown value set by
+[email protected]
+plug-in DLL
+0x08     Country code name
+0x0a     Available physical page size
+0x0c     Total physical page size
+0x0e     User agent string obtained via ObtainUserAgentString
+
+Listing 4: System information that will be sent to the C&C server and explanation of its data structure.
+.text:10003F14   mov    eax, edi
+.text:10003F16   call   _SendSystemInfoDataToCnC
+.text:10003F1B   push   offset Interval ; Interval
+.text:10003F20   push   1   ; Alertable
+.text:10003F22   call   ds:ZwDelayExecution
+.text:10003F28   cmp    eax, STATUS_ALERTED ; The thread will return here until Interval is timed out or ZwAlertThread(TRUE) is called
+.text:10003F2D   jnz    short loc_10003F35
+.text:10003F2F   push   edi
+.text:10003F30   call   _ParseDecodedResponseFromCnCServer
+
+Listing 5: Send the first TCP connection to the C&C server and wait for response by suspending thread.
+.text:10003AD8   cmp   ecx, 54h    ; Minimum response length
+.text:10003ADB   jbe   short @@not_valid_response
+.text:10003ADD   add   eax, 0Ch    ; HTTP response content
+.text:10003AE0
+.text:10003AE0 @@loop_decode:      ; CODE XREF: _DecodeCnCResponse+24j
+.text:10003AE0   xor   byte ptr [eax], 72h
+.text:10003AE3   inc   eax
+.text:10003AE4   dec   ecx
+.text:10003AE5   jnz   short @@loop_decode
+.text:10003AE7   mov   eax, [esi+78h]
+.text:10003AEA   push  dword ptr [eax+0Ch] ; ThreadHandle
+.text:10003AED   call  ds:ZwAlertThread
+.text:10003AF3 @@not_valid_response:     ; CODE XREF: _DecodeCnCResponse+Fj
+.text:10003AF3   pop   esi
+.text:10003AF4   retn  4
+
+Listing 6: Alert suspended thread after TCP response has been received and decoded.
+
+Z00clicker's fraudulent click method
+The TCP response on port 12757 is merely a raw data set that needs to be pre-processed before the actual click fraud happens.
+
+Sorting the raw TCP data
+The data consists of a set of ‘referrer’ URLs, each with at least one accompanying ad URL, for example: [referrer URL A][ad URL A.1][ad URL A.2], [referrer URL B][ad URL B.1] [ad URL B.2]. After all the URL sets have been parsed, a new array of data structure is populated in which every referrer string is associated with an ad URL.
+This data structure is then sorted in descending order based on the aggregate click counter of an ad URL (at offset 0x04) (see Figure 6), which is itself the result of the multiplier value (at offset 0x08) multiplied by the click counter at offset 0x0c+strlen(Referrer string) (see Listing 7).
+Figure 6. Parsed URL set data structure before (left) and after (right) sorting.
+009600a8   0000009d 0000000b 00000046 6f637469    ........F...itco
+009600b8   69727970 2e746867 2f6d6f63 6466613f    pyright.com/?afd
+009600c8   39783d74 7a6f6662 37767669 39727930    t=x9bfozivv70yr9
+009600d8   776e766f 78307a72 32663979 306d6c64    ovnwrz0xy9f2dlm0
+009600e8   38637537 39727877 6d393668 7826676f    7uc8wxr9h69mog&x
+009600f8   2633323d 26303d79 72616573 623d6863    =23&y=0&search=b
+00960108   682b726b 746f7079 6b656568 0000d200    kr+hypotheek....
+00960118   74746800 2f2f3a70 322e3539 312e3131    .http://95.211.1
+00960128   312e3339 633f2f36 3d64696c 31613868    93.16/?clid=h8a1
+00960138   34327370 307a7168 00000000             ps24hqz0....
+
+Offset                          Description
+0x00                            Offset to next URL set
+0x04                            URL set identifier
+0x08                            Multiplier to click counter
+0x0c                            Referer string
+0x0c+strlen(Referer string)     Click counter
+0x0c+strlen(Referer string)+4   Array of ads URL ended with five null bytes
+
+Listing 7: Raw data received from the C&C server and its data structure.
+The first pair of referrer and ad URLs (on memory addresses 0x963694 and 0x96370d, respectively) is selected from the sorted data structure for use in the click fraud operation. This is considered a preliminary step to reduce the chances of having the clicks distributed too heavily on a particular URL – an unnatural pattern that may lead to the clicks being detected.
+
+The referrer and ad URLs
+It has been observed that the referrer URL always contains the strings ‘afdt’ and ‘search’ in its parameters. Based on our observation, the referrer appears to be the domain names owned by the botnet operator, although we have not been able to verify this as the registrant information has been protected. These domains do, however, have one thing in common: they are parked domains [2] that use very similar structures and page designs, even down to the colours used.
+The ad URL contains common strings such as ‘click’, ‘click2’, ‘clid’, ‘/feed/go.php’, etc., and is a redirection URL hosted on ad redirection servers. The redirection URL starts off a chain of HTTP redirections, and usually there are three HTTP redirections before the ad server – the search engine platform operated by the advertising network – is reached.
+Example of referrer
+Example of ads redirection URL
+http://folkartstore.com/?afdt=tccchozb2v52nxvwlheuh8wd3ir 3uovlp5c890kusagv&x=7&y=10&search=dentist+in+orange
+http://95.211.216.156/?clid=gt71pprqpqz0
+http://romantictouch.com/?afdt=4gn7s65pl6xrq256y98ze2z6r q6jk4gxvrvwww5a5mbs&x=6&y=10&search=toner+skrivare
+http://95.211.193.16/?clid=15p31pr02h3z0
+http://fillpositions.com/?afdt=lh03hi7eoj9tsh6lmub2vvxvxzid gr1b0709e0yy1mco&x=18&y=18&search=industrial+hearing+loss
+http://46.229.160.175/click2.php?c=3dknGLO5eGQYDPtHRYWg434m%2FNfNnlFtyXhzoNlCY
+http://itcopyright.com/?afdt=ix9ixvgg5a5hf6qonw5iq2nvjy3ti 7tazpx1e8gw30rl&x=6&y=11&search=power+juicing
+http://216.172.54.*/feed/go.php?id=[random_GUI_ID]&sid=[32_random_hexadecimal]&n=n -[random_number]&tid=[random_number]&s=3548
+Table 2. Example referrers and ad redirection URLs.
+
+Click fraud with a window-less browser
+A ‘traditional’ fraudulent click can be implemented in many ways. The most common ones used are:
+Intercepting Windows network APIs such as send, recv, WSPSend, WSPrecv, HTTPSendRequest, InternetReadFile, etc.
+Installing malicious browser add-ons to hijack search results.
+TDL, Redyms and Bamital are examples of malware families that perform Windows network API interception. Medfos and Simda are examples of malware that will install malicious browser extensions. However, ZeroAccess uses neither of these methods.
+ZeroAccess’s click operation is carried out by the ‘z00clicker3’ callback function when it receives a message sent by the main thread (see Listing 8).
+.text:10003C9A   push   ebx   ; lParam = Parsed URL set data structure after sorting
+.text:10003C9B   push   1     ; wParam = Only 1 set of ads URL and referer to be sent
+.text:10003C9D   push   406h  ; Msg = Send “click fraud action” message
+.text:10003CA2   push   dword ptr [eax+8] ; hWnd = z00clicker3 window
+.text:10003CA5   call   ds:SendMessageW
+
+Listing 8: The main thread sends a ‘click fraud action’ message.
+Upon receiving the message, z00clicker initiates an HTTP GET request using a random fake host name (which always contains the ‘.cm’ TLD, which was retrieved from the first TCP connection). The GET query is a Base64-encoded string generated by first running the ad redirection URL through a XOR algorithm (without the HTTP protocol prefix, with key 0x69) and then encoding the result using the algorithm. The GET request is sent through the Windows socket API, together with a fake host name, to the C&C server address instead of sending the request to the non existent host name. The C&C server replies with an HTTP 303 [3] response that contains the same ad redirection URL in the Location HTTP header field.
+Figure 7. HTTP response 303.
+The URL in the HTTP Location header field indicates the botnet’s ad redirection server address. A separate GET request needs to be sent by the clickbot, which results in a series of HTTP 301/302 redirections that will reach the ad server.
+An interesting thing found in z00clicker is its ability to mimic the way users interact with the ad server. It is able to do so without using Internet web browsers, which makes it unusual among clickbots. This is implemented with the following steps:
+A COM object instance of IHTMLDocument2 is created using CoCreateInstance.
+A URL moniker is created from the ad URL using CreateURLMonikerEx.
+A bind context object named ‘__DWNBINDINFO’ is registered using ole32!CBindCtx::RegisterObjectParam. An important parameter in this function is a pointer to a data structure with various defined fields, most crucially the callback functions pointer. These callback functions ensure the attacker’s desired referrer string is set in the HTTP header before the ad redirection URL is loaded. Once the click has completed, it reports the result of which ad redirection URL has been clicked to another server on UDP port 123.
+The ad redirection URL is loaded via the IPersistMoniker::Load() function. Using this COM method, the clickbot is able to emulate user interaction with the websites by using a combination of three or four HTTP redirections.
+After the ad redirection URL is loaded, the ad redirection server will be contacted, followed by multiple HTTP redirections to reach the ad control server. The ad control server determines which destination ad server the traffic will be forwarded to. The random search query specified in the referrer string will be processed from the ad server.
+A simplified overview of the redirections and servers involved in this process can be seen in Figure 8.
+Figure 8. Click fraud HTTP redirection chain.
+
+Conclusion
+ZeroAccess has undoubtedly introduced a lot of innovative ways of achieving its goals, so a dissection of the click fraud module provides an interesting insight into how it differs from other ‘traditional’ clickbots. Highlights of the analysis include the country-specific targeting of the ZeroAccess click fraud, and the methods it uses to perform its fraudulent clicks without triggering the detection mechanisms used by search engines and online advertisers.
+One of the remaining challenges in analysing the click fraud module involves circumventing the regional check implemented by the clickbot on both the client and the server’s side. Without more in depth knowledge of how the client interacts with the server, researchers – and the online advertising networks – are hampered in recognizing and developing detection algorithms to identify the click fraud generated by ZeroAccess.
+
+Bibliography
+[1] Wyke, J. The ZeroAccess Botnet – Mining and Fraud for Massive Financial Gain. http://www.sophos.com/en-us/medialibrary/PDFs/technical%20papers/Sophos_ZeroAccess_Botnet.pdf.
+[2] Wikipedia. Domain parking. http://en.wikipedia.org/w/index.php?title=Domain_parking&oldid=540558973.
+[3] Wikipedia. HTTP 303. http://en.wikipedia.org/w/index.php?title=HTTP_303&oldid=544821406.
+[4] Microsoft Developer Network (MSDN). IpersisMoniker::Load method. http://msdn.microsoft.com/en-us/library/ms775044(v=vs.85).aspx.

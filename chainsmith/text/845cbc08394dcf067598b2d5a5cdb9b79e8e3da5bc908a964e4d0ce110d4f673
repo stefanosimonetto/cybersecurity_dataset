@@ -1,0 +1,141 @@
+Beyond good ol’ Run key, Part 22
+January 6, 2015 in Anti-Forensics, Autostart (Persistence), Compromise Detection, Forensic Analysis, Malware Analysis
+
+Perl2exe executables are perl programs embedded inside the executable wrapper that allows making the script ‘portable’ and easy to execute without a need of installing any perl interpreter.
+It turns out that the way it loads things is kinda ‘open-minded’ i.e. it tries to look for loadable stuff all over the place – because of this ‘feature’ it is possible to abuse it and create yet another (bizarre) persistence mechanism (actually, plenty of them).
+As an example, we can look at a very old hdd.exe perl2exe program – I got it from a friend back in a day – it display info about the HDD properties. Running it under procmon shows a lot of interesting artifacts related to files and directories that are… not found on the system.
+For the sake of the demonstration, I will show only 2 hijacks, but if you browse through the log below you will find a lot of other potential phantom file names and directories that could be abused this way.
+Example #1
+Creating a ‘(null)’ directory in the same place where the perl2exe file is executed and dropping a sitecustomize.pl perl script inside it will lead to the perl script being executed when perl2exe is launched:
+
+(null)\sitecustomize.pl containing just a simple line
+
+print “Foobar\n”;
+
+Example #2
+You can create f.ex. PERL2EXE_STORAGE\auto\Cwd\Cwd.dll – while it is perl2exe-specific module (since it requires CWD module to be used), it’s quite a popular module anyway so it could be a good target:
+And in debug view:
+Last, but not least – the (edited) log…
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\5.8.8\MSWin32-x86-multi-thread
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\5.8.8\
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\5.8.8\MSWin32-x86-multi-thread
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\5.8.8
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\5.8.8
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\MSWin32-x86-multi-thread
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\MSWin32-x86-multi-thread
+CreateFile                    %SCRIPT_PATH%\5.8.8\MSWin32-x86-multi-thread
+CreateFile                    %SCRIPT_PATH%\5.8.8
+QueryOpen                     %SCRIPT_PATH%\5.8.8\MSWin32-x86-multi-thread
+CreateFile                    %SCRIPT_PATH%\5.8.8
+QueryDirectory                %SCRIPT_PATH%\5.8.8
+QueryOpen                     %SCRIPT_PATH%\5.8.8
+CreateFile                    %SCRIPT_PATH%\MSWin32-x86-multi-thread
+QueryDirectory                %SCRIPT_PATH%\MSWin32-x86-multi-thread
+QueryOpen                     %SCRIPT_PATH%\MSWin32-x86-multi-thread
+CreateFile                    %USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736\5.8.8\MSWin32-x86-multi-thread
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\5.8.8
+QueryOpen                     %USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736\5.8.8\MSWin32-x86-multi-thread
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\5.8.8
+QueryDirectory                %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\5.8.8
+QueryOpen                     %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\5.8.8
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\MSWin32-x86-multi-thread
+QueryDirectory                %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\MSWin32-x86-multi-thread
+QueryOpen                     %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\MSWin32-x86-multi-thread
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\(null)\sitecustomize.pl
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\(null)\
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\(null)\sitecustomize.pl
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Cwd\Cwd.dll
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Cwd\
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Cwd\Cwd.dll
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Cwd
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Cwd
+CreateFile                    %SCRIPT_PATH%\auto\Cwd
+CreateFile                    %SCRIPT_PATH%\auto
+QueryOpen                     %SCRIPT_PATH%\auto\Cwd
+CreateFile                    %USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736\auto\Cwd
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\auto
+QueryOpen                     %USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736\auto\Cwd
+CreateFile                    %SCRIPT_PATH%\auto\Cwd
+CreateFile                    %SCRIPT_PATH%\auto
+QueryOpen                     %SCRIPT_PATH%\auto\Cwd
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\DynaLoader\dl_findfile.al
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\DynaLoader\
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\DynaLoader\dl_findfile.al
+CreateFile                    %SCRIPT_PATH%\-L%USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736
+CreateFile                    %SCRIPT_PATH%\-L%USERPROFILE%\LOCALS~1\Temp\
+QueryOpen                     %SCRIPT_PATH%\-L%USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE
+QueryDirectory                %SCRIPT_PATH%\PERL2EXE_STORAGE
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE
+CreateFile                    %SCRIPT_PATH%\Cwd.dll
+QueryDirectory                %SCRIPT_PATH%\Cwd.dll
+QueryOpen                     %SCRIPT_PATH%\Cwd.dll
+CreateFile                    %SCRIPT_PATH%\Cwd.dll
+QueryDirectory                %SCRIPT_PATH%\Cwd.dll
+QueryOpen                     %SCRIPT_PATH%\Cwd.dll
+CreateFile                    %SCRIPT_PATH%\libCwd.dll
+QueryDirectory                %SCRIPT_PATH%\libCwd.dll
+QueryOpen                     %SCRIPT_PATH%\libCwd.dll
+CreateFile                    %SCRIPT_PATH%\Cwd
+QueryDirectory                %SCRIPT_PATH%\Cwd
+QueryOpen                     %SCRIPT_PATH%\Cwd
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736
+QueryAllInformationFile       %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\Cwd.dll
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\Cwd.bs
+QueryDirectory                %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\Cwd.bs
+QueryOpen                     %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\Cwd.bs
+CreateFile                    C:\bin\pwd
+CreateFile                    C:\bin
+QueryOpen                     C:\bin\pwd
+CreateFile                    C:\usr\bin\pwd
+CreateFile                    C:\usr\bin\
+QueryOpen                     C:\usr\bin\pwd
+CreateFile                    C:\QOpenSys\bin\pwd
+CreateFile                    C:\QOpenSys\bin\
+QueryOpen                     C:\QOpenSys\bin\pwd
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Win32\OLE
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Win32\
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE\auto\Win32\OLE
+CreateFile                    %SCRIPT_PATH%\auto\Win32\OLE
+CreateFile                    %SCRIPT_PATH%\auto\Win32\
+QueryOpen                     %SCRIPT_PATH%\auto\Win32\OLE
+CreateFile                    %USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736\auto\Win32\OLE
+CreateFile                    %USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736\auto\Win32\
+QueryOpen                     %USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736\auto\Win32\OLE
+CreateFile                    %SCRIPT_PATH%\auto\Win32\OLE
+CreateFile                    %SCRIPT_PATH%\auto\Win32\
+QueryOpen                     %SCRIPT_PATH%\auto\Win32\OLE
+CreateFile                    %SCRIPT_PATH%\-L%USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736
+CreateFile                    %SCRIPT_PATH%\-L%USERPROFILE%\LOCALS~1\Temp\
+QueryOpen                     %SCRIPT_PATH%\-L%USERPROFILE%\LOCALS~1\Temp\p2xtmp-1736
+CreateFile                    %SCRIPT_PATH%\PERL2EXE_STORAGE
+QueryDirectory                %SCRIPT_PATH%\PERL2EXE_STORAGE
+QueryOpen                     %SCRIPT_PATH%\PERL2EXE_STORAGE
+CreateFile                    %SCRIPT_PATH%\OLE.dll
+QueryDirectory                %SCRIPT_PATH%\OLE.dll
+QueryOpen                     %SCRIPT_PATH%\OLE.dll
+CreateFile                    %SCRIPT_PATH%\OLE.dll
+QueryDirectory                %SCRIPT_PATH%\OLE.dll
+QueryOpen                     %SCRIPT_PATH%\OLE.dll
+CreateFile                    %SCRIPT_PATH%\libOLE.dll
+QueryDirectory                %SCRIPT_PATH%\libOLE.dll
+QueryOpen                     %SCRIPT_PATH%\libOLE.dll
+CreateFile                    %SCRIPT_PATH%\OLE
+QueryDirectory                %SCRIPT_PATH%\OLE
+QueryOpen                     %SCRIPT_PATH%\OLE
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736
+QueryAllInformationFile       %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\OLE.dll
+CreateFile                    %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\OLE.bs
+QueryDirectory                %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\OLE.bs
+QueryOpen                     %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\OLE.bs
+QueryOpen                     %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\WS2_32.dll
+QueryOpen                     %USERPROFILE%\Local Settings\Temp\p2xtmp-1736\WS2HELP.dll
+SetDispositionInformationFile %USERPROFILE%\Local Settings\Temp\p2xtmp-1736
+
+Comments Off on Beyond good ol’ Run key, Part 22
+
+Comments are closed.

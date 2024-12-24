@@ -1,0 +1,154 @@
+Scarab ransomware: new variant changes tactics
+The Scarab ransomware was discovered in June 2017. Since then, several variants have been created and discovered in the wild. The most popular or widespread versions were distributed via the Necurs botnet and initially written in Visual C compiled. However, after unpacking, we’ve found that another variant discovered in December 2017, called Scarabey, is distributed a little differently, with a different payload code as well.
+Scarabey, like most ransomware, is designed to demand a Bitcoin payment from its victims after encrypting files on their systems. However, instead of being distributed via Necurs malspam like the original Scarab, Scarabey was found targeting Russian users and being distributed via RDP/manual dropping on servers and systems.
+In addition, Scarabey seems to not be packed in any samples we have come across. The malicious code is written in Delphi without the C++ packaging that Scarab has and the content and language of the ransom notes are different for each.
+SAMPLES BEING REFERENCED
+SCARAB ORIGINAL: e8806738a575a6639e7c9aac882374ae
+SCARABEY VARIANT: 9a02862ac95345359dfc3dcc93e3c10e
+The ransom notes
+As far as the victim is concerned, the main difference between Scarabey and other Scarab ransomware is the language of the ransom note and the scare tactic used in the encryption message.
+In the Scarab sample, the ransom note is written in English, however, it reads as if you translated word-for-word a Russian text into English, without knowing proper English grammar or syntax. Scarabey, on the other hand, is written in Russian. What’s interesting is that when you throw the Scarabey note into Google translate, as I have done below, it contains the same grammatical errors as the Scarab note.
+Original Scarab message
+Scarabey message, translated from Russian to English with Google translate
+This is more proof that that the authors of Scarab are likely Russian speakers who had written the note in their native language and run it through a translator to be added into the Scarab code. It would then seem quite likely that, since they decided to target Russians. they released the Scarabey note in their native language to cover more victims.
+Different threats
+In the original Scarab versions, it warns: The longer the user waits, the more the price will go up.
+For Scarabey, on the other hand, it tells users that for every day they wait, more and more files will be deleted, until there are no more files left for them to recover.
+Essentially, the criminals are implying that they have copies of the unencrypted files to give back to the user, or that they have control of the victim computer to delete files. This is not true for a few reasons:
+
+Besides the fact that the volume of data transfer to send up every file on the victim’s computer is completely unreasonable, there is no network functionality for sending files to the malware authors to hold as ransom.
+There is no backdoor or remote access code in scarab or its variants, which makes the threat of deleting files on victim’s computer impossible.
+The decryption process, from our understanding, is that they will send you decryption software loaded with the unique key after the ransom is payed. Then you can run the software and decrypt your files. That being said, there is no way for them to limit what gets decrypted as it is done locally and offline.
+Nowhere in the malware’s code is there any section that deletes user’s files from the computer.
+
+Specifically, in the message, you see the author implying that the code is initially decrypted server side, which is untrue:
+“24 files are deleted every 24 hours. (we have copies of them)
+If you do not run the decryption program within 72 hours, all the files on the computer are completely deleted, without the possibility of recovery.”
+Then, the malware author gives the steps to decrypt, which reference the use of a decryption program sent to the victim after payment. A decryption software received after payment with your unique key will decrypt files locally:
+“- After starting the decoder, the files are decoded within an hour.
+– Decoders of other users are incompatible with your data, as each user
+unique encryption key”
+The conclusion here is that the deletion of files or the idea that the malware authors have access to delete files is purely a scare tactic used to urge users into sending money quickly.
+Technical analysis
+While comparing the code from Scarab to Scarabey, it became quite clear that this variant, although written in Russian and targeting Russian users, likely comes from the same authors of the original. Throughout the entire code, both variants of malware are almost byte-for-byte identical. In addition, the sub processes generated, the dropped files, the encryption method used, and the mutexes used are all identical between the original Scarab version and Scarabey. This is the reason we consider it a variant, rather than a new family.
+The following image shows the output from the two malware variants. The only things that differ are the addresses of code and memory data references (highlighted in yellow and red).
+
+Code analysis
+The Scarabey variant is written in Delphi. First, it starts off by checking if it is the first time being run. It does this by checking if it has parameters passed in. If not, it checks to see if the following registry key has been set:
+Software\ILRTISo\idle
+[First run check, registry key]
+If not set (meaning it is the first time run), it checks that SEVNZ has not been created yet and executes cmd.exe to copy itself into temp roaming directory as sevnz.exe using:
+cmd.exe /c copy /y C:\Users\virusLab\Desktop\9a02862ac95345359dfc3dcc93e3c10e.exe “C:\Users\virusLab\AppData\Roaming\sevnz.exe”
+Then it spawns a process of itself with param ‘runas’ as it exits.
+[verifies SEVNZ.EXE does not exist, copies self to SEVNZ.EXE. executes elf with ‘runas’ param]
+Now the sub process takes over.
+The code flow now enters the same function as before, and deletes SEVNZ and re-copies it. It skips over those initial sections because of the parameter passed in. It then executes the previously copied file sevnz.exe:
+C:\Users\[username]\AppData\Roaming\sevnz.exe
+Then, it opens the process cmd.exe with command line…
+“mshta.exe “javascript:o=new ActiveXObject(‘Scripting.FileSystemObject’);setInterval(function(){try{o.DeleteFile(‘9a02862ac95345359dfc3dcc93e3c10f.exe’);close()}catch(e){}},10);””
+…which simply waits and deletes itself, since the process can’t delete while running.
+
+Now onto the SEVNZ.exe process:
+The process checks to see if it is currently running as sevnz.exe by trying to delete
+“…AppData\Roaming\sevnz.exe”
+If it fails, it now knows that it is currently running as sevnz.exe rather than the original executable. Once it passes this check, it uses mtsha.exe to execute Javascript, which will delay and add itself into the registry auto-run:
+mshta.exe “javascript:o=new ActiveXObject(‘WScript.Shell’);
+x=newActiveXObject(‘Scripting.FileSystemObject’);
+setInterval(function(){try{i=x.GetFile(‘sevnz.exe’).Path;
+o.RegWrite(‘HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\\ILRTISo’,i);}
+catch(e){}},10);
+Next, it proceeds to delete shadow volume copies, which is standard for ransomware to make sure users cannot restore encrypted files.
+—–Executes these scripts with mtsha.exe:—–
+ActiveXObject(“WScript.Shell”);
+o.Run(“cmd.exe /c wbadmin DELETE SYSTEMSTATEBACKUP -keepVersions:0”,0);
+o.Run(“cmd.exe /c wmic SHADOWCOPY DELETE”,0);
+o.Run(“cmd.exe /c vssadmin Delete Shadows /All /Quiet”,0);
+o.Run(“cmd.exe /c bcdedit “
+new ActiveXObject(“WScript.Shell”);
+o.Run(“cmd.exe /c wbadmin DELETE SYSTEMSTATEBACKUP-keepVersions:0”,0);
+o.Run(“cmd.exe /cwmicSHADOWCOPYDELETE”0);
+o.Run(“cmd.exevssadminDeleteShadows /All/Quiet”,0);
+o.Run(“cmd.exe /c bcdedit /set {default} recoveryenabled No”,0);
+o.Run(“cmd.exe /c bcdedit /set {default} bootstatuspolicy ignoreallfailures”,0);
+It then opens a thread that loops forever and makes sure no “key” processes are running. If any are found, it kills those processes. The reason for this is possibly that these processes have a lock on some files that the ransomware would have otherwise wanted to encrypt. So by killing these processes, it frees the files for encryption. The key processes are from a string generated:
+agntsvc.exe
+isqlplussvc.exe
+ncsvc.exe
+msftesql.exe
+sqlagent.exe
+sqlbrowser.exe
+sqlservr.exe
+sqlserver.exe
+sqlwriter.exe
+oracle.exe
+ocssd.exe
+dbsnmp.exe
+synctime.exe;
+mydesktopqos.exe
+agntsvc.exe
+isqlplussvc.exe
+xfssvccon.exe
+mydesktopservice.exe
+ocautoupds.exe
+agntsvc.exe
+agntsvc.exe
+agntsvc.exe
+encsvc.exe
+firefoxconfig.exe
+tbirdconfig.exe
+ocomm.exe
+mysqld.exe
+mysqld-nt.exe
+mysqld-opt.exe
+dbeng50.exe
+sqbcoreservice.exe
+In the main loop of the encryption function, it performs constant checks throughout the code for a mutex, and if it exists, this is a sign to clean itself up and remove itself from the system:
+MUTEX:   STOPSCARABSTOPSCARABSTOPSCARABSTOPSCARABSTOPSCARAB.
+The encryption loop can be called through many different sections in the code, but the section that runs initially and performs the majority of the encryptions is pictured below:
+
+Recursively goes through all folders and checks to make sure the extension is not .exe or .dll. If okay, it encrypts files and renames them with a .scarab extension.
+[checking current file extension using POS(),  if exists as substr of “exe,dll”]
+
+The encryption code does not directly use any crypto APIs. Instead, the AES code is embedded within the malware, as shown in the images above.
+[section is the setup leading to the call to the main cryptor function]
+
+Encryption algorithym
+We have determined that the algorithm for encryption is AES. A 4-byte chunk (0xDEFACE01) is tacked onto the buffer before the actual file data that it reads. This could be salt, or a joke from the malware author. It performs some data manipulation operations using generated bytes, which could likely be the initialization vector to create randomness.
+[IV GENERATOR FUNCTION FOLLOWED BY START OF AES SETUP]
+
+[XORS DATA PASSED INTO THE MAIN_AES_LOOP_FUNCTION WHICH IS THE IV.  var_8 being the encryption key]
+
+The malware proceeds to run AES 256 on the data, via the AES_ALGO labeled function. We determined it’s AES 256 because of a few properties.
+
+It uses 16-character blocks. This is pretty standard for any type of AES. It encrypts 16 characters from the file at a time, which is 128 bits.
+What differentiates the versions of AES is the size of the keys and the number of encryption rounds. In this case, it uses 14 rounds, which is standard for AES 256, instead of 10, which is standard for AES 128.  The key size is also 256 bits (32 bytes or characters).
+The sub type CBC (cipher block chaining) is also being used. The main indicator for CBC here is that the previous cipher text is used to encrypt the next plain text block. In other words, the previous encrypted block is used as the initialization vector for the next block of data to encrypt.
+
+[showing the flow for AES CBC, IV being used first, followed by previous cipher text being used as IV]
+In this case, the IV bytes are being XORed against the plain text bytes as an initialization step to create more randomness in the results. As you can see from the next image, the output of AES is then copied into the variable that will be used at the beginning of the loop to initialize the next plain text block before performing AES on it. At this point, it should be clearly AES usage, despite not being called via crypto APIs.
+[The image below shows where the previous cipher-text is used for initialization as the IV. NOTE: var_28 will contain the encrypted data]
+
+Below are a few screenshots illustrating the algorithm. As you can see, the data is loaded into matrixes. Then, a series of data operations is performed against some hardcoded data, together with the encryption key bytes. What you are seeing below in the highlighted text is one set of operations (1 of 4) in a single round. Four of these sets make up one encryption round. This is because in order to perform the matrix mathematics, you need to perform the operation for each item in the matrix against each of the others. And as stated earlier, 14 rounds total are done.
+
+The encoded encryption key is written in the registry ‘temp’ key:
+
+If the key is found in the registry, it proceeds to the function that decodes the key from the registry into the raw encryption key. Otherwise, it jumps to new generate function.
+
+This is interesting because it is the main key used to encrypt files. The format is similar to the key from the ransom note, but this one is longer, suggesting that the key given to the user as the ID is an encoded version of the key stored in the registry. Example of the dumped key:
+[HKEY_CURRENT_USER\Software\ILRTISo]
+"temp"="VkIAAAAAAADpt9Q2lAzhCExfqjLoD3vSpluc678N56Zn8b7LVRxMi1ZsYk2HXD1e4s3tiefTmZJAc0vxPposvLzP0yaCh5+KRQm60U0EkzeB2NXetarabUFYgJxb8QRsygKaOqBriC4Bs4ajM24h=e2CsVNP9R3q==UXNmfRFGIsv7NR9BIxE35bdoFpTU8rMGQ14MeQcAii1iY7GpNoY3b4DOgfuKGo3qNC1MYKYdfpn0dbiow3f7ZQGClpwTZ0shFhkWk7aTA7TM1prtgJte7TWe=ERHg8GaFrZtVs9ylNTYPt5CmzHBdAIaXeKZvZnSSafbi83o9gLgAS1OxAb7LBtJpZAJDyBkuyJFR4dFbXztponIBKT1OjtTvTMy07+0B4jI3=K1QGuKSROjAdCF06TsjKWlvUw0iUHRGasz946H3Mnxu3GdCHrAp9Cd94bMo1x1PVdIi3bXSwobjgOlJgJPJC4Y6J4QIE=e45PDNzdK6aCY0uiQ0jOD=8lDWTp=+r+dbGJrJ12qn8CRnBwaFIpyNjDhzdMdTwyvExCmuOesOLms8S7TRoV1GcTyWJAQpSJYcR66H6CngM5GHopdpoTH4mWVOOYp5HFHTDAvMafomF2S6xEmUgXIcKpB7oNohO+Wx0cUmf95=+9uozHMBWE4kFhj+OOKw0I7w7HnwYfafhxsw0CmoOvorZztXk8whlh1d4U26z=aJ6JwH8wVBSszsRLQ+H4y3bRaeupq5Vo+smDfigjVVzCam4HoAdOKzN9MWiigl9Oi+4vTkSFFazc6HzyVaHg8luKGBJMhi2FNHTFO56RA"
+
+Versus the key from the ransom note:
++4IAAAAAAADIGnmIHZL=FYRQCAN=AgKnzw+0uzFbXSR5AdFlfTrhWN9sifnho8LiX5=V8SbNVWyWWrdbTLipFEeeEv=9zLmnid8e
+UqlqKr2RUN=V7LdjoyNwjWMNbylRiGNAKWK6g9exeHhVfUrZ+9oRTq6Kp5eNe7kDdV7UMPVZ12=5pm9a+5lOMw==TNi2R2tUjFcK
+tTD3c9IZgJwOMgcOw3fRrmgaloh5cIV3V74DRy2segx13RDL4J6B+gJnfT2mxIZuBE1G5HcmuLHCoqQif2BamhfbMASCUEpOp7+Z
+G0jI=1PTmOhD3Yq4XjJWI4mc61AruRlaYqwPTUUbrsI0zTYX1mmM3Tvyso8bqDy4h5meyPYuXlgtRj06mtdrGZszb6ObsIT4Fz0O
+Ag=4HgI4VSHA=HAU5yCjZzIIkLhlWGvdAk
+
+The key used to encrypt changes from file to file. Meaning that two files with identical content will be different after encryption. Essentially what happens is that there is a initial key and many sub keys are derived from that key. If just a single encryption key was used for all of the files (which has been seen with other ransomware), you would be able to capture memory at any point in the encryption process, save the key, and use it to decrypt all of the files on your hard drive. Unfortunately, because of this key cycling that Scarab performs, it makes decryption of the files likely impossible.
+After full disk encryption is complete, the ransomware proceeds to a call function that enumerates all network folders and drives. For example: VMWare shared folders, Terminal services, Network Drives. If any are found, it encrypts the files within those folder as well.
+Once complete, it opens the encryption message via notepad.exe.
+Rumors
+There have been a number of articles we’ve come across online that state that Scarabey has the ability to act as a backdoor, allowing remote access, and also may gather sensitive data. From our analysis, we believe this to be untrue. We found no signs of any other functionality aside from simply encrypting files on user’s computer.
+Additionally, there were rumors of Scarab being built off of the open source ransomware project on gitHub called HiddenTear. We have confirmed this to be untrue in both our own research and with external researchers. It seems to be an industry consensus now that it was mistakenly posted.
+Malwarebytes for Windows detects this threat and its variant as: Ransom.Scarab.

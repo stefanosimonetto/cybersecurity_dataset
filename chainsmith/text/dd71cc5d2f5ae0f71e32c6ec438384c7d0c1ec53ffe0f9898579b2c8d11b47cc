@@ -1,0 +1,467 @@
+VB2014 paper: Smart home appliance security and malware
+2014-12-15
+
+Jeong Wook Oh
+HP
+,
+USA
+Editor:
+Martijn
+
+Grooten
+Abstract
+The current upward trend in smart appliance adoption might resemble similar historic trends seen with PCs and smartphones. At this early stage of the adoption process, we might think that the smart devices in our home are safe, but what do we really know about them? In his VB2014 paper, Jeong Wook Oh discusses the current security status of popular smart home appliances (TVs, thermostats and surveillance cameras), shares his findings from reverse engineering those devices and analysing their defences, and elaborates on possible ways to mitigate future threats on these increasingly popular platforms.
+Copyright © 2014 Virus Bulletin
+
+Abstract
+Smart home devices are becoming increasingly popular. Sales of smart TVs alone are expected to increase to 141 million units in 2015. This number may be small when compared with sales of PCs and mobile devices, but it is an impressive indication of what’s to come. And it’s not only our TVs that are getting smarter; our refrigerators, surveillance systems and thermostats are becoming ‘smart’ too. They are connected to the Internet. They are in the cloud. They have more functionality than ever before, and they’re making our lives easier. Conversely, they may also be providing new opportunities for crime.
+The current upward trend in smart appliance adoption might resemble similar historic trends seen with PCs and smartphones. At this early stage of the adoption process, we might think that the smart devices in our home are safe, but what do we really know about them? They are like black boxes and there is very little information available about their internals. Worryingly, what little published research exists in this area suggests our confidence may be misplaced.
+Maybe we won’t see prevalent malware on these platforms in the near future, but this is not because smart appliances aren’t prone to attack. It is more about the current expected ROI for malware writers. The market for smart appliances isn’t even remotely close to saturation at this point, so the potential number of targets, and therefore incentive to compromise, remains relatively low. However, this gives us a good opportunity to think about the security of these smart devices and get ahead of the game. We can learn important lessons from the history of PCs, smartphones and malware.
+In this paper, we discuss the current security status of popular smart home appliances (TVs, thermostats and surveillance cameras). We share our findings from reverse engineering those devices and analysing their defences, including noting possible attacks or vulnerabilities (such as memory corruptions, MITM issues, etc.). We also elaborate on possible ways to mitigate future threats on these increasingly popular platforms.
+
+Introduction
+Smart home appliances are becoming increasingly popular as the trend of everything being connected continues apace. These interconnections, moderated by our mobile devices or networked PCs, make our lives more convenient and productive – and this is just the start. Imagine the possibilities if you could control and monitor all your intelligent appliances and home equipment remotely.
+But we might be missing something here. We have put a strong emphasis on PC and mobile phone security, and many measures, including anti-malware, have been developed to defeat malicious software and exploits. Vendors like Microsoft, Apple and Google have put significant effort and resources into making their products and the ecosystem more secure. The positive cycle of bug reporting, fixing and crediting is mostly stable in this space. But smart home appliances, such as smart TVs and smart refrigerators, are manufactured by large vendors who are not familiar with the software industry and its established security best practices. Then there are other, smaller vendors who have great ideas as to how to make life easier with many different Internet-enabled devices, but security may not be at the forefront of their minds. Neither of these groups has the experience in security that forged the current policies for addressing vulnerabilities and malware in the more conventional IT space.
+
+Analysis target
+Among the growing number of smart appliances, smart TVs have shown very impressive sales recently and are projected to increase to 141 million units worldwide in 2015 [1]. This number is still small compared to the number of PCs and mobile devices being sold, but it is a number we can’t ignore. For this paper, I picked one smart TV model (Samsung F-series) as a case study and performed a detailed security assessment. In this paper I discuss the attack vectors from the point of view of the attackers and malware creators. Hopefully this will give you a glimpse into the state of security in this space.
+The target device I chose was a 55UF6350 model purchased from a US retail store in 2013. In other words, very typical of the sort of TV you might purchase nowadays. This model is usually called an F-series (most of the Samsung TV models sold in 2013 fall into this category). Table 1 shows the basic features of this TV. From the specification alone, it almost sounds like it is a small computer with huge screen.
+Features
+
+Processor
+Dual core (ARMv7)
+Screen size
+55’’
+AllShare™
+Content sharing and screen mirroring
+SmartView
+Clone view
+Smart phone remote support
+Yes (requires SmartView app)
+USB HID support
+Yes
+Motion rate
+240
+Network
+One built-in wireless adapter
+Browser
+WebKit-based with Flash 11.1 support (ActionScript 3.0)
+Installed apps
+Netflix
+,
+Picasa
+,
+Skype
+,
+YouTube
+,
+Facebook
+Table 1. Features of Samsung TV model 55UF6350.
+
+Internals
+The TV runs a Linux operating system, as illustrated in Figure 1, which shows the dmesg command result from the TV. There’s some interesting information here, like the memory size of 616MB total and an ARMv7 model CPU. The machine doesn’t look as powerful as a PC, but it feels more like an embedded Linux system.
+Figure 1. The dmesg command result from the TV.
+Figure 2 shows the mount command result with a number of partitions mounted on the system. Of the multiple partitions mounted, some are mounted as read-only and some are mounted as read-write.
+Figure 2. The mount command result from the TV.
+Figure 3 shows the ps command result. An interesting process like X, which is used for X-Windows, is shown. There are other interesting processes too, like udhcpc (a dhcp client) and WebkitWebProcess (a Webkit process). The process name exeAPP (also figured) is responsible for the related operations of apps overall, and the process name exeTV is responsible for showing television programs.
+Figure 3. The ps -eaf command result from the TV.
+Table 2 shows some of the TCP ports on the system, related processes and their usage. The exAPP process listens on many ports including 55000 and 55001. These ports are used for the SmartView application. Other SOAP-related ports from lighttpd are mostly for Universal Plug and Play (UPNP) related operations. UPNP is a set of network protocols that enables network devices to discover each other and perform additional operations with each other seamlessly.
+Protocol
+Port
+Process
+Usage
+TCP
+6000
+X
+X Windows
+TCP
+55000
+exeAPP
+SmartView
+TCP
+55001
+exeAPP
+SmartView
+TCP
+9090
+exeAPP
+SmartView
+TCP
+7676
+exeAPP
+SOAP
+TCP
+80
+lighttpd
+SOAP
+TCP
+4443
+lighttpd
+SOAP
+TCP
+443
+lighttpd
+SOAP
+Table 2. Ports of interest on the TV.
+
+Information source
+For Samsung TV rooting resources and other general information, the Samygo forum (http://www.samygo.tv/) is very useful. A lot of information from independent hobbyists is accumulated here.
+Figure 4. Samygo forum.
+
+Debug port access
+Most embedded devices allow technicians to access firmware through hardware interfaces like JTAG or UART ports. In most cases, they don’t want end-users to abuse the feature, so it is common for the interfaces to be obfuscated. The Samsung TV is known to use a modified version of a serial port called EX LINK (Figure 5).
+Figure 5. EX-LINK port on the back of the TV.
+The schematics for the EX-LINK cable are shown in Figure 6. At one end of the cable is a DB9 female connector, and the other end uses a stereo audio plug interface. You can easily make a cable by combining a DB9 cable and a stereo audio jack cable.
+Figure 6. EX-LINK cable schematics (source: [2]).
+After building an EX-LINK cable, you need to enable debug mode from the TV. As shown in Figure 7, EX-LINK is configured in UART mode by default. This needs to be changed to debug mode, as shown in Figure 8.
+Figure 7. RS-232 jack is UART mode by default.
+Figure 8. Debug mode enabled.
+If everything is working well, you will see a screen similar to that shown in Figure 9. More detailed log messages are shown in Figure 10. A lot of debug messages from the system processes are displayed, which is very helpful when reverse engineering system features. Also, with special key sequences, you can gain access to the Top-Debug-Menu (TDM). Through the TDM, you can control sensitive features of the TV at a very low level. Most of this information is available from the Samygo forum.
+Figure 9. Connecting to the TV through the EX-LINK cable.
+Figure 10. Detailed debug messages from the TV.
+
+Rooting
+To research smart TV internals, gaining access to the system shell is essential. To achieve that, I used the SamyGO rooting app. Interestingly, the way this app works implies a weakness with a Samsung TV security feature.
+First, you download the SamyGO rooting package from the Samygo forum site and put the package on a USB thumb stick. From the TV, go into the ‘More Apps’ menu. When you plug in your USB stick, it shows the SamyGO application on the application list. Figure 11 shows the application icon with the name ‘SamyGO-F’ on the screen.
+Figure 11. SamyGO rooting app.
+Table 3 shows the files inside the SamyGO app. Essentially, a TV app is just a ZIP archive file with HTML, Ja-vaScript and additional files inside. Samsung TV apps are written in HTML and JavaScript. The main code that does the rooting is inside index.html and JavaScript\Main.js.
+Name
+Description
+widget
+Basic widget information (resolution, alpha blending usage)
+config.xml
+Program configuration (widget id, name, description, etc.)
+index.html
+Main HTML file loaded
+JavaScript\Main.js
+Main exploit file in JavaScript code
+data\patch
+Main patch file (zip format)
+icon\samygo.jpg
+Program icon
+icon\samygo_106.png
+Program icon
+icon\samygo_115.png
+Program icon
+icon\samygo_85.png
+Program icon
+icon\samygo_95.png
+Program icon
+CSS\Main.css
+CSS file
+Table 3. Main program structure.
+The data\patch file is actually a ZIP archive that contains the files shown in Table 4. The remoteSamyGO.zip file inside this file is another ZIP archive that contains ELF binary files and a shell script that is installed on the target machine (Table 5). LibSkype.so is a file that replaces the original Skype shared library file with a file of the same name.
+Name
+Description
+AutoStart
+Dummy AutoStart file
+libSkype.so
+Skype
+hooking library file
+remoteSamyGO.zip
+Main
+SamyGO
+package file
+runSamyGO.sh
+SamyGO
+package run script
+Table 4. Patch file structure.
+Name
+Description
+busybox
+Busybox package (including various utilities, etc.)
+remshd
+Remote shell
+UEP_killer.sh
+UEP killer
+Table 5. remoteSamyGO.zip file structure.
+The busybox file is a small binary containing many different functions including shell and FTP. The remshd file is an ELF binary that listens on port 23 and gives out a shell when anyone connects to the port. The UEP_killer.sh file is a shell script that kills a watchdog process on the system that blocks unauthorized processes (killing the watchdog process disables this security feature).
+When the program is run, it displays a screen similar to that shown in Figure 12. It overwrites Skype’s shared library file (libSkype.so) with its own version. Whenever Skype runs on the TV, the main Skype binary loads this replaced shared library and runs the SamyGO app’s code inside it. The shared library runs its own code for installing a remote shell and providing other features.
+Figure 12. Rooting process from the rooting program.
+
+How rooting works and its security implications
+You might be wondering how this rooting process is possible. The cause of the problem is that when a USB stick is inserted, the More Apps feature does not verify the applications on the USB drive – it skips the application verification process and lets the user run the program(s). Moreover, the process has root privileges. The TV apps are written in HTML and JavaScript, and the underlying system exposes JavaScript objects that support network, display and file system access, etc.
+The SamyGO app first loads the SAMSUNG-INFOLINK-FILESYSTEM object, as shown at line 11 in Figure 13. Through this object, the JavaScript code can perform file-system-related operations. After that, as shown at line 15 in Figure 13, the HTML page calls the Main.onLoad JavaScript.
+Figure 13. Special clsids and Main.onLoad() calling.
+Figure 14 shows that the filePlugin variable is resolved from the previous SAMSUNG-INFOLINK-FILESYSTEM object.
+Figure 14. Main.onLoad resolves the file system plugin object.
+Line 156 in Figure 15 shows how the Unzip method from this object can be used. Basically, you can extract an arbitrary ZIP file to an arbitrary folder.
+Figure 15. Unzip function using filesystem plug-in.
+The target location for the ZIP operation is shown in Figure 16. This path is where the Skype engine’s files, including the shared library, are stored.
+Figure 16. Skype engine path definition.
+The rootSamyGO function from the script extracts a ‘data/patch’ file to the Skype engine’s location, overwriting the libSkype.so file. Now, when the Skype program runs on the system, it loads the SamyGO version of the libSkype.so shared library.
+Figure 17. Extracting exploit packages to the Skype engine folder.
+
+SmartView flaw
+SmartView is a feature of Samsung TVs that lets you enjoy TV content from your PC or smart phone. An iPhone app (Figure 18) and a PC application (Figure 19) are available. The SmartView feature is related to other features like AllShare, etc. The SmartView feature is representative of smart TVs with network capability. Looking into how this feature works is interesting, as well as a beneficial exercise in order to gain a better understanding of the security implications of some features of smart TVs.
+Figure 18. SmartView iPhone App.
+Figure 19. SmartView PC application.
+
+SSDP
+Simple Service Discovery Protocol (SSDP [3]) is used for discovering and propagating device information on the local network. The SmartViewApp application sends M-SEARCH requests over the multicast network (Figure 20).
+Figure 20. M-SEARCH packets.
+The payload of the M-SEARCH packets is shown in Figure 21. It tries to find Samsung remote control receiver devices.
+Figure 21. M-SEARCH packet payload.
+The TV replies with additional information about itself using the SSDP protocol (Figure 22).
+Figure 22. M-SEARCH response.
+(Click here to view a larger version of Figure 22.)
+Figure 23 shows the contents of this reply packet. It has a ‘LOCATION’ header that can be used for further operations. The URL is ‘http://192.168.1.9:7676/smp_2_’ and the IP address of the TV is 192.168.1.9.
+Figure 23. M-SEARCH response payload.
+
+Basic information request
+From the response of the M-SEARCH request, the client can determine the URL for more operations. It tries to connect to and request information from the TV by sending a simple GET request to this URL (Figure 24).
+Figure 24. Smp_2_ application request.
+The result of this GET request is shown in Figure 25. The message contains basic device information including model number and a detailed description of the device. Also note that there is a service entry named urn:samsung.com:serviceId:MainTVAgent2. The entry has a controlURL of /smp_4_. This URL is where the client can perform additional SOAP operations.
+Figure 25. Smp_2_ application response.
+
+Advanced operations
+So smp_4_ is a SOAP application that provides additional operations. Figure 26 shows one of the requests: it is sending a GetDTVInformation request to the TV using a SOAP message.
+Figure 26. Smp_4_ application request.
+The response to the GetDTVInformation request is shown in Figure 27. The response contains basic information about the features the TV supports. It includes the video format it supports, TV version, and the presence of additional networking ports like Bluetooth.
+Figure 27. Smp_4_ application response.
+There are many different services available through this application, including the following functions:
+AddSchedule
+ChangeSchedule
+DeleteRecordedItem
+DeleteSchedule
+DestroyGroupOwner
+EnforceAKE
+GetACRCurrentChannelName
+GetACRCurrentProgramName
+GetACRMessage
+GetAPInformation
+GetAllProgramInformationURL
+GetAvailableActions
+GetBannerInformation
+GetChannelListURL
+GetCurrentBrowserMode
+GetCurrentBrowserURL
+GetCurrentExternalSource
+GetCurrentMainTVChannel
+GetCurrentProgramInformationURL
+GetDTVInformation
+GetDetailProgramInformation
+GetFilteredProgramURL
+GetMBRDeviceList
+GetMBRDongleStatus
+GetRecordChannel
+GetScheduleListURL
+GetSourceList
+PlayRecordedItem
+RunBrowser
+SendBrowserCommand
+SendMBRIRKey
+SetAntennaMode
+SetMainTVChannel
+SetMainTVSource
+SetRecordDuration
+StartCloneView
+StartInstantRecording
+StopBrowser
+StopRecord
+StopView
+
+Remote control protocol
+In addition to SOAP services, the TV provides a remote control service on port 55000. The details of the protocol are undocumented. Figure 28 shows some of the packets using this protocol. The protocol enables the client to send remote controller keys over the network, which means that you can emulate remote controller key presses from your application on a PC or smart phone.
+Figure 28. Remote controller packets.
+
+Design weakness
+There is a design weakness in the authentication process. Figure 29 shows an authentication packet from the client. The client is sending a message with a proprietary packet format. Figure 30 shows the hex representation of the payload bytes for authentication. Even though the format is not documented, it is fairly simple to reverse engineer.
+Figure 29. Remote controller authentication packet.
+Figure 30. Remote controller authentication packet bytes.
+Table 6 shows the parsed hex bytes from the original packet – basically, the client sends the IP address, MAC address and hostname to the server.
+Field
+Data
+Format
+Description
+Unknown
+00
+Unknown
+Unknown
+Length
+14 00
+Short
+Length of the following string
+String
+69 70 68 6F 6E 65 2E 2E 69 61 70 70 2E 73 61 6D 73 75 6E 67
+String
+iphone..iapp.samsung
+Payload length
+40 00
+Short
+0x40 bytes of payload
+Unknown
+64 00
+Unknown
+Unknown
+Length
+10 00
+Short
+Length of the following string
+String
+4D 54 6B 79 4C 6A 45 32 4F 43 34 78 4C 6A 45 35
+Base64 string
+Encoded: MTkyLjE2OC4xLjE5 Decoded: 192.168.1.19
+Length
+18 00
+Short
+Length of the following string
+String
+4D 54 41 74 4D 45 49 74 51 54 6B 74 4E 54 63 74 4D 54 49 74 4E 44 67 3D
+Base4 string
+Encoded: MTAtMEItQTktNTctMTItNDg= Decoded: 10-0B-A9-57-12-48
+Length
+10 00
+Short
+Length of the following string
+String
+51 31 4A 42 57 6C 6C 44 54 30 39 4C 53 55 55 3D
+Base64 string
+Encoded: Q1JBWllDT09LSUU= Decoded: CRAZYCOOKIE
+Table 6. Remote controller authentication packet bytes.
+When the TV receives this packet, it displays a dialog box similar to the one shown in Figure 31. If the user allows the connection, then the client is able to send remote controller keys over the network.
+Figure 31. Dialog on the TV.
+The design issue is very obvious here. The information that the client uses for authentication is the client’s IP address, MAC address and hostname. All of this information can easily be retrieved on the local network. The IP address and MAC address are constantly being broadcasted through ARP packets, and hostnames are sent out through Windows name service packets. You do need to figure out which machine is allowed access to the TV remote controller service first, or you can try all the machines on the network to brute-force authentication. At best, this authentication design is pretty weak.
+
+Vulnerability in implementation
+In addition to a fundamental design flaw for remote controller authentication, there is also an implementation flaw. According to my tests, the hostname and IP address are not even used for authentication. The attacker only needs to guess the MAC address, which is constantly broadcast over the local network. But there is one more issue: if you send an empty string as a MAC address, the server always allows the connection if any client was previously allowed for the service.
+FIgure 32 shows the hex bytes of the payload that was used for authentication bypass. Table 7 shows the parsed hex bytes, and you can see that the length fields for IP address, MAC address and hostname are all 0 and the strings are empty.
+Figure 32. Remote controller – all authentication packet bytes.
+Field
+Data
+Format
+Description
+Unknown
+00
+Unknown
+Unknown
+Length
+14 00
+Short
+Length of the following string
+String
+69 70 68 6F 6E 65 2E 2E 69 61 70 70 2E 73 61 6D 73 75 6E 67
+String
+Ascii: iphone..iapp.samsung
+Payload length
+08 00
+String
+0x08 bytes of payload
+Unknown
+64 00
+Unknown
+Unknown
+Length
+00 00
+Short
+Length of the following string
+String
+
+Base64 string
+Empty
+Length
+00 00
+Short
+Length of the following string
+String
+
+Base64 string
+Empty
+Length
+00 00
+Short
+Length of the following string
+String
+
+Base64 string
+Empty
+Table 7. Remote controller – all authentication packet bytes.
+Figure 33 shows the code that sends this authentication packet. From line 18, if you pass an empty string for IP, hostname and MAC address, the authentication is bypassed.
+Figure 33. Authentication packet sending routine (hijack_remote.py).
+
+Sending keys
+Now that you can authenticate as a valid SmartView client, you need to figure out how to send remote controller keys. For example, Figure 34shows a packet that is sending a key. The payload is ‘S0VZX1ZPTFVQ’, which is a base64-encoded string of ‘KEY_VOLUP’. This key is used for the volume up function.
+Figure 34. Remote controller packets.
+Figure 35 shows the main code that sends remote controller keys. The keys are in the form of strings, and various keys can be retrieved from a packet dump of the SmartView sessions.
+Figure 35. Key sending routine (hijack_remote.py).
+
+Exploiting
+Now that we can send any remote controller keys, we want to find out if anyone has previously used the SmartView feature and allowed at least one client.
+For example, ‘HOME-PC’ is a legitimate user PC. If a user wants to use the SmartView feature, they authenticate the PC from the TV screen by allowing the device named ‘HOME-PC’ (see Figure 36).
+Figure 36. Legitimate user authentication.
+When a SmartView client is allowed, an access control list is added to the ‘Content Sharing’ menu (see Figure 37).
+Figure 37. Content sharing access control list.
+Now the attacker wants to take control and uses the SmartView client from a machine that is connected to the local network. Let’s assume that they have already gained control of one of the machines on the local network and are trying to get into the TV to perform additional attacks. When they try to authenticate the machine under their control, a pop-up dialog appears (Figure 38).
+Figure 38. Attacker tries to authenticate.
+One click of the enter key is needed for this connection to be allowed. The attacker can use the remote controller exploit here. Figure 39 shows the code from the hijack_remote.py script that bypasses authentication and sends KEY_ENTER to the TV.
+Figure 39. Enter key sending code (hijack_remote.py).
+The hijack_remote.py script is run as shown in Figure 40. The first argument is the TV’s IP address and the second is the MAC address. If you know the MAC address of any device that has already been authenticated, you can put that here. However, if you put an empty string here, it tries to exploit the empty MAC bypass issue.
+Figure 40. Running hijack_remote.py.
+When the exploit is successful, the attacker is registered as an allowed ‘Content Sharing’ client (see Figure 41).
+Figure 41. Content sharing access control list.
+
+Installing a backdoor
+Now we have a way to send any remote controller key to the TV. You might think that this glitch isn’t all that useful for attackers – but imagination is the only limit here. One attack scenario we can think of is to change DNS settings in the network settings, or possibly to reroute all traffic to the attacker’s server. Another possibility might be to install malware on the TV. From here, we will demonstrate a way in which malware can be installed on the TV remotely using a remote controller flaw.
+
+Clone view
+The PC version of the SmartView application supports a remote view function in addition to the remote controller function (Figure 42). This feature is really useful when attacking because the attacker can see the TV screen remotely. This could reveal the contents of any app being used, such as social apps, or browser and messenger tools like Skype. This means that the user’s privacy, while using the TV, will be compromised.
+Figure 42. SmartView PC application with View.
+This clone view feature is actually implemented through a SOAP message and livestream application. The SmartView client sends a SOAP message to the smp_4_ application using the StartCloneView method (Figure 43). If the client has already been authenticated through the remote controller service, the server starts view cloning and replies with a message that contains a URL for streaming (see Figure 44).
+Figure 43. Screen cloning request.
+Figure 44. Screen cloning response.
+The client sends a request to the livestream server to retrieve livestream data (see Figure 45).
+Figure 45. Livestream request.
+And the server sends out a constant stream of livestream data in HDCP format (seeFigure 46 ).
+Figure 46. Livestream response.
+
+Developer account
+There are apps for a Samsung TV that can be downloaded from the Samsung app store. To get into the app store you need to log in using a Samsung account (see Figure 47). There is a feature called a developer account, which is a reserved login name called ‘develop’, and if you login with that name, the TV is automatically switched to a developer mode (Figure 48). Creation of the developer account differs for each model, but for this F-series TV, the account is already created and there is no password associated with it.
+Figure 47. Log into Samsung account.
+Figure 48. Input ‘develop’ account in email field.
+When you successfully switch the machine to developer mode, you get special access to a hidden menu. From More Apps, if you check options, it shows the ‘IP Setting’ and ‘Start App Sync’ menu items which were not shown before (see Figure 49).
+Figure 49. From More Apps menu, select IP Setting.
+By selecting ‘IP Setting’ here, an attacker can input the address of a web server that they control (see Figure 50).
+Figure 50. Input attackers web server
+After that, the attacker can use the ‘Start App Sync’ feature to install their malicious app on the machine (see Figure 51).
+Figure 51. Start application sync.
+
+App sync & application security issues
+When you choose to start App Sync, the More Apps program tries to connect to the web server on port 80 running on the machine specified by the IP settings. When it finds a web server on that address, it retrieves a /widgetlist.xml file and parses it. A sample widgetlist.xml is shown in Figure 52. The download tag specifies the ZIP file that contains the TV app.
+Figure 52. Sample widgetlist.xml.
+Simply reusing the Samygo F-series rooting app and installing it over App Sync might install a remote shell and FTP server, which is enough to demonstrate remote compromise through SmartView. But, if you try to install the rooting app through the developer account, the app will not be installed, and a security warning will be displayed (see Figure 53).
+Figure 53. Application security issue.
+To investigate more, if you follow the URL given in the error message, it describes many different reasons for the security warning occurring. One notable fact is that if you embed a binary file (ELF in this case), the app is not allowed to install. This is a countermeasure to prevent the installation of any unwanted ELF binaries on the system. The Samygo rooting app relies on replacing a Skype shared library. Even when it is archived in a ZIP file, it is still detected by the app installer and rejected. You might think of encoding the file, but there is no easy way to decode them on the fly from the TV app. The Samygo rooting app relies on an Unzip function from the file system plug-in object, so there is no room for decoding the contents during the process.
+
+Dropper hack
+In order to copy an ELF binary you want to install on the system, you need to find a glitch in the app installer’s security. As it happens, I found one. Even when the app is rejected, the whole contents are left in an easily guessable location under /mtd_rwcommon/common/TempDownLoad. For example, if you installed an app called Test, the following folder on the TV system would contain the entire contents:
+/mtd_rwcommon/common/TempDownLoad/Test
+Using this fact, we can drop an ELF binary on the system and use it later from another app. Even though it triggers a security violation error, we can still drop a file we want and use it from an app we launch later.
+For example, I packaged the ‘patch’ file inside a dropper app (Figure 54). This file is from the Samygo rooting app and it contains multiple ELF binaries.
+Figure 54. Dropper contents.
+The widgetlist.xml file is shown in Figure 55.
+Figure 55. Dropper widgetlist.xml.
+The More Apps installer triggers a security warning but you can just dismiss the message. The file we want is now dropped on the system.
+
+Installer
+Now we need to make a new package without any ELF binaries (Figure 56).
+Figure 56. RemoteRooting package contents.
+One thing we need to do is to change packagePath in Main.js to the location where our dropper package is dropped (Figure 57).
+Figure 57. Package path with installer.
+The widgetlist.xml file is shown in Figure 58.
+Figure 58. RemoteRooting widgetlist.xml.
+When you perform app sync, it succeeds without any warning (Figure 59).
+Figure 59. No security issues.
+You can confirm that the RemoteRooting app just installed on the TV system (Figure 60).
+Figure 60. Run RemoteRooting app.
+When you launch the app, you see a screen similar to Figure 61. Now the Samygo package, including a remote shell and FTP, is installed. You can confirm this by connecting to the TV via port 23. You will have root privilege on the system. (Figure 62) From here, further attacks can be launched.
+Figure 61. RemoteRooting result.
+Figure 62. Access to the TV with root privilege.
+
+Conclusion
+Smart devices are a new trend in the appliance industry, and smart TVs provide a good example of what to expect from them. The fact that they can be connected with other devices at home, like PCs or smart phones, initially seems very convenient. However, the way the overall architecture is designed is a little questionable. I used the SmartView feature of a Samsung Smart TV to showcase how weak the design of a proprietary protocol can be. Also, the actual implementation is so delicate that the whole authentication scheme fails when the client supplies unexpected input. I also used a weakness in the app installer to bypass a security error related to an embedded ELF binary. As you have seen, it is possible to install malware on the TV using the method I presented here.
+It’s been a while now since the home appliance industry started pushing these smart appliances. When these vendors are creating new features and developing new technology to support them, they might learn some valuable lessons from the past few decades of the PC industry. Even when it doesn’t seem likely that malware or actual attacks will happen for these smart appliances in the foreseeable future, you never know. Better to prepare early rather than late. If the new smart appliances don’t gain the trust of their users, they won’t ever be used for any critical purposes like confidential Skype calls or private social networking. The TV already comes with Skype, browser and social apps: If the TV can’t give users assurance of its secure operation, users will be too ‘smart’ to use it.
+
+Bibliography
+[1] Epstein, Z. Smart TV sales soared in 2012, set to dominate TV market by 2015. BGR. Feb 22, 2013. http://bgr.com/2013/02/22/smart-tv-sales-2012-340405/.
+[2] http://wiki.samygo.tv/index.php5/Enable_Serial_Console_on_non_CI%2B_Devices#The_Ex-Link_.28serial.29_cable_for_A_and_B_series_only.
+[3] SSDP. http://tools.ietf.org/html/draft-cai-ssdp-v1-03.

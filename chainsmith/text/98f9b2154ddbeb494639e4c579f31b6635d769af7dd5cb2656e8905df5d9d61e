@@ -1,0 +1,146 @@
+Solarbot botnet
+2014-03-04
+
+He Xu
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+Solarbot, a.k.a. Dapato or Napolar, is a traditional botnet that has been around for a while. It is used for spreading other malware and often comes with built-in DDoS and proxy modules. He Xu takes a closer look.
+Copyright © 2014 Virus Bulletin
+
+Solarbot, a.k.a. Dapato or Napolar, is a classical botnet that has been around for a long time. It is usually used for spreading other malware. Like its competitors, this malware often comes with built-in DDoS and proxy modules. The most recent version of Solarbot attempts to add Tor network support to conceal its C&C server. However, it seems that this feature is either still undergoing development or has been disabled. The toolkit sells for around $200 and the source code is available for 100 bitcoins (approx. US$15,000) from the website hxxp://solarbot.net. Let’s take a closer look.
+
+TLS callback procedure
+The bot carries an abnormal loader with a special PE header which has no entry point, and the ImageBase is not the usual default 0040000 or 01000000 (see Figure 1).
+Figure 1. EntryPoint and ImageBase details.
+The virus entry point is located in the TLS (Thread Local Storage) table, which is usually empty in the Data Directory list.
+The structure of the IMAGE_TLS_DIRECTORY is as follows:
+typedef struct _IMAGE_TLS_DIRECTORY32 {
+ULONG StartAddressOfRawData;
+ULONG EndAddressOfRawData;
+ULONG AddressOfIndex;
+ULONG AddressOfCallBacks;
+ULONG SizeOfZeroFill;
+ULONG Characteristics;
+} IMAGE_TLS_DIRECTORY32, *PIMAGE_TLS_DIRECTORY32;
+
+Let’s look at the real data in the bot. There are two TlsCallback functions in the PE file (see Figure 2).
+Figure 2. Two TlsCallback functions.
+When the bot is loaded by the system (PE loader), the TlsCallback function will be invoked ahead of the EPO.
+The first TlsCallback, TlsCallback_0, is an empty function (see Figure 3). This might be used to trick anti-virus engines.
+Figure 3. The first TlsCallback is an empty function.
+The second TlsCallback function uses the dynamic TLS approach to insert a new callback procedure in memory. So when TlsCallback_1 returns, the TlsDirectory changes, as shown in Figure 4.
+Figure 4. The TlsDirectory changes.
+The TlsCallback_2 function decrypts all code using the RC4 algorithm and the fixed double-word key 0x0F5BC5C9.
+
+Fake export directory
+The bot loader does not have real export functions, but it has an abnormal export directory that redirects to the ImageBase (MZ header), as shown in Figure 5.
+Figure 5. Export directory redirects to the ImageBase.
+We can see that the functions count declared in the structure is too large, and the Base is 0. This special structure will cause several debugger applications to enter an exception and thus be unable to analyse the bot.
+
+Debugger & debuggee mechanism
+More and more bots are integrating debugger engines, and Solarbot is no exception. The bot uses this feature for anti debugging purposes, and executes different code. The bot’s internal debugger engine is much simpler than that of ZAccess, for example, but it is still effective.
+
+Debugger
+The bot will restart itself as a debuggee by calling the CreateProcessW API with the parameter CreateFlags DEBUG_ONLY_THIS_PROCESS, then it will enter the main loop to handle debuggee events such as CREATE_PROCESS_DEBUG_EVENT, EXCEPTION_DEBUG_EVENT and EXIT_PROCESS_DEBUG_EVENT. For other events, the bot’s debugger just calls the ContinueDebugEvent API with the parameter dwContinueStatus DBG_CONTINUE.
+The debugger will inject all code into the newly allocated memory of the debuggee while handling the debug event CREATE_PROCESS_DEBUG_EVENT.
+After that, it will modify the debuggee’s entry point code with the PUSH_RET instruction when it handles EXCEPTION_DEBUG_EVENT and the corresponding EXCEPTION_DEBUG_INFO structure with ExceptionCode EXCEPTION_BREAKPOINT. This modified code will be triggered when the debuggee runs before its entry point. This means that all executable code in the debuggee will be overwritten by the debugger.
+The debugger also modifies another remote function, which we will discuss in the next section.
+The debugger handles the INT3 breakpoint, but only sets a stack flag and calls the ContinueDebugEvent API with dwContinueStatus DBG_CONTINUE as the parameter.
+The debugger will terminate itself if the stack flag marker is found.
+
+Debuggee
+As we know, the entry point of the debuggee has been replaced by the debugger. It will run the code shown in Figure 6, Figure 7 and Figure 8.
+Figure 6. Run as debuggee.
+Figure 7. The bot appears to terminate itself.
+It appears as if the bot will terminate itself permanently (see Figure 7). However, this does not happen, since the bot's debugger modifies the code, as shown in Figure 8.
+Figure 8. The debugger modifies the code.
+The redirected code will check the current process. If the path is %startup%\lsass.exe, the bot will return to the parent function. Otherwise, it will install itself.
+The installed bot triggers the EXCEPTION_BREAKPOINT (INT3) debug event at address 00FE92DE. The bot’s debugger will ignore the INT3 event and make sure the EIP points to the next instruction correctly.
+Finally, the debuggee will try to inject malicious code into explore.exe, and quit.
+
+VEH exception
+The malicious code injected into explore.exe uses a special trick to pick up and decrypt C&C information from the internal lists.
+It installs a VectoredExceptionHandler callback function into the current VEH chain using RtlAddVectoredExceptionHandler (see Figure 9).
+Then it executes the HLT instruction and causes the EXCEPTION_PRIV_INSTRUCTION exception, which will be processed by the KiUserExceptionDispatcher API. This API will call all callback functions in the VEH chain to solve the exception – so the newly added VEH callback function will be called to handle the exception.
+Figure 9. A VectoredExceptionHandler callback function is installed.
+The VEH callback function saves the Context structure and then hooks the KiUserExceptionDispatcher API. Finally, it returns the EXCEPTION_CONTINUE_EXECUTION status, which means ‘exception is dismissed, continue execution at the point at which the exception occurred’. As a result, the same exception will occur again.
+As the KiUserExceptionDispatcher API has been hooked, the hook function will increase the EIP pointing exception address of HLT by 0x2E, then call the ZwContinue API with the parameter Context including the updated EIP (see Figure 10).
+Figure 10. The ZWcontinue API is called with the parameter Context.
+Finally, the EIP will point to address 0xFE7EE8 (see Figure 11), and the newly added VEH callback function will be removed.
+Figure 11. VEH callback function is removed.
+Why does the bot use this trick? First, KiUserExceptionDispatcher is the most important API that is always called by debuggers, and it’s impossible to set a breakpoint in it as it will cause the system to become unstable. Second, the bot will fetch and decrypt the next C&C information in the hook function just before updating the EIP.
+
+C&C communication
+
+Traffic for downloading other malware
+Figure 12 shows an example of the traffic the bot receives when it gets a command from the C&C server.
+Figure 12. Command from the C&C server.
+The send package is a clear string that is generated with following pattern:
+v=%d.%d&u=%s&c=%s&s=%s&w=%d.%d.%d&b=%d
+A real example is as follows:
+v=1.0&u=QA&c=JASON-82539F471&s={74B1FCB1-0FEC-E3A2-23D4-B4FA74B1FCB1}&w=2.5.1&b=32
+As we can see, ‘v’ is the bot version, which is hard coded; ‘u’ is the username, which is grabbed from a call to the GetUserNameA API; ‘c’ is the current computer name, which is generated from a call to the GetComputerNameA API; ‘s’ is the ClsID, which is generated using various pieces of system information such as the Drive C Serial Number; ‘w’ is the Windows version from a call to the GetVersionEx API; finally, ‘b’ indicates whether the system is running as 32 or 64 bits.
+The received package is encrypted, as shown in Figure 13.
+Figure 13. The received package is encrypted.
+The encryption algorithm is RC4, and the key is the ClsID included in the sending package parameter as ‘s’.
+Figure 14 shows the received data after decryption.
+Figure 14. Received package after decryption.
+Just like Andromeda, Solarbot uses different command IDs to identify different jobs. The current variant supports 14 commands, which range from 01 to 0x0E. The example above shows command 0D, which instructs the bot to download another piece of malware from a specified link and includes an MD5 tail for verification. The package also includes command 0C, which updates the default sleep time period.
+The bot uses the GET method to download the additional malware, as shown in Figure 15.
+Figure 15. The bot uses GET to download malware.
+Following the command 0D routine, the bot will check the downloaded file’s MZ and PE signatures, then calculate the whole file’s MD5 and compare it with the MD5 tail included in the received package. If everything matches, the bot will drop the malware into the %AppData% folder, using a random filename that follows the pattern ‘%08lX.exe’.
+
+Traffic idle
+If there are no more commands, there will be much less traffic than in the previous example (see Figure 16):
+Figure 16. No more commands.
+The received package is shown in Figure 17 and Figure 18.
+Figure 17. Received package binary data.
+Figure 18. Received package after decryption.
+Command 06 instructs the bot to set the tag to ‘1’ (from the default 0) to indicate the end of the previous DDoS attack job, if one existed. The following command, 0C, instructs the bot to update the default sleep time to 3,600ms.
+
+Traffic for DDoS
+We know the bot has a DDoS attack feature, so let’s look at some real attack traffic (Figure 19):
+Figure 19. Attack traffic.
+The command 04 signifies the start of a UDP DDoS attack. Figure 20 shows what the victim’s traffic will look like.
+Figure 20. Victim’s traffic
+According to the code, the bot opens 10,000 connections with the victim IP at the same time. The DDoS will not stop unless the bot receives a further command with ID 06. In this case, command 06 was just behind the second command 04 (see Figure 19) and was included in the same package, so the attack time was not very long.
+As far as we can tell, the victim IP does not belong to any organization or business website, so this example may be a test, and may not cause too much damage.
+Command 02 instructs the bot to download malware without MD5 verification (see Figure 19). In this case, the bot just downloads the binary from the specified link then drops it into the %AppData% folder and runs it.
+
+Traffic for dialler
+Command ID 0A instructs the bot to open iexplore.exe or another default Internet browser to open the URL. This may currently just be for testing purposes.
+Figure 21. Command 0A.
+
+Full description for all commands
+The following is a detailed description of all commands as seen in our analysis:
+01: SetEvent to activate the next C&C communication
+02: Download malware without MD5 verification, and run it in the %AppData% folder
+03: Create thread for DDoS attack under TCP protocol
+04: Create thread for DDoS attack under UDP protocol
+05: Create thread for DDoS attack under TCP protocol
+06: Set tag to indicate that the current DDoS attack has finished
+07: Download malware without MD5 verification, and drop it in the %AppData% folder (without running it)
+08: Create thread for DDoS attack under TCP protocol 09: Create thread as Proxy server
+0A: Run iexplore.exe to open URL with flag NORMAL_PRIORITY_CLASS
+0B: Run iexplore.exe to open URL with flags NORMAL_PRIORITY_CLASS and CREATE_NO_WINDOW
+0C: Update the default sleep time
+0D: Download malware with MD5 verification, and run it in the %AppData% folder
+0E: Download malware with MD5 verification, and drop it in the %AppData% folder (without running it)
+0F: Update HTTP request header host string.
+
+Joining the Tor network
+Tor is a service for enabling anonymity and making Internet activity very difficult to track. Solarbot generates files such as %AppData%\tor.bin and %AppData%\torrc and stores them, but it does not appear to use them. We did not locate any Tor traffic in Solarbot sample replication, either. Our best guess is that this feature is still under development.
+
+Conclusion
+This botnet is very powerful and may become more aggressive in the future, with lots of evidence in the code to suggest that it is still undergoing development. We will continue to monitor its evolution.
+
+Bibliography
+[1] http://blog.avast.com/2013/09/25/win3264napolar-new-trojan-shines-on-the-cyber-crime-scene/.
+[2] http://www.infosecurity-magazine.com/view/34788/napolar-solarbot-trojans-share-dna/.
+[3] http://www.malwaretech.com/2013/10/end-of-line-for-solar-bot-win32napolar.html.

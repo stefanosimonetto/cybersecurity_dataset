@@ -1,0 +1,188 @@
+Memory analysis - examples
+2010-03-01
+
+Ken Dunham
+iSIGHT Partners
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Following last month's introduction to memory analysis, Ken Dunham walks through the process using Haxdoor as an example.
+Copyright © 2010 Virus Bulletin
+
+In last month’s introduction to memory analysis (see VB, February 2010, p.15), three distinct phases of operation were identified: analysis of a live system (triage), dumping of volatile data to a file (capture), and analysis of combined data (analysis). This follow-up article walks through the whole process using Haxdoor as an example.
+
+Introduction to Haxdoor
+It is helpful when learning new tools and techniques to start with a known sample. The variant of Haxdoor used in this demonstration has an MD5 value of 9bb6fbb9dfaff0467d329284892d4e55. It uses kernel-level rootkit tactics to conceal processes, files and registry changes. Haxdoor is a well-known malware family due in part to its use in a phishing campaign targeting the Swedish Nordea bank [1]. With seven to eight million Swedish kronor having been siphoned away by the attackers, McAfee called this incident the ‘biggest ever’ online bank heist at the time of disclosure.
+Haxdoor can be sent to a victim through numerous vectors, including email, web exploitation and more. Once executed, this particular variant creates the following files, many of which are hidden from Windows:
+kgctini.dat
+lps.dat
+qo.dll
+qo.sys
+svjvpn.sys
+svjvpn.dll
+svkvpn.sys
+Temp/W01083060Z (directory)
+It also makes the following Windows registry changes:
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\svkvpn
+Startup = “ER03Sb5fex”
+
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify\svkvpn
+DllName = “svkvpn.dll”
+
+HKLM\SYSTEM\ControlSet001\Control\SafeBoot\Minimal\svjvpn.sys
+(Default) = “Driver”
+
+HKLM\SYSTEM\ControlSet001\Control\SafeBoot\Network\svjvpn.sys
+(Default) = “Driver”
+
+HKLM\SYSTEM\ControlSet001\Enum\Root\LEGACY_SVJVPN\0000\Control
+ActiveService = “svjvpn”
+
+HKLM\SYSTEM\ControlSet001\Enum\Root\LEGACY_SVJVPN\0000
+Service = “svjvpn”
+
+HKLM\SYSTEM\CurrentControlSet\Services\svjvpn\
+In addition, it injects explorer.exe to run hidden in memory and it may attempt communications with skyinet.info.
+
+Triage
+After infecting a test Windows operating system with Haxdoor, triage begins.
+
+1. Windows Task Manager (CTRL-ALT-DELETE)
+The first step is to look at the Windows Task Manager, sort by image name and look for any processes that are missing from the list, and any processes on the list that should not be there. Having done this, we can see that explorer.exe is missing from the list – it should be visible. This is an indication that the process has been injected and hidden by a rootkit (Figure 1).
+Figure 1. Explorer.exe is not visible in Windows Task Manager. This is an indication that it has been injected and hidden by a rootkit.
+
+2. Process Explorer
+The next step is to look for extra and/or missing processes in Process Explorer – some malicious programs are visible using this tool but not with Windows Task Manager, indicating a possible rootkit process. However, in this case Process Explorer 11.x does not reveal any new information.
+
+3. FPort
+The next step is to run FPort and dump the results to a file. FPort reveals the following output:
+FPort v2.0 - TCP/IP Process to Port Mapper
+
+Copyright 2000 by Foundstone, Inc.
+
+http://www.foundstone.com
+
+Pid   Process    Port      Proto  Path
+932   svchost    -> 135    TCP    C:\WINDOWS\system32\svchost.exe
+4     System     -> 139    TCP
+4     System     -> 445    TCP
+684   alg        -> 1028   TCP    C:\WINDOWS\System32\alg.exe
+1588  Explorer   -> 16016  TCP    C:\WINDOWS\Explorer.EXE
+1588  Explorer   -> 16661  TCP    C:\WINDOWS\Explorer.EXE
+1588  Explorer   -> 43818  TCP    C:\WINDOWS\Explorer.EXE
+1588  Explorer   -> 47762  TCP    C:\WINDOWS\Explorer.EXE
+1588  Explorer   -> 123    UDP    C:\WINDOWS\Explorer.EXE
+684   alg        -> 123    UDP    C:\WINDOWS\System32\alg.exe
+4     System     -> 137    UDP
+0     System     -> 138    UDP
+932   svchost    -> 445    UDP    C:\WINDOWS\system32\svchost.exe
+4     System     -> 500    UDP
+1588  Explorer   -> 1025   UDP    C:\WINDOWS\Explorer.EXE
+1588  Explorer   -> 1900   UDP    C:\WINDOWS\Explorer.EXE
+0     System     -> 1900   UDP
+1588  Explorer   -> 4500   UDP    C:\WINDOWS\Explorer.EXE
+A quick analysis of the list above reveals explorer.exe (PID 1588) communicating on TCP ports 16016, 16661, 43818 and 47762 in addition to other traffic. Since explorer.exe was hidden before, probably injected, and is now found to be associated with ephemeral port activity, this is an area to focus on.
+
+4. TCPView
+TCPView is the next logical step, since it is a great tool for providing a quick visual overview of any running processes that are responsible for TCP communications. In this case TCPView produces the output shown in Figure 2, revealing ‘non-existent’ process names communicating on these same ports.
+Figure 2. TCPView reveals the same activity as seen with FPort.
+At this point we have confirmed an injected process and identified two TCP ports of interest. We have yet to identify file and registry changes. IceSword is the next tool we will use to analyse the system and focus on these initial leads.
+
+5. IceSword
+IceSword highlights any data it believes to be associated with rootkit activity. Screenshots in Figures 3–12 below show snippets of clues and proven rootkit functionality via this tool.
+Figure 3. IceSword highlights (in red) a malicious rootkit process injected into explorer.exe.
+Figure 4. IceSword port analysis reveals the same ports seen with FPort and TCPView.
+Figure 5. IceSword reveals the kernel-level rootkit and its location.
+Figure 6. IceSword SSDT reveals rootkit activity.
+Figure 7. IceSword logs show Haxdoor injecting explorer.exe.
+Figure 8. IceSword scans reveal several hooks.
+Figure 9. IceSword is able to scan specific processes too, like PID 1588 explorer.exe in this case.
+Figure 10. IceSword shows registry changes.
+Figure 11. IceSword shows all the files hidden by the rootkit.
+Figure 12. Be careful looking only for newly created files. The DLL has a modified MAC time.
+
+Capture
+With triage completed, the next step is to capture physical memory to a file for further analysis.
+The open source MDD tool was used in the capture of RAM to a file on the infected system. IceSword and a tool from GMER called catchme.exe were used to capture rootkit files. Once captured, the memory image can be analysed with the Volatility Framework and files are captured via standard behavioural analysis, multiscanners, sandboxes, MD5 and file data open source queries, and more.
+The MD5 of the main Haxdoor executable has already been analysed, with public data available at the following locations:
+http://www.threatexpert.com/report.aspx?md5=9bb6fbb9dfaff0467d329284892d4e55
+http://www.sans.org/reading_room/whitepapers/honors/stealth_for_survival_threat_of_the_unknown_176
+This type of data aids the researcher in identifying what other analysis and/or incident data exists for the sample and may prompt the researcher to revisit the infected computer for additional files or behavioural tests and/or identify where to focus the Volatility Framework analysis.
+
+Analysis
+Before beginning Volatility Framework analysis we need a solid reference from what is known or suspected about the code being investigated. This aids in the specific commands and exports performed within the Volatility Framework for the memory dump analysed.
+The following information is known about this specific dump:
+It creates several files: kgctini.dat, lps.dat, qo.dll, qo.sys, svjvpn.sys, svjvpn.dll, svkvpn.sys and Temp/W01083060Z (directory).
+It makes changes to the Windows registry referencing svkvpn and svjvpn.sys.
+It injects explorer.exe PID 1588 and may attempt communications with skyinet.info.
+Of course, the initial investigation may not have turned up all hidden components on a system. As such, the list above is only an initial triage in confirming and capturing data related to the attack. Additional measures may be required, such as dumping all processes to files and inspecting them for possible hostile content.
+In our example, the output from the DLLlist and Files commands confirms the injected rootkit DLL in explorer.exe (PID 1588):
+DLLlist
+explorer.exe pid: 1588
+Command line : C:\WINDOWS\Explorer.EXE
+Service Pack 3
+Base       Size     Path
+0x1000000  0xff000  C:\WINDOWS\Explorer.EXE
+...
+0x2c90000  0x52000  C:\WINDOWS\system32\svkvpn.dll
+Files
+Pid: 1588
+...
+File \WINDOWS\WinSxS\x86_Microsoft.Windows.Common-Controls_6595b64144ccf1df_6.0.2600.5512_x-ww_35d4ce83
+File \WINDOWS\system32\svkvpn.dll
+A socket scan reveals specific offsets of interest related to the injected port activity:
+PID   Port    Proto   Create Time                  Offset
+----  ----    -----   ------------------------     ----------
+1588  16016   6       Fri Jan 01 17:18:44 2010     0x020d80e8
+1588  16661   6       Fri Jan 01 17:18:44 2010     0x024cc600
+1588  16016   6       Fri Jan 01 17:18:44 2010     0x11e5e0e8
+1588  16016   6       Fri Jan 01 17:18:44 2010     0x16d560e8
+1588  16661   6       Fri Jan 01 17:18:44 2010     0x17752600
+Finally, a module scan reveals the SYS file details of interest:
+File: \??\C:\WINDOWS\system32\svjvpn.sys
+Base: 0x00f8a42000
+Size: 0x006000
+Name: svjvpn.sys
+
+Challenge
+Another rootkit has been run in Windows. The reader is invited to determine what family of code it belongs to and what is malicious based on the brief description below; the author can be contacted for the answer.
+When run within VMware, the code runs in memory and then disappears from Process Explorer 11.x. Yet when TCPView is run, it terminates immediately instead of running like it should, and Windows Task Manager won’t run in memory. FPort still works and reveals svchost activity over TCP port 58318:
+Figure 13. Svchost reveals TCP activity likely related to a rootkit in memory.
+IceSword reveals the same TCP port activity for svchost.exe (PID 1384). It also reveals three hidden files in the Windows System32 directory: msux, msad32.dll and msur.exe. A search for the DLL in Windows Regedit reveals changes to the registry in ShellServiceObjectDelayLoad (Figure 14).
+Figure 14. Changes to the Windows registry are clearly visible with Regedit.
+A DLLlist analysis with the Volatility Framework confirms that the DLL in question is injected into the svchost PID 1384:
+svchost.exe pid: 1384
+Command line : svchost.exe
+Service Pack 3
+Base        Size     Path
+0x1000000   0x6000   C:\WINDOWS\system32\svchost.exe
+0x10000000  0x46000  C:\WINDOWS\system32\msad32.dll
+0x7c900000  0xb2000  C:\WINDOWS\system32\ntdll.dll
+A files analysis with the Volatility Framework provides the following details for PID 1384:
+Pid: 1384
+File \Documents and Settings\Administrator
+File \WINDOWS\WinSxS\x86_Microsoft.Windows.Common-Controls_6595b64144ccf1df_6.0.2600.5512_x-ww_35d4ce83
+File \WINDOWS\WinSxS\x86_Microsoft.Windows.Common-Controls_6595b64144ccf1df_6.0.2600.5512_x-ww_35d4ce83
+File \WINDOWS\WinSxS\x86_Microsoft.Windows.Common-Controls_6595b64144ccf1df_6.0.2600.5512_x-ww_35d4ce83
+File \Endpoint
+File \Documents and Settings\Administrator\Local Settings\Temporary Internet Files\Content.IE5\
+index.dat
+File \Documents and Settings\Administrator\Cookies\index.dat
+File \Documents and Settings\Administrator\Local Settings\History\History.IE5\index.dat
+File \WINDOWS\WinSxS\x86_Microsoft.Windows.Common-Controls_6595b64144ccf1df_6.0.2600.5512_x-ww_35d4ce83
+File \WINDOWS
+File \
+File \ROUTER
+File \ROUTER
+File \Endpoint
+File \WINDOWS\system32\raschap.dll
+File \WINDOWS\system32\logonui.exe
+When run a second time on a clean Windows XP Professional system, msrf32.dll is created in the Windows System32 directory with similar size, behaviour and files.
+For the answer to this challenge, contact the author at kend[at]kendunham.org.
+
+Bibliography
+[1] http://news.zdnet.co.uk/security/0,1000000189,39285547,00.htm.

@@ -1,0 +1,186 @@
+Confounded Conficker
+2009-03-01
+
+Vincent Tiu
+Microsoft
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+For the last couple of months the worm known as Conficker.B (aka Downadup) has been causing havoc and keeping IT administrators awake at night as well as receiving a lot of attention from AV researchers. Vincent Tiu provides some details about this interesting piece of malware.
+Copyright © 2009 Virus Bulletin
+
+For the last couple of months the worm known as Worm:Win32/Conficker.B (also known as Downadup) [1] has been doing the rounds causing havoc and keeping IT administrators awake at night.
+A machine can become infected in one of several ways:
+Infection #1: The computer is not patched against the vulnerability documented in MS08-067: Vulnerability in Server Service Could Allow Remote Code Execution [2].
+Infection #2: The ADMIN$ shared folder is compromised because of weak passwords [3] or pre-authenticated infected users. The worm is able to drop a copy of itself in \\<targetedpc>\ADMIN$\System32\<random>.<ext> and schedule a task to execute this file indefinitely (see Figure 1).
+Figure 1. The worm was able to drop a copy of itself in \\<yourpc>\ADMIN$\System32\<random>.<ext> and schedule a task to execute this file indefinitely. Note that this evidence will be removed by the malware the first time it has a chance to run.
+Infection #3: The worm is inadvertently AutoPlay-ed from an infected removable drive (e.g. a flash drive, portable hard drive, etc.). The worm attempts to fool the user into executing the malware during the AutoPlay dialog sequence (see Figure 2).
+Figure 2. The worm hopes to fool the user into executing the malware during the AutoPlay dialog sequence. (Note that the real ‘Open folder to view files’ is the one highlighted and the similar ‘Open folder to view files’ above is the worm executable.)
+Infection #4: Last but not least, a copy of the worm may be received/downloaded and ‘accidentally’ executed.
+Now that we have an idea how a machine can become infected, let’s look at some of the interesting behaviour exhibited by this worm.
+
+Anti-AV mechanism
+The success of the Microsoft Malicious Software Removal Tool (MSRT) against other malware [4], [5],[6] did not go unnoticed and the authors of Conficker.B have gone to great lengths to make sure it doesn’t suffer the same fate as the others.
+Conficker.B disables the following services:
+Windows Security Center Service (wscsvc) – which notifies users of security settings (e.g. Windows Update, firewall and anti-virus).
+Windows Update Auto Update Service (wuauserv).
+Background Intelligence Transfer Service (BITS) – which is used by Windows Update to download updates using idle network bandwidth.
+Windows Defender (WinDefend).
+Error Reporting Service (ersvc) – which sends error reports to Microsoft to help improve user experience.
+Windows Error Reporting Service (wersvc).
+It also deletes Windows Defender’s auto-run key: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run\Windows Defender.
+The worm then prevents access to popular anti-virus and security websites by manipulating DNS queries to return ERROR_TIMEOUT for websites containing any of the following strings:
+ahnlab
+arcabit
+avast
+avira
+castlecops
+centralcommand
+clamav
+comodo
+computerassociates
+cpsecure
+defender
+drweb
+emsisoft
+esafe
+eset
+etrust
+ewido
+fortinet
+f-prot
+f-secure
+gdata
+grisoft
+hacksoft
+hauri
+ikarus
+jotti
+k7computing
+kaspersky
+malware
+mcafee
+microsoft
+networkassociates
+nod32
+norman
+norton
+panda
+pctools
+prevx
+quickheal
+rising
+rootkit
+securecomputing
+sophos
+spamhaus
+spyware
+sunbelt
+symantec
+threatexpert
+trendmicro
+virus
+wilderssecurity
+windowsupdate
+The same also applies for websites starting with the strings: ‘avg.’, ‘avp.’, ‘bit9.’, ‘ca.’, ‘nai.’, ‘sans.’ and ‘vet.’ It accomplishes this by intercepting DNS queries using one of two mechanisms depending on the OS version:
+Windows 2000: Injects the worm DLL into services.exe containing the dnsrslvr.dll module and hooks the ws2_32!sendto API of this process to intercept queries to the DNS.
+Non-Windows 2000: Injects the worm DLL into ‘svchost.exe –k NetworkService’ and hooks the following dnsapi.dll APIs:
+DnsQuery_A
+DnsQuery_UTF8
+DnsQuery_W
+Query_Main
+This effectively stops the infected computer from receiving product updates from most of the major security vendors.
+
+File and registry protection
+The worm tries very hard to make sure that its file and registry components remain on the infected computers. The worm attempts to copy itself into one of the following locations sequentially, continuing only if the previous location fails:
+<systemdir>\<random>.DLL
+<programfilesdir>\Internet Explorer\<random>.DLL or <programfilesdir>\Movie Maker\<random>.DLL (50/50 chance)
+<applicationdatadir>\<random>.DLL
+<tempdir>\<randomname>.DLL
+The worm then proceeds to remove all NTFS access permissions except for the ‘Execute file’ permission on the dropped DLL and locks the entire file using the LockFile Windows API. This makes access to the worm file for detection and removal purposes very difficult while the worm is active in memory.
+There is a backup plan for the installation of the auto-run key if plan A doesn’t go so well.
+Plan A consists of creating a service key in the registry: ‘HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\<random_service_name>’.
+Subkeys:
+Type = 4
+Start = 4
+ErrorControl = 4
+ImagePath = %SystemRoot%\system32\svchost.exe –k netsvcs
+Parameters\ServiceDLL = <dropped worm DLL>.dll
+DisplayName = <combination of two of the following strings chosen at random>
+Boot
+Center
+Config
+Driver
+Helper
+Image
+Installer
+Manager
+Microsoft
+Monitor
+Network
+Security
+Server
+Shell
+Support
+System
+Task
+Time
+Universal
+Update
+Windows
+The worm then adds the netsvcs service into the list of services under: ‘HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Svchost\netsvcs’.
+If successful, the service registry key will have its access permission modified so that only SYSTEM will have permission to access it.
+If for any reason plan A doesn’t work, plan B is to install the auto-run key the old-fashioned way: ‘HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run\<randomkey> = rundll32.exe “<dropped worm DLL>.dll”,<random string>’.
+
+Network infection
+Infecting the network is the worm’s primary method of spreading, and this is done in two different ways:
+Exploitation of the MS08-067 vulnerability.
+Brute-force dictionary attack on shared drives.
+In the first case, an HTTP server on a random port between 1024 and 9999 is set up for the sole purpose of serving the worm DLL for download. The vulnerable computers are then instructed to download and execute a copy of the worm remotely from the HTTP server using the MS08-067 exploit.
+The other method for infecting the network uses the NetServerEnum API to enumerate computers in the domain. Aside from the current user credentials, almost 250 passwords – ranging from all-numbers (e.g. ‘12345’, ‘11111’), through simple English words (e.g. ‘secret’, ‘default’), to commonly used passwords (e.g. ‘password123,’ ‘123abc’ etc.) – are used by the worm to brute-force its way into infecting remote computers. A successful infection will result in a copy of the worm DLL being placed into the ADMIN$\System32 folder and the installation of a scheduled task to execute the worm remotely (see Infection #2). Needless to say, if your password is included in the list shown in Figure 3, it is time to change it.
+Figure 3. The worm uses 250 passwords to brute-force its way into infecting remote computers.
+
+Removable drive infection
+A few decades ago floppy disks were the fastest and most efficient way to spread malware. Now, with floppies having been replaced by removable drives (flash drives being the most common), this method of propagation is one of the slowest. However, that didn’t stop the worm’s author from utilizing this extra propagation mechanism and adding a few tricks of his own.
+Conficker.B enumerates all removable and remote network drives and copies itself to <Drive>:\RECYCLER\S-#-#-##-########-##########-#########-####\<random>.<ext>, where # is a numeric digit. It then creates an obfuscated AUTORUN.INF file in the root drive to auto-run the worm whenever the removable drive is AutoPlay-ed. Mixing in a little social engineering, the worm uses the same icon as Windows Explorer in the AutoRun dialog (see Infection #3 and Figure 2), thus fooling users into selecting the option that runs the worm, instead of the normal ‘Open folder to view files’.
+As a side note, reports are surfacing of infections indirectly related to the removable drive infection via the Remote Desktop Connection tool. RDP sessions can be infected inadvertently if removable drives are shared across the host from the RDP client (see Figure 4).
+Figure 4. RDP sessions can be infected inadvertently if removable drives are shared across the host from the RDP client.
+
+Auto-update mechanism
+The worm’s auto-update mechanism is probably its most interesting feature. Traditionally, a piece of malware with an auto-update mechanism had to include a hardcoded download location inside its code to update itself. If the download location was shut down, the malware would be left without an update mechanism and thus suffered a limited lifespan.
+However, the authors of Conficker.B have devised a way in which the worm can update itself by connecting to a generated list of 250 download locations which varies every day. It accomplishes this task by generating a pseudo-random number list of website names seeded by the current date. The worm tries to obtain the date reliably by querying popular web servers for the current date (because the computer’s system time may be inaccurate). It does this by connecting to the following servers and issuing an HttpQueryInfo with the HTTP_QUERY_DATE flag:
+www.baidu.com
+www.google.com
+www.yahoo.com
+www.msn.com
+www.ask.com
+www.w3.org
+The current date is then transformed into a 64-bit seed fed into the pseudo-random hostname generator which produces 250 hostnames for that given day. The worm continuously monitors these 250 hosts hoping for a file to download until it detects the start of a new day, at which point it generates a new set of 250 hosts to monitor. The format of the download URL is as follows:
+http://<generated_host>/search?q=<infection counter>
+The worm author can then register any of these hostnames through a domain registrar, thereby introducing to all of the Conficker.B-infected machines a site from which to download an updated executable file. Because of this mechanism, Conficker.B can also be treated as a botnet since these infected machines will be able to accept commands remotely from the malware author.
+If the worm has successfully downloaded a file from any of these hostnames, it goes through an authentication process. The worm doesn’t just blindly execute the downloaded file on the infected machine. A digital certification mechanism is enforced on downloaded files to verify that the source is the worm’s author. The file is signed, encoded, and signed again using the MD6 hashing algorithm to check for authenticity. This serves as a protection scheme that prevents anybody from hijacking the botnet by serving unauthorized files for download to be executed by the worm.
+The worm’s infection counter is the malware author’s way of computing how many infected machines are out there in total. The infection counter keeps track of the total number of infections it has caused and saves it in the registry key:
+HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Applets HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Applets
+This auto-update mechanism has several advantages:
+The fact that there are no hard-coded links to the update site means it is more difficult to get the malware hostnames shut down.
+It functions like a botnet wherein infected systems can be instructed to execute commands from the malware author.
+
+Some random facts
+The name Conficker was coined by Microsoft analyst Josh Phillips from the URL http://trafficconverter.biz which was accessed by the first Conficker variant.
+Worm:Win32/Conficker.A was first seen on 21 November 2008 and the .B variant more than a month later on 29 December 2008.
+As of 5 February 2009, a total of approximately 1.7 million unique IP addresses were infected with Conficker.
+
+Conclusion
+Worm:Win32/Conficker.B is one of the most interesting pieces of malware in recent memory. With its encryption, vulnerability exploitation, file and registry protection, DNS hooks, clever update mechanism and use of a new hashing algorithm, it’s no wonder it has received a lot of attention from malware researchers. That said, I hope I never see another one again.
+
+Bibliography
+[1] Win32/Conficker. http://www.microsoft.com/security/portal/Entry.aspx?Name=Win32/Conficker.
+[2] MS08-067: Vulnerability in Server Service Could Allow Remote Code Execution. http://www.microsoft.com/technet/security/Bulletin/MS08-067.mspx.
+[3] Frequently Asked Questions About Passwords. http://www.microsoft.com/technet/security/Bulletin/MS08-067.mspx.
+[4] MSRT Review – Win32/FakeXPA and Win32/Yektel Rogues. http://blogs.technet.com/mmpc/archive/2008/12/17/msrt-review-fakexpa-and-yektel-rogues.aspx.
+[5] MSRT Review on Win32/FakeSecSen Rogues. http://blogs.technet.com/mmpc/archive/2008/11/19/msrt-review-on-win32-fakesecsen-rogues.aspx.
+[6] Win32/Rustock Hide and Seek – MSRT Telemetry. http://blogs.technet.com/mmpc/archive/2008/10/29/win32-rustock-hide-and-seek.aspx.

@@ -1,0 +1,141 @@
+How to harden AdwCleaner’s web backend using PHP
+More and more applications are moving from desktop to the web, where they are particularly exposed to security risks. They are often tied to a database backend, and thus need to be properly secured, even though most of the time they are designed to restrict access to authenticated users only. PHP is used to develop a lot of these web applications, including several dedicated to AdwCleaner management.
+There is no magic unique solution to harden a web application, but as always in security, it’s a matter of layers including:
+
+Applying the latest security patch and updates
+Sending the correct HTTP headers
+Hardening the language stack
+Hardening the OS
+Taking network security measures
+
+Since we’re in 2017, we’ll consider that security patches and updates are applied properly so this article will focus on several must-have HTTP headers, as well as how we harden our web stack at a PHP level in an effective and easy way for the AdwCleaner web management application.
+Securing a web application using HTTP headers
+There are a lot of standard HTTP headers for various uses (like encoding and caching) and a lot of them aim to enforce smart security behaviors, like mitigating XSS, for HTTP clients (i.e web browsers). Here are a few useful ones.
+A website suffering of XSS, without the proper HTTP headers in place to mitigate it.
+Strict-Transport-Security
+This instructs the browser to connect to the website using HTTPS directly for a certain period of time using the max-age directive. It can also be applied to subdomains with includeSubDomains directive.
+
+OWASP cheat sheet about XSS
+
+Referrer-Policy
+This header aims to have a fine-grained control over when the referrer is transmitted. Several directives are available, from no-referrer to completely disable the referrer header to strict-origin-when-cross-origin, which means that the full URL is sent with any request made in TLS in the same domain. (Whereas only the domain is sent as referrer if the request is made on a different domain or subdomain.) Finally, if the request is made in HTTP, the referrer is not sent.
+It’s a handy header especially to reduce internal URL leaks to external services.
+
+Mozilla Documentation
+
+X-Content-Type-Option
+It enforces the MIME type of resources, and states that they shouldn’t be changed. If the MIME type is not the one advertised with the Content-Type header, then the request is dropped in order to mitigate MIME confusion attacks. There’s only one directive: nosniff.
+Mozilla Documentation
+X-Frame-Options
+This header controls whether or not the page can be loaded as an iframe or an object. There are different directives, from DENY to forbid this behaviour, to SAMEORIGIN, which allows it only from the same origin (domain or subdomain), and ALLOW-FROM which allows the operator to specify a whitelist of origins.
+RFC 7034
+X-Robots-Tag
+This controls how the page should be handled by crawling bots (i.e search engines). Several directives exist: the noindex, nofollow, nosnippet, noarchive directives will avoid the page to be indexed in search results and instruct the crawler to not follow the links of the page. The crawler will also not store any copy of the page.
+Google documentation
+X-XSS-Protection
+This legacy header instructs the browser to block any detected XSS request when set to 1; mode=block. It’s now superseded by the Content-Security-Policy header, but is still useful on older web browsers. This header would have mitigated the XSS on the website at the beginning of this article.
+Content-Security-Policy
+This powerful header allows the operator to define rules specifying how the webpage resources can be loaded and where from. It’s particularly efficient against XSS. For instance, it’s possible to enforce loading resources on HTTPS only using default-src: https:, or to forbid any inline scripts with the directive default-src: ‘unsafe-inline’.
+It’s possible to create more complex rules, for instance:
+base-uri ‘none’;  Forbid the usage <base> URI.
+default-src ‘self’; Will use the origin as fallback for any fetch directive which is not specified.
+frame-src; forbid any external content to be loaded using iframes.
+connect-src ‘self’; Forbid ping, Fetch, XMLHttpRequest, WebSocket, and EvenSource to load external content.
+form-action ‘self’; Enforce the forms submissions to the origin.
+frame-ancestors ‘none’; As X-Frame-Options: Deny, it forbids loading the page using iframes, objects, embed, or applets.
+img-src ‘self’ data:; Allow <img> tags to use data uris from the origin only.
+media-src ‘none’;  Forbid loading any <audio> or <video> elements.
+object-src ‘none’; Forbid loading any <object>, <embed>, and <applet> elements.
+script-src ‘self’ ‘unsafe-inline’; Javascript can be loaded inline from the origin only.
+style-src ‘self’ ‘unsafe-inline’; Stylesheets can be loaded inline from the origin only.
+report-uri /csp-report; Instruct the client to POST any violation of the policy to the specified address, here https://domain.com/csp-report. This directive is being replaced by report-to which has the same syntax.
+Here are the W3C specifications about CSP level 2 and CSP3.
+While deploying all of these headers may seem difficult, the only read head-scratcher is Content-Security-Policy. Although this one must be deployed, it should be done with care as it may break a lot of applications easily. Use Google Evaluator, a handy tool to analyze any website CSP.
+Another valuable service is SecurityHeaders.io, which test your web application headers and give some advice when some are missing or misconfigured.
+Here are a few configuration snippets for three webservers to deploy the above configuration. Please note that you may need to adapt this configuration depending on your specific needs (especially the CSP):
+
+Nginx
+
+add_header Strict-Transport-Security "max-age=31536000; includeSubdomains; preload";
+add_header 'Referrer-Policy' 'same-origin';
+add_header X-Content-Type-Options nosniff;
+add_header X-Frame-Options SAMEORIGIN;
+add_header X-Robots-Tag "noindex, nofollow, nosnippet, noarchive";
+add_header X-XSS-Protection "1; mode=block";
+add_header Content-Security-Policy "base-uri 'none'; default-src 'self'; child-src;connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; media-src 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; report-uri /csp-report; report-to /csp-report;"
+
+Caddy
+
+header / {
+Strict-Transport-Security "max-age=31536000; includeSubdomains; preload"
+Referrer-Policy 'same-origin'
+X-Content-Type-Options nosniff
+X-Frame-Options SAMEORIGIN
+X-Robots-Tag "noindex, nofollow, nosnippet, noarchive"
+X-XSS-Protection "1; mode=block"
+Content-Security-Policy "base-uri 'none'; default-src 'self'; child-src;connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; media-src 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; report-uri /csp-report; report-to /csp-report;"
+}
+
+Apache
+
+Header always set Strict-Transport-Security "max-age=31536000; includeSubdomains; preload"
+Header always set Referrer-Policy 'same-origin'
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options SAMEORIGIN
+Header always set X-Robots-Tag "noindex, nofollow, nosnippet, noarchive"
+Header always set X-XSS-Protection "1; mode=block"
+Header always set Content-Security-Policy "base-uri 'none'; default-src 'self'; child-src;connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; media-src 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; report-uri /csp-report; report-to /csp-report;"
+
+While setting the correct security HTTP headers is a good first step to mitigate some attacks, it’s not sufficient.
+That’s why AdwCleaner’s backend PHP stack is also hardened to higher the cost of exploiting vulnerabilities.
+Hardening PHP
+The problem we’re trying to solve is to restrict the language surface that the application can access to:
+
+block access to specific functions.
+give access only to a restricted set of files and classes.
+sanitize various functions inputs.
+restrict execution to read-only PHP files and deny it on writable ones.
+replace rand() and mt_rand() by random_int().
+
+This may sound simple, but it becomes quickly complex to manage at large scale, especially without tinkering with the application source code.
+Since we’re in 2017, we use PHP7, meaning that we cannot use Suhosin any longer, as it’s only working with PHP5 and below. We’re not alone in this situation. Thus, some fine people developed Snuffleupagus, a PHP7+ extension that takes a lot of inspiration from Suhosin but with extended capacities and a more industrialized usage.
+Snuffleupagus logo – an elephant as majestic as PHP itself
+Snuffleupagus mitigates issues in two main ways:
+
+Kill bug classes at once
+Patch PHP functions
+
+Killing bug classes at once is pretty handy: Instead of writing a rule for every situation, it’s possible to write a generic rule which will mitigate numerous bugs. For instance, mail() RCE, weak PRNG, permissive chmod() , system injections, or file upload RCE can be easily fixed using only one or two rules to address the whole bug family.
+A practical example using file-upload RCE:
+$uploaddir = '/var/www/uploads/';
+$uploadfile = $uploaddir . basename($_FILES['userfile']['name']);
+move_uploaded_file($_FILES['userfile']['tmp_name'], $uploadfile)
+This gives countless RCEs (CVE-2001-1032, CVE-2016-9187…). It’s possible to mitigate it using the following directive:
+sp.upload_validation.script("tests/upload_validation.sh").enable();
+Where the file tests/upload_validation.sh return 0 to allow and any other value to deny the upload – vld is pretty useful for that:
+$ php -d vld.execute=0 -d vld.active=1 -d extension=vld.so $file
+That way any upload containing PHP code will be dropped.
+Another feature valuable for our use case is virtual patching. It allows fine-grained settings for functions. For instance, I want to allow a call to system(“id”) but I don’t want to allow any other system calls. The rules would look like:
+sp.disable_functions.function("system").param("cmd").value("id").allow();
+sp.disable_functions.function("system").param("cmd").drop();
+
+Since the rules are evaluated in order, we first allow a call to system with id as the cmd argument, and we then drop all other rules.
+It’s also possible to write rules for a specific filename (filename(name)), hash (hash(sha256)), return value (ret(value)) or type (ret_type(type_name)), and client ip (cidr(ip/mask)). Also, the behaviour can be adapted. If it triggers a rule:
+
+drop(): drop the request
+simulation(): only log the event without blocking it
+allow(): allow the request
+dump(): dump the request in a directory
+
+An entry in the PHP logfile is written when an event is triggered, for instance:
+2017/10/08 07:30:19 [error] 625#625: *54641 FastCGI sent in stderr: "PHP message: [snuffleupagus][0.0.0.0][include][drop]
+Inclusion of a forbidden file (/a/path/to/a/webroot/../../../)" while reading response header from upstream,
+client: <redacted>, server: adwcleaner.example.com, request: "GET / HTTP/2.0", upstream: "fastcgi://unix:/var/run/php/php7.0-fpm.sock:", host: "adwcleaner.example.com"
+
+Since no one likes writing rules by hand, a nice way to start is by using a script that parses the application PHP files, computes the hash of functions containing dangerous functions, and generates rules based on the results—only the files with the corresponding hashes will be allowed to execute these functions.
+We generate new customized rules at every update pushed in production, alongside a set of default rules that are always valid (like system calls, uploads validation, and read-only execution). Since the log format is easy enough to parse, we can trigger notifications when a request has been blocked by one of the rules and act accordingly:
+Mail notification sent when a snuffleupagus rule has been triggered.
+
+The documentation is available on ReadTheDocs along with slides from their talk at BerlinSide, Hack.lu, and BlackAlps.
+Conclusion
+This article covered only two of the multiple measures we take to secure AdwCleaner‘s backend. Although some of these vulnerabilities can be mitigated client-side using browsers add-ons like NoScript, it’s always better to fix them as soon as possible using the easy techniques explained above. More hardening can be done at the OS and network level, and you can refer to our previous article about TLS to learn more about some of these.

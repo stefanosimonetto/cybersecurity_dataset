@@ -1,0 +1,40 @@
+Redkit Exploit Kit does the splits
+Exploit Kit authors must really love Java . Not only is it ripe with vulnerabilities but its own language provides a great platform to write and deliver malware in different ways. We are used to seeing encrypted payloads (XOR, AES encryption), applets containing both the exploit itself and the binary payload. Today we will talk about yet another combination which we nicknamed the “split”.
+The below screenshot shows the Redkit Exploit Kit in action:
+
+Let’s dissect it step by step:
+The landing page:
+
+Very basic code that references the malicious Java applet and points to the Application class.
+The Java exploit:
+
+CVE-2013-0422 and CVE-2012-1723 were spotted within the jar file.
+The (encrypted) payload:
+
+What appears to be a singled encrypted file (setup.exe being a bogus name anyway) is not. Instead of having a single payload, we have two binaries:
+C:\Documents and Settings\user\Local Settings\Temp\sjskstrk.exe
+C:\Documents and Settings\user\Local Settings\Temp\deruaeru.exe
+
+The first clue we got came from a file size discrepancy. Seeing an encrypted payload is not unique but usually the file size matches the dropped binary. The other clue was that we had two drops on disk but only one point of origin.
+sjskstrk.exe: Size on disk 94,208 bytes
+deruaeru.exe: Size on disk 45,056 bytes
+28.html: Size on disk 139,264 bytes
+A little math confirmed our suspicions:
+94,208 + 45,056 = 139,264
+The split happens within the jar file itself, in a class where we see the two (unobfuscated) strings that correspond to our file names:
+
+The bytes from each file are read and then split:
+
+The files are finally executed:
+
+What do we know about the two malware files dropped by this exploit?
+sjskstrk.exe is a Urausy, a particular type of Ransomware that asks for a $300 payment to unlock the computer. If the victim is in the US, the following screen will be shown:
+
+deruaeru.exe is a Karagny Trojan Downloader. This one will call the mother infrastructure for instructions:
+
+It could deliver all sorts of payload (banking trojan, spambot, etc).
+Both files are detected by Malwarebytes Anti-Malware:
+
+Conclusion:
+The malware author willingly chose to package the malicious jar with those two different payloads. Of course this could have be done using separate exploit pages but why bother when you could do it all in one go.
+This approach also shows new possibilities to package malware in a way that could evade detection and bypass traffic signatures.

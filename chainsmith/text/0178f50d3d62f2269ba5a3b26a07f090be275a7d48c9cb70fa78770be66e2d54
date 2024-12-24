@@ -1,0 +1,149 @@
+The many faces of Ursnif - email hijacking, mailslots, and insecure servers
+
+Since the leak of the Ursnif/Gozi source code about two years ago there have been multiple campaigns delivering either Ursnif or its ‘forks’ (e.g. GozNym).  Banking malware is a lucrative business and it was more or less inevitable that a wider range of cybercriminals will take advantage of the opportunity to run their own campaigns, adding to the original code base as they went along. We’ve already discussed some earlier campaigns on this blog, but over the past several weeks we have been examining what appears to be an offshoot of the original Ursnif codebase being targeted – for the time being – predominantly against the UK and Italy.
+
+Distribution
+Past campaigns have generally relied on the common delivery mechanism of broad malicious email campaigns carrying a range of attachment types which, upon execution, ultimately download the main Ursnif payload from a remote location. Since late 2017 one set of attackers appear to have taken something of a hybrid approach, hijacking legitimate email conversations in a manner similar to the more targeted technique of Business Email Compromise (BEC).
+In the case of BEC, companies with frequent wire transfers and external suppliers are often the main focus. There is usually a preliminary step of harvesting login credentials, typically by deploying keyloggers or through phishing attacks. Once the credentials have been collected and business emails can be accessed remotely, cybercriminals will start monitoring the internal communication of the target environment. When a financial transfer is about to happen between the company and one of its suppliers the email thread is ‘hijacked’ and a new, fake invoice is delivered from what looks like an internal or trusted sender.
+Critically, the body of the email delivering the new invoice reflects the previous conversation between the two parties, aiming to fool the recipient to use the newly delivered invoice instead of the previous one.
+In the case of the observed Ursnif campaign, the email threads being hijacked are not necessarily finance related but do typically involve communications between companies and their customers or suppliers. The full ‘tail’ of the thread is included in the reply, along with an apparently accurate signature of the sender being spoofed.
+The body of the email is somewhat less exceptional, typically referring to the attached weaponised document with a short note such as ‘please review the attached’ – often a warning sign, especially in unexpected emails.
+In one case we have recorded, the email thread being used was over seven years old, suggesting a creative but ultimately flawed (and presumably semi- or fully-automated) approach to selecting threads to hijack.
+Payload
+Instead of a digital invoice (as one would expect with BEC), the attachment is a Microsoft Word OLE document posing as a request or inquiry. In some, but not all cases, the filename of this attachment also features the name of the spoofed sender’s organisation.
+The document contains one or more highly obfuscated macros and shows an embedded image trying to convince the user to enable macros if they are otherwise disabled. In the current campaign, these images have been translated and localised as appropriate for the recipient.
+
+For those less cautious recipients with macro execution enabled by default, an immediate download of another file from a dedicated download server will occur.
+The recent iterations took two forms, either directly downloading a malicious executable or alternatively downloading a short, obfuscated JavaScript/PowerShell script before reaching the final payload. These ‘.class’ or ‘.yarn’ payloads, despite their file extension, are portable executables (PE) containing Ursnif.
+The download requests typically follow formats similar to those shown below.
+Direct download
+
+Request 1 - hxxp://qwqw1e4qwe14we[.]com/KOM/testv.php?l=boun4.yarn
+​Intermediate JS/PS
+
+Request 1 - hxxp://qwundqwjnd[.]net/cachedmajsoea/index.php?e=kuuud
+Request 2 - hxxp://qwundqwjnd[.]net/lipomargara/kuuud.yarn
+​Download servers
+During our investigation we observed multiple distribution domains being registered and shut down on a daily basis.
+These servers appear to track their own infection statistics, maintained by code within testv.php as part of the download process. These statistics are available from a stats.php page which displays the logged data from a JSON file (lex_192h.json) stored on the server.
+
+Interestingly, the actors behind these distribution servers do not appear to be particularly concerned with OPSEC: the JSON files often contain statistics for filenames which were part of previous campaigns and no longer exist.
+A similar oversight was the occasional presence of files called ‘crypt_xxxx_yyyy[a-z].exe’ in open directories. These files point to some of the specifics of the botnet featured in the campaign, with ‘yyyy’ representing the botnet ID stored in Ursnif's internal configuration data for a given sample.
+
+The old-new Ursnif code
+The way the statistics are implemented suggests that the actors behind the campaign either preferred to avoid modifying Ursnif's core or that there are different groups with different skill levels involved in these operations. Statistics could be sent to the main Ursnif C2, but that would require proper understanding of its communication code and the parallel communications method suggests that the actors running these operations might not be the same ones maintaining the source code.
+Having said that, there have still been some changes to the Ursnif code as part of this campaign: the downloaded ‘.class’ or ‘.yarn’ files differ from other ‘loader + DLL’ solutions seen in the past, indicating that the packaging was modified for this campaign.
+All of the samples examined had the same internal timestamp of Apr 17 2018 and had been packed. As a result of the packing process, the observed file sizes vary from approximately 700KB to 2MB. When run, the executable unpacks the original payload into memory, overwriting the packer code itself and passing over execution to the next layer. At this stage there is an additional piece of code responsible for creating two new threads, both involving the use of Mailslots.
+Mailslots
+Mailslots are an Inter Process Communication (IPC) protocol and have been part of Windows distributions for more than a decade. Their purpose in the context of Ursnif is quite straightforward: one thread reads embedded data from memory, unpacks it and writes the result to ‘\\.\mailslot\msl0’, while the other thread pulls that data from the Mailslot.
+
+The use of Mailslots is apparently intended, in combination with other previously documented ‘tricks’ such as mouse movement tracking, simply to hamper analysis of the malware.
+The data pulled from the Mailslot is ultimately a DLL (crm.dll) to which execution is passed. The main function of crm.dll is to unpack and load its final stage, the client.dll. This is the last step in the execution chain and comprises the main body of Ursnif code and its configuration data such as C2 server addresses, botnet IDs, timeouts etc.
+Protection statement
+Forcepoint customers are protected against this threat at the following stages of attack:
+Stage 2 (Lure) – Malicious emails associated with this attack are identified and blocked.
+Stage 5 (Dropper File) – Malicious files are prevented from being downloaded.
+Stage 6 (Call Home) – Attempts to contact C2 servers are blocked.
+Conclusion
+Comparing these samples to previously documented Ursnif variants there are some notable differences in the way they work: e.g. there were no signs of TLS callback usage, yet the introduction of the Mailslot mechanism was an apparently new addition to the old codebase.
+Considering that as of mid-May 2018 there appears to be a new ‘TLS callback’ variant in the wild, it seems plausible that multiple cybercriminal groups of differing skill levels are trying to improve on the original code. A minority of them potentially have the skills to improve the main code, whereas others appear to ‘make do’ with writing custom distribution code, leaving the core of the malware untouched.
+As a result it appears that there are now multiple forks of Ursnif/Gozi in the wild. However, their main purpose is still the same: stealing credentials and banking related information.
+As always when working with email attachments, it’s important to pay attention to what file one is about to open: any document which suggests modifying the security settings within Word should be avoided. Overall, it’s always advisable to be vigilant, paying extra attention to who the sender in the case of unexpected or unusual emails.
+Indicators of Compromise
+SHA1
+
+018f88acc9591f0ca3fcfec9297297173c5b0232
+0b0dab27ca660ba528a29de5bdf5a9af603a6e1a
+185dba0cfdbf512fbf64ab41c0771f2784032a8a
+1ffb6a64b703a2c40859b76a2335c724e5763806
+220c38a509a2f0e62b279ad4f140e0aed79f2816
+2540a48d0587ce4a9b6859282ec2993dc5fea95b
+3787934bf18909a2f17eaf916a4ef38d94035ebf
+3f772913f9fe8a1c448efba4412ac17ba66f5e94
+3fb7059f1e10fef0052427b6324c2eab67140381
+40f1ac132672b3b2006b2852e7b2bbaf5cff43ac
+45fb72f34b8b018d9dc5730e22e9850951395c59
+482ce27840693991d5bf7b8ee2d298aeb4f8db66
+4b431fade4c87ac138923c59cba920e1219ab419
+4f8a4b73e7537ec1d9ad5124c3d09235b6573a94
+619af677b3754888296c1def52517eeeeb31058a
+74ab56a3997606933795f6377c2f86df99d51810
+79dde9c7e0cceee8e5d9626819e2c33f9cce0425
+8be96462a9a47bb95e5bc9ab61315e38feda26b9
+8c274f0b095f9533212d0171001d47e71919ddb2
+8fde99d9727e7c431fd19ce68cff44835e33e43b
+962905f9fba3aee435d12268d00dc6ff7cca14f9
+9da4bb1b1c6730231924047266624ba439ad9d91
+9def879bb4c602f9945cec3b554ce34b0708638d
+acc225210a206b81e4b4e8669affbc21407a53fb
+b061889548e9c23b02dcab0910952d686b58026f
+b51f9dd4735d841e4c787be717a383eb2b2d979b
+b7d8a0b1da3dde8dec1f121e9eceefbde02f2631
+c5fe4bc083ae504b37277e5090a1413fe1afddc6
+cf24b05895101663a1d7b0d4f671918c2d8e60ae
+d69c31c87a10c940ca928aaf484b258c64e4c866
+d8f028d06027718ff4d5d18a22d225e9bbd2fe0a
+dfdbe5b5b5fdd28226771c95b0cf8f44f4710031
+e24e85eb34ea9cb3b7ed7057e566d342a3b9b69c
+e9e6821cf4ec1d55bc78de93fc0fe1b8a0f8c59e
+edb7fe4cc6f05f5ae9ff6c3d1c7e8e237c6c679a
+ee0620b09b374a49a10859d6877c45d988730498
+eef49be4569f68de71c968fc38d7cfe5b5ac0eab
+f64e25db4f2cfec731d40f7a5547b2b8e48cf9e3
+f90e096dfe0a07d55ab9691c6db70faac924580e
+URLs
+
+hxxp://14ca1s5asc45[.]com
+hxxp://9qwe8q9w7asqw[.]com
+hxxp://asd5qwdqwe4qwe[.]com
+hxxp://d4q9d4qw9d4qw9d[.]com
+hxxp://dq9wq1wdq9wd1[.]com
+hxxp://dqowndqwnd[.]net
+hxxp://eq9we1qw1qw8[.]com
+hxxp://fqw4q8w4d1qw8[.]com
+hxxp://g98d4qwd4asd[.]com
+hxxp://gtqw5dgqw84[.]com
+hxxp://hhhasdnqwesdasd[.]com
+hxxp://hhjfffjsahsdbqwe[.]com
+hxxp://jjasdkeqnqweqwe[.]com
+hxxp://kkjkajsdjasdqwec[.]com
+hxxp://kkmmnnbbjasdhe[.]com
+hxxp://mmmnasdjhqweqwe[.]com
+hxxp://oiwerdnferqrwe[.]com
+hxxp://ooaisdjqiweqwe[.]com
+hxxp://oooiasndqjwenda[.]com
+hxxp://oooiawneqweasd[.]com
+hxxp://oqk4123613123[.]net
+hxxp://oyiyuarogonase[.]net
+hxxp://popopoqweneqw[.]com
+hxxp://ppoadajsqwenqw[.]com
+hxxp://ppoasdqnwesad[.]com
+hxxp://pqwoeasodiqwejes232[.]com
+hxxp://q5q1wdq41dqwd[.]com
+hxxp://qiwjesijdqweqs[.]com
+hxxp://qw6e54qwe54wq[.]com
+hxxp://qw8e78qw7e[.]com
+hxxp://qwd1q6w1dq6wd1[.]com
+hxxp://qwd1qw8d4q1wd[.]com
+hxxp://qwdohqwnduasndwjd212[.]com
+hxxp://qwe1q9we1qwe51[.]com
+hxxp://qwekasdqw8412[.]net
+hxxp://qweoiqwndqw[.]net
+hxxp://qwojdaisd1231[.]net
+hxxp://qwqw1e4qwe14we[.]com
+hxxp://qwqweqw4e1qwe[.]com
+hxxp://qwundqwjnd[.]net
+hxxp://r9qweq19w1dq[.]com
+hxxp://rqw1qwr8qwr[.]com
+hxxp://rrrradkqwdojnqwd[.]com
+hxxp://sdf5wer4wer[.]com
+hxxp://sdjqiweqwnesd[.]com
+hxxp://t8q79q8wdqw1d[.]com
+hxxp://tr8q4qwe41ewe[.]com
+hxxp://tttiweqwneasdqwe[.]com
+hxxp://uuasdjqwehnasd[.]com
+hxxp://uurty87e8rt7rt[.]com
+hxxp://uuyyhsdhasdbee[.]com
+hxxp://wdojqnwdwd[.]net
+hxxp://wdq9d5q18wd[.]com
+hxxp://yyjqnwejqnweqweq[.]com

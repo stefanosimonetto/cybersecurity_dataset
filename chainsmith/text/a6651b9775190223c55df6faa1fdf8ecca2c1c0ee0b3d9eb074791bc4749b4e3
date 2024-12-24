@@ -1,0 +1,51 @@
+Apache Binary Backdoors on Cpanel-based servers
+
+For the last few months we have been tracking server level compromises that have been utilizing malicious Apache modules (Darkleech) to inject malware into websites. Some of our previous coverage is available here and here.
+However, during the last few months we started to see a change on how the injections were being done. On cPanel-based servers, instead of adding modules or modifying the Apache configuration, the attackers started to replace the Apache binary (httpd) with a malicious one. This new backdoor is very sophisticated and we worked with our friends from ESET to provide this report on what we are seeing.
+
+Detection
+In our previous posts, we recommended the utilization of tools like “rpm -Va” or “rpm -qf” or “dpkg -S” to see if the Apache modules were modified. However, those techniques won’t work against this backdoor. Since cPanel installs Apache inside /usr/local/apache and does not utilize the package managers, there is no single and simple command to detect if the Apache binary was modified.
+They also keep the same timestamp on the binary, so you can’t see by the date of the file. A good and reliable way to identify the modified binary is by searching for “open_tty” on the httpd directory:
+
+# grep -r open_tty /usr/local/apache/
+
+If it finds open_tty in your Apache binary, it is likely compromised, since the original Apache binary does not contain a call to open_tty. Another interesting point is that if you try to just replace the bad binary with a good one, you will be denied, because they set the file attribute to immutable. So you have to run chattr -ai before replacing it:
+
+# chattr -ai /usr/local/apache/bin/httpd
+
+Injections
+The compromised binary doesn’t change anything in the site in terms of utilization or how the sites looks, however on some random requests (once per day per IP address) instead of just displaying the content, it also adds a malicious redirect. That causes the browser to load content from what seems to be random domains:
+
+http://893111632ce77ff9.aliz.co.kr/index.php (62.212.130.115)
+http://894651446c103f0e.after1201.com (62.212.130.115)
+http://328aaaf8978cc492.ajintechno.co.kr (62.212.130.115)
+http://23024b407634252a.ajaxstudy.net (62.212.130.115)
+http://cdb9156b281f7b01.ajuelec.co.kr (62.212.130.115)
+http://894651446c103f0e.after1201.com (62.212.130.115)
+..
+
+And many others like that. So if a browser requests a javascript file, it would return a 302 (redirect) pointing to:
+
+Location: http://dcb84fc82e1f7b01.alarm-gsm.be/index.php?j=originalfilebase64
+
+Where “originalfilebase64” is a base64 encoded string of the URL that was requested. That allows the attackers to return the malware along with the original content. Once the malware is loaded it will redirect the site to spammy sites (most often porn pages). At the sites we analyzed, they were being pushed to httx://amazingtubesites.org (seems offline now). On some cases we also saw the redirection going to the Blackhole Exploit kit.
+Note that those URL’s change very often and the ESET team has identified more than 30,000 variations of them.
+The Backdoor
+Our friends from ESET (Marc-Etienne, Olivier Bilodeau and Pierre-Marc Bureau) also analyzed the binary and discovered a nasty hidden backdoor. You have to read the full article here to get more details, but here is a brief explanation quoted from there:
+
+Linux/Cdorked.A is one of the most sophisticated Apache backdoor we have seen so far. Although we are still processing the data, our Livegrid system reports hundreds of compromised servers and thousands of potential victims. The backdoor leaves no traces on the hard drive of compromised hosts other than its modified httpd binary. All the information related to the backdoor is stored in shared memory, the configuration is pushed by the attacker through obfuscated HTTP requests that aren’t logged in normal Apache logs. This means that no command and control information is stored anywhere on the system.
+..
+The HTTP server is equipped with a reverse connect backdoor that can be triggered via a special HTTP GET request. It is invoked when a request to a special path is done with a query string in a particular format, containing the hostname and port to connect. The client IP of the HTTP dialog is used as a key to decrypt the query string as a 4 byte XOR key. Additionally, IP specified in X-Real-IP or X-Forwarded-For headers will override the client IP as the XOR key. This means we can craft a X-Real-IP header that will in effect be a “x00x00x00x00” key…
+
+As you can see, the attackers don’t need any files to act as a backdoor and just use the Apache binary for it.
+The Random URLS
+One thing that striked us a very suspicious is that most of random domains being used as the first level redirection are coming from legitimate sites with their DNS hosted at dothost.co.kr:
+
+ajaxstudy.net name server ns1.dothost.co.kr.
+ajaxstudy.net name server ns2.dothost.co.kr.
+
+We are still unsure if those are compromised accounts or if the attackers got some type of access to their DNS to inject random sub domains to domains hosted there. We are stil tracking how those URL’s changed, so we will have to post more details later.
+Final thoughts
+When attackers get full root access to the server, they can do anything they want. From modifying configurations, to injecting modules and replacing binaries. However, their tactics are changing to make it even harder for admins to detect their presence and recover from the compromise.
+We also don’t have enough information to pinpoint how those servers are initially being hacked, but we are thinking through SSHD-based brute force attacks.
+We will keep monitoring these attacks and we will provide more information as we get them.

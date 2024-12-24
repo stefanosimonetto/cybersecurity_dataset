@@ -1,0 +1,39 @@
+vBulletin Conditional Malware – myFTP.biz Malicious iFrames
+
+We have to be honest here, there’s no fun in cleaning up infected .htaccess files. It’s boring, but it happens a lot! But it’s not the case here. I will also caveat that while in this specific instance we’ll be talking to one specific platform, we are seeing this same tactic spread across a number of other popular platforms as well like Joomla and WordPress.
+There are different types of infection, some are automated (like the htaccess I mentioned) and some are targeted and well crafted, like the one we saw today.
+One of our clients was receiving complaints from the site’s readers that when accessing the site it was trying to do a drive-by-download, install malicious software on their computer[s].
+When checking the page source we found the following code in the headers:
+
+This code translates into a hidden iframe:
+
+This payload was responsible for downloading the malicious executable, .exe file. At the time of our analysis the malicious domain was already gone, not a surprise to us as you can tell it’s a randomly generated domain and today’s tactics leave the sites available for a very short time.
+Fortunately for us we found the payload, you’d think that was reason to celebrate, but it’s not. Where was it being generated or created?
+After checking the most common places in vBulletin for infections (did I mentioned it was a vBulletin site? No, ok, mentioned now) we found a number of plugins acting as backdoors. Some of the code looked like this:
+
+Unfortunately, those backdoors only acted as the entry point and not the generation point.
+Our next stop was the datastore, looking for anything suspicious, you know things like eval, encoding masses, etc.. anything to give us a clue. But nothing…
+So we turned out attention to the built-in vBulletin tool that would check for Suspect file versions. Fortunately for us, it pointed us to a number of suspect files in the /includes directory:
+
+As you can see, it showed a lot of files in the includes directory, so we went checking them and in the process found init.php with the following code (since it was a targeted attack we changed the encoding a little bit):
+
+So, what it is doing, and doing pretty well, is encoding the file path where the payload is using this imagepath array. And the image variable is just a base64_decode command. The file used is a jpeg image, not only a fake file with php content in there, but a binary file with base64 encoded code at the end of it:
+
+And the malicous code is decoded to:
+
+As you can see it is conditional malware, it will only be triggered when the user accesses the page and it’s browser’s user agent is coming from Internet Explorer (IE). This shouldn’t be a surprise to anyone.
+The malicious code will go to http://[domain]/fgsd/?export=8c235f89a8143a28a1d6067e959dd858 to download the second part of the payload:
+
+Which decodes to… Yes! The first code we saw in this article!
+
+This attack is very effective and has been around for a few months now, others have reported on it and you can see reports going back to February / March time-frame. The attackers behind the campaign appear to be well versed in a number of Content Management Systems (CMS) and appear to be targeting Windows based machines running vulnerabile versions of software, like Java. Fortunately more of the common AntiVirus products are picking it up.
+Based on earlier reports these are the different variants of the actually payload being dropped locally:
+Variant I:
+
+Variant II:
+
+These are likely two of many being circulated at the moment. The real note is how they are encoding JavaScript, embedding it within the header of sites and using that to engaged remote C&C’s to better understand how to best proceed. The mftp.biz domain is one of many different free domains that attackers are using to distribute these payloads, here is a small list of others:
+
+Here are more encoded JS samples that function the same way:
+
+If you have any more info to share or samples, we’d love to hear from you. Don’t be shy to ping us. If you’re curious or vaguely interested in the various malware strings we see everyday you can also check out  Sucuri Labs page.

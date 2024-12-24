@@ -1,0 +1,62 @@
+A small step for Mac OS X
+2006-04-01
+
+Glyn Kennington
+Sophos Plc
+,
+UK
+Editor:
+Helen
+
+Martin
+Abstract
+Glyn Kennington has the details of OSX/Leap-A.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+OSX/Leap-A (also known as Oompa Loompa) first appeared in a forum post on MacRumors.com on 13 February 2006. However, the development of the file can be traced back further.
+At the end of January, during a discussion about installing input managers, one poster on MacSlash.org suggested that this could be a potential security hole. Then, in early February, an article appeared on the grey-hat website MacHacking.net. The article – which has since been deleted – contained proof-of-concept source code for 'malicious bundles'.
+
+The bundle
+Mac OS X provides a mechanism for users to install 'Input Manager bundles' – plugins which can allow, for example, custom keybindings or mouse gestures. These are installed by creating a directory hierarchy beneath one of the following:
+~/Library/InputManagers
+/Library/InputManagers
+Any such installed bundles are loaded by all Cocoa applications run as that user (for the first path) or any user (for the second). OSX/Leap-A installs itself in whichever of these locations it can. After testing the current user ID (using the system call 'getuid') it decides whether it can be installed as a system-wide Input Manager or as an Input Manager for the current user only.
+Once OSX/Leap-A is loaded by a Cocoa application, it can spread itself. By using the com.apple.iChat interface the bundle can wait for particular events associated with instant messaging – specifically, for iChat contacts becoming available. Once a contact is detected, the bundle generates several more iChat-specific events, resulting in an attempt to set up a file transfer with the contact. The transferred file is the main OSX/Leap-A archive.
+
+The archive
+The file that is propagated to other users (and the file in the original forum post) is in gzipped tar format (.tgz). As well as having been the standard archive format in Unix environments for some time, .tgz files are becoming increasingly common in Mac OS X, to the extent that the proprietary StuffIt format is no longer supported on a default install of Mac OS X 10.4.
+The .tgz file has the following contents:
+./._latestpics
+latestpics
+On initial inspection, the first file seems somewhat unusual; it has been 'hidden', using the Unix convention of starting the filename with a dot. To understand the reasoning behind this, it is necessary to look at the Mac's resource fork capability.
+Mac OS X supports multiple 'forks' for files, allowing both a data fork (the standard contents of a file) and a resource fork (any other relevant information). This allows further information about the file to be stored in a way that is hidden from any application that just needs to access the data itself. This hidden information can define other attributes of the file, as we shall see later.
+Mac OS X's native filesystem supports this resource fork, (as well as any other arbitrarily named forks), by accessing the file as /..namedfork/rsrc (or /..namedfork/name). Many common filesystems, including the pseudo-filesystem used by archivers such as tar and zip, lack such capability, so a workaround is required. This workaround is to create another file whose name is the same as the first, but prefixed with ‘._’.
+On any platform other than a Mac, this will be extracted to a separate file. Examining it will reveal it to be in the AppleDouble format (as specified in RFC 1740). The Mac, however, will recognise the special meaning and extract the forks as the appropriate metadata.
+
+The resource fork
+This AppleDouble file contains two data entries: one for the resource fork, and another to indicate 'Finder Info'. The Finder Info is a series of flags that tell the Mac 'Finder' application to treat this file in a special manner – in this case, they specify that it has a custom icon.
+The resource fork contains only one resource – the custom icon. The custom icon included is the one that is usually associated with a JPEG file. If the user double-clicks the .tgz file, it will appear as if a single JPEG file named 'latestpics' has been extracted. The user would then have no reason to hesitate before opening that file (which was originally claimed to contain screenshots from the forthcoming Mac OS X 10.5 release). When they click it, however, it will not be opened as a JPEG, but as an executable.
+
+The executable
+The main file, latestpics, is in the Mac's native mach-o executable format. Mac OS X will execute it happily, opening up a terminal to display any messages it may generate.
+The executable installs the Input Manager bundle, creates a new .tgz archive ready for spreading to other contacts, and infects other applications.
+Disassembling the executable reveals that much of the functionality is performed with calls to the syscall 'system', to execute commandline tools such as 'tar' and 'cp'. Other common system and library routines (getuid and various filesystem and string operations) are used during installation and infection, but additionally, the following, less common routines are used:
+MDQueryCreate, MDQueryExecute. These are members of the MDQuery API, part of OS X 10.4's 'Spotlight' feature to allow users to search for files based on metadata. OSX/Leap-A uses these functions to search for infectable files – specifically, applications accessed within the last month – with the following query:
+(kMDItemKind == ‘Application’) &&
+(kMDItemLastUsedDate >= $time.this_month)
+getxattr, setxattr. These system calls access the extended attributes of a file. They have been included for some time on other forms of Unix (if using supported filesystems), and they became available in Mac OS X with version 10.4. OSX/Leap-A uses them to store its infection marker.
+FSPathMakeRef, FSGetCatalogInfo, FSSetCatalogInfo. These are part of the Mac OS file manager API. OSX/Leap-A uses them to set the Finder Info's kHasCustomIcon flag in the copy of itself in /tmp that will be placed in the archive to be spread, so that the executable extracted by the recipient will still appear to be a JPEG.
+
+Infection
+OSX/Leap-A infects other applications with the aid of the resource fork. It searches for applications that have been used within the past month, then for each of the first four results, copies the original application into the resource fork and overwrites the data fork with a copy of itself.
+When any copy of OSX/Leap-A is run, it checks whether its name is 'latestpics'; if not, then the assumption is made that the currently running version is part of an infected application, so the original application (stored in the resource fork) must be executed with a call to 'execve'.
+When an application is infected, an infection marker is used to prevent reinfection. This is done with the extended attribute API mentioned earlier, creating the attribute named 'oompa' and giving it the value 'loompa'. Any file already having the attribute 'oompa' will not be (re-)infected.
+
+What next for OS X malware?
+OSX/Leap-A does not appear to have done a lot of damage – the hype surrounding it far outweighs the number of reported infections. A common reaction among the Mac community was 'It's only a Trojan, it's not the end of the world' (although the reality, since it both spreads and infects, is that it could equally be called a worm or a virus).
+However, OSX/Leap-A does present some new ideas that we are likely to see again:
+Custom icons. In the same way that Windows viruses frequently use a custom icon and a double extension when spreading, OSX/Leap-A shows how it is possible to give a file a 'safe' appearance despite being an untrusted executable. A related vulnerability in Safari was demonstrated shortly after the appearance of OSX/Leap-A, by which the file extension is legitimate but the Finder Info is changed to associate the file with a different opening program – in this case, 'Terminal', which will run the file as a shell script.
+Installation as an Input Manager. Finding a way to be run automatically is important for any malware that needs to outlast a reboot. The method of installing an Input Manager is far from the only means to be run regularly, but it has already been seen used by the OSX/Inqtana family, so it is likely to be used again by unimaginative virus writers.
+Spreading with the aid of Apple APIs. In addition to using the com.apple.iChat APIs to spread by instant messaging networks, OSX/Leap-A also refers to APIs from com.apple.mail, presumably with the intention of sending itself by email; however, it never uses these APIs. Future malware may well use both of these methods in order to find new targets.
+Filesystem metadata. The ability to hide information in places other than the basic file data has been exploited by malware before; W2K/Stream used the alternate data streams of NTFS to store the host code in a new stream while overwriting the main stream with the virus. As users may not even be aware of the existence of these streams, it remains a good way of hiding code without drawing attention.

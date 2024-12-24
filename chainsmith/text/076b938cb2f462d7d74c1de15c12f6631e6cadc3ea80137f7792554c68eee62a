@@ -1,0 +1,62 @@
+HMFT 0.3 + Extended Attributes, short update
+February 17, 2013 in Anti-Forensics, Compromise Detection, Forensic Analysis, HMFT, Malware Analysis
+
+update
+fixed the title of the post  – it’s obviously a version 0.3 and not 3.0 🙂
+old post
+In my last post I talked about detecting Extended Attributes (used by ZeroAccess malware) using HMFT.  Today I got a chance to update it a bit with some more information.
+First of all, I clustered some of the ZeroAccess samples I had and I came up with a list of comprehensive (of course it’s limited by a sampleset I have) file locations and their Extended Attributes that are used by the malware:
+
+%SYSTEMROOT%\system32\services.exe::731
+%USERPROFILE%\appdata\local\a4ca9b9c\u::@@@
+%USERPROFILE%\AppData\Local\{0c9c4ca4-c3a9-47cf-2e3e-4db8bf2ad457}\U::001
+%SYSTEMROOT%\$NtUninstallKB16214$\2764741532\U::CFG
+
+You can find a full list of samples using EAs together with hashes (md5_sha1) here.
+Secondly, I added some code to HMFT and now it can dump Extended Attribute’s name (and some printable content of the EA value) as well:
+RESIDENT ATTRIBUTE
+AttributeTypeIdentifierD = 224
+LengthOfAttributeD       = 40
+NonResidentFlagB         = 0
+LengthOfNameB            = 0
+OffsetToNameW            = 0
+FlagsW                   = 0
+AttributeIdentifierW     = 4
+--
+SizeOfContentD          = 16
+OffsetToContentW        = 24
+--
+MFTA_EA
+OfsNextEAD      = 16
+FlagsB          = 0
+EaNameLenB      = 3
+EaValueLenW     = 3
+EaName = FOO
+EaValue= bar
+Using newer version of HMFT on one of the ZeroAccess samples gives the following result after postprocessing with eads.pl script:
+
+After HMFT update, eads.pl had to be slightly modified::
+use strict;
+my $f='';
+my $l='';
+while (<>)
+{
+s/[\r\n]+//g;
+$f = $1 if /FileName = (.+)$/;
+print "$f has $1 record\n" if ($l =~ /(MFTA_EA(_[A-Z]+)?)/);
+print "$f:".":$1\n" if (/EaName = (.+)$/);
+print "$f:$1\n" if ($l =~ /MFTA_DATA/&&/AttributeName = (.+)$/);
+$l = $_;
+}
+Btw. if you look at the screenshot above you will notice :SummaryInformation ADS used by this sample (5D23ACF4C2221B687BC96A2701786C13/ AB7EEC68F9438E31523D0A67E7612CA666C8F56A) as well – it can be even better seen in the window of Process Monitor during the malware installation:
+
+In terms of APIs used by ZeroAccess to create EAs, I finally came across a few samples that use ZwSetEaFile to do so,. Interestingly. none of the samples used this API to create EA for services.exe – all the samples using this API create the following EA:
+
+%USERPROFILE%\appdata\local\a4ca9b9c\u::@@@
+
+(Please refer to the older post for more information about the context of this discussion.)
+You can download latest hmft here.
+
+Comments Off on HMFT 0.3 + Extended Attributes, short update
+
+Comments are closed.

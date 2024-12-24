@@ -1,0 +1,37 @@
+Persistent drive-by cryptomining coming to a browser near you
+Since our last blog on drive-by cryptomining, we are witnessing more and more cases of abuse involving the infamous Coinhive service that allows websites to use their visitors to mine the Monero cryptocurrency. Servers continue to get hacked with mining code, and plugins get hijacked and affect hundreds or even thousands of sites at once.
+One of the major drawbacks of web-based cryptomining we mentioned in our paper was its ephemeral nature compared to persistent malware that can run a miner for as long as the computer remains infected. Indeed, when users close their browser, the cryptomining activity will also stop, thereby cutting out the perpetrators’ profit.
+However, we have come across a technique that allows dubious website owners or attackers that have compromised sites to keep mining for Monero even after the browser window is closed. Our tests were conducted using the latest version of the Google Chrome browser. Results may vary with other browsers. What we observed was the following:
+
+A user visits a website, which silently loads cryptomining code.
+CPU activity rises but is not maxed out.
+The user leaves the site and closes the Chrome window.
+CPU activity remains higher than normal as cryptomining continues.
+
+The trick is that although the visible browser windows are closed, there is a hidden one that remains opened. This is due to a pop-under which is sized to fit right under the taskbar and hides behind the clock. The hidden window’s coordinates will vary based on each user’s screen resolution, but follow this rule:
+
+Horizontal position = ( current screen x resolution ) – 100
+Vertical position = ( current screen y resolution ) – 40
+
+If your Windows theme allows for taskbar transparency, you can catch a glimpse of the rogue window. Otherwise, to expose it you can simply resize the taskbar and it will magically pop it back up:
+
+A look under the hood
+This particular event was caught on an adult site that was already using aggressive advertising tricks. Looking at the network traffic, we can see where the rogue browser window came from and what it loaded.
+
+The pop-under window (elthamely[.]com) is launched by the Ad Maven ad network (see previous post about bypassing adblockers), which in turn loads resources from Amazon (cloudfront[.]net). This is not the first cryptominer being hosted on AWS, but this one does things a little bit differently by retrieving a payload from yet another domain (hatevery.info).
+We notice some functions that come straight from the Coinhive documentation, such as .hasWASMSupport(), which checks whether the browser supports WebAssembly, a newer format that allows users to take full advantage of the hardware’s capability directly from the browser. If it doesn’t, it would revert to the slower JavaScript version (asm.js).
+
+The WebAssembly module (.wasm) is downloaded from hatevery[.]info and contains references to cryptonight, the API used to mine Monero. As mentioned above, the mining is being throttled to have a moderate impact on users’ machines so that it stays under the radar.
+Mitigation
+This type of pop-under is designed to bypass adblockers and is a lot harder to identify because of how cleverly it hides itself. Closing the browser using the “X” is no longer sufficient. The more technical users will want to run Task Manager to ensure there is no remnant running browser processes and terminate them. Alternatively, the taskbar will still show the browser’s icon with slight highlighting, indicating that it is still running.
+
+More abuse on the horizon
+Nearly two months since Coinhive’s inception, browser-based cryptomining remains highly popular, but for all the wrong reasons. Forced mining (no opt-in) is a bad practice, and any tricks like the one detailed in this blog are only going to erode any confidence some might have had in mining as an ad replacement. History shows us that trying to get rid of ads failed before, but only time will tell if this will be any different.
+Unscrupulous website owners and miscreants alike will no doubt continue to seek ways to deliver drive-by mining, and users will try to fight back by downloading more adblockers, extensions, and other tools to protect themselves. If malvertising wasn’t bad enough as is, now it has a new weapon that works on all platforms and browsers.
+Indicators of compromise
+145.239.64.86,yourporn[.]sexy,Adult site
+54.239.168.149,elthamely[.]com,Ad Maven popunder
+52.85.182.32,d3iz6lralvg77g[.]cloudfront.net,Advertiser's launchpad
+54.209.216.237,hatevery[.]info,Cryptomining site
+Cryptonight WebAssembly module:
+fd472bd04c01a13bf402775441b0224edef4c062031e292adf41e5a5897a24bc

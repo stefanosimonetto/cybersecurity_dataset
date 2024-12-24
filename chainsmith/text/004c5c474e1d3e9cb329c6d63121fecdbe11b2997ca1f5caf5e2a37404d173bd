@@ -1,0 +1,45 @@
+“WinYahoo” PUP Modifies Chrome Secure Preferences
+Potentially Unwanted Programs (PUPs) continue to plague consumers with annoying software that interferes with everyday computer use.
+This kind of software bloats a filesystem, fills up memory with garbage, and places advertisements and toolbars in web browsers. Because of these behaviors, many of you who read our blog know we take an aggressive stance against these programs.
+An interesting PUP that our researchers have observed is known as “WinYahoo”. WinYahoo (not related to the company, “Yahoo!”) gets its name from the files it creates in the user’s Program Files directory, along with Yahoo being set as the default search engine and homepage in installed browsers.
+Like a lot of unwanted software, WinYahoo is bundled in with a parent installer (md5: 41e092385fb06a3087cd0027375e2288). The referenced file we examined was a bundler for Adobe Photoshop Album Starter Edition.
+
+Once the user clicks “Next,” the next screen will vary depending on whether a Virtual Machine (VM) was detected. In this case, an offer for Yahoo is only presented if a VM was not detected by the bundler process. This is another example of a PUP using a technique commonly seen in malware, a topic we discussed not too long ago.
+When a VM is detected, various offers are presented to the user, including Norton 360. No VM yields an offer for the WinYahoo PUP.
+When the Yahoo offer is accepted, the bundler writes a new executable into a temporary directory and launches it under the name setup.exe.
+This file is the WinYahoo installer itself, and requires the bundler to pass a secret command-line argument to setup.exe in order to work properly.
+For those unfamiliar, a command-line argument is simply additional data that’s given to a program when it runs. Without this argument, the installer’s code will not execute properly, and eventually a message box will appear on the screen stating the arguments are invalid.
+What our researchers noticed about WinYahoo was its ability to modify Google Chrome’s secure preferences without being detected by the browser.
+The bundler process (WNYStubSetup2.exe) launching the WinYahoo executable setup.exe, passing a secret key argument.
+If the arguments are correct, the WinYahoo installer goes on to downloaded an obfuscated Dll from Amazon CloudFront, a content delivery network offered by Amazon Web Services.
+By storing the Dll there in an obfuscated form, Amazon Web Services won’t likely detect this Dll as being malicious, as seems to be the case here.
+A similar case happened some time ago with unwanted Bitcoin miners being installed.
+Response from the Amazon CloudFront server, showing the installer version number (3.10.2.0) followed by the obfuscated Dll.
+The obfuscated Dll is written to the hard drive in the same folder as the WinYahoo setup binary, but only in an obfuscated format. The filename has a prefix of “sb” followed by a number. During our tests, the number appeared to be 2-3 digits.
+Looking at the file in a hex editor, it’s clearly has a slight obfuscation applied, but a trained eye can make it out as a Windows PE.
+The numbers 3.10.2.0 indicate the version number of the Dll, with the obfuscated “MZ” header following the pipe (|) character.
+The Dll is only de-obfuscated in heap memory within the process. As the WinYahoo setup runs, it switches execution between the WinYahoo setup binary and the new Dll to perform the installation of the PUP and associated files.
+The de-obfuscated Dll as seen in heap memory of the WinYahoo installer.
+What our researchers noticed about WinYahoo was its ability to modify Google Chrome’s secure preferences without being detected by the browser.
+Just like it’s name, Chrome’s secure preferences are located in a file called “Secure Preferences”. Any outside changes to the secure preferences file typically results in corrupt settings, as seen in the image below. In this case, Chrome will reset the affected settings to their default state.
+If you modify Chrome’s secure preferences, Chrome will label them as corrupt.
+In the Secure Preferences file, there is a section titled “protection” where various user preferences are stored along with a generated hash value known as a Message Authentication Code (MAC).
+The MAC (the code for MAC generation in Chrome is believed to be here) is used to protect the integrity of the data and therefore any changes to the MAC would raise red flags.
+These MAC values are checked when the browser loads along with another MAC called the “super_mac”.
+WinYahoo makes these changes successfully by calculating new MACs, thus hijacking the user preferences. Below is a WinMerge screenshot that show the homepage preference was changed by WinYahoo (see highlighted areas).
+Before and After of a change made by WinYahoo to the Google Chrome Secure Preferences
+WinYahoo also installs a rogue Chrome extension that injects JavaScript into webpages. During our tests, the extension that was installed was called “Sale Charger,” which was identified when looking at the installed extensions list.
+
+Sale Charger has the rather annoying feature of creating new tabs in web browsers with advertisements, and sometimes, even worse things. In one case, a Tech Support scam was presented, a topic often discussed here at Malwarebytes.
+
+This “feature” is implemented using JavaScript that gets injected into webpages. The code for the script is retrieved from a remote url at salecharger-a.akamaihd.net. The script’s code has a timer and waits for the user to click somewhere on the screen, opening a new tab that redirects to a rogue url.
+
+WinYahoo also changes the preferences and installs Sale Charger into Internet Explorer, Mozilla Firefox, and Opera browsers. Below is a screenshot of the add-on in Internet Explorer.
+
+Conclusion
+WinYahoo uses deceptive techniques to deliver advertised software along with PUPs that users don’t want. This includes hijacking browser preferences as well as installing rogue browser extensions that could possibly lead to consumer scams and even more unwanted software on a computer system.
+The ability to modify Chrome’s Secure Preferences is noteworthy. This is a security issue that will hopefully be remedied by Google in a future update to Chrome.
+Removal of WinYahoo is possible with Malwarebytes Anti-Malware, where it is detected as PUP.Optional.WinYahoo.
+Chrome preferences are also restored to their default settings upon removal.
+Additional thanks to the Malwarebytes research team for various contributions.
+@joshcannell

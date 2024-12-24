@@ -1,0 +1,44 @@
+Putting Trojan.Hashish out to grass
+2011-05-01
+
+Robert Lipovský
+ESET
+,
+Slovakia
+
+Peter Hlavatý
+ESET
+,
+Slovakia
+Editor:
+Helen
+
+Martin
+Abstract
+Win32/Unruy.AD conceals its code at a low level and infects the Master Boot Record so that it will be loaded before the operating system (and any security solutions installed by the user) have a chance to kick in. Robert Lipovský and Peter Hlavatý provide all the details.
+Copyright © 2011 Virus Bulletin
+
+Some time ago, we noticed a new malware sample which conceals its code at a low level – in raw sectors of the hard drive – and infects the Master Boot Record so that it will be loaded before the operating system (and any security solutions installed by the user) have a chance to kick in. Whenever we come across such behaviour, the familiar rootkit families Win32/Mebroot and Win32/Olmarik (a.k.a. TDL) come immediately to mind. However, after a closer inspection, we realized that we were looking at something a little different: an upgraded version of the Unruy family of trojan downloaders, which has been around since 2009. We detect this variant of the trojan as Win32/Unruy.AD.
+
+Analysis
+The initial malicious executable (which installs the rootkit) is lightly obfuscated and features a few anti-debugging tricks. It also tries to detect and disable some anti-virus programs. The executable is responsible for writing its system drivers to raw sectors of the hard drive and infecting the Master Boot Record (MBR). The installer uses a privilege escalation exploit, which involves setting a specially crafted SystemDefaultEUDCFont value under the registry key HKEY_CURRENT_USER\EUDC and then calling the EnableEUDC() function from GDI32.dll.
+An interesting point of note is that the malware has a conflict with the encryption software TrueCrypt, if it is active. It checks whether TrueCrypt is turned on, and if the part of the drive to which Unruy.AD wants to write its files is encrypted, the installation aborts and the trojan deletes itself. A debug string found in the code shows that the author(s) of the bootkit named it ‘Trojan.Hashish’ (see Figure 1).
+Figure 1. Win32/Unruy.AD has named itself ‘Trojan.Hashish’.
+Two more executable files are dropped and executed by the installer. The first is a Windows shell batch file (.CMD), which is used to remove the dropper. Verses from The Book of Genesis are included as comments in this file (see Figure 2). The second executable waits for two hours before rebooting the system. The reboot is required for the driver to load fully from the code written to the MBR.
+Figure 2. Shell script for removing the original malware executable.
+The boot sequence of an infected computer consists of several stages, involving the malicious MBR code, 16-bit and 32-bit code, the hooking of int 0x13 and IoInitSystem, and so on. These techniques are obviously inspired by bootkits such as Mebroot. Afterwards, the malware drivers are loaded from the bootkit’s file system. The trojan’s file system is implemented as pseudo-directories that bypass the Windows file system (FAT or NTFS). Unruy.AD references these through links, as seen in Figure 3.
+Figure 3. Links to directories in Win32/Unruy.AD’s file system.
+In fact, this is what Olmarik does, though in a slightly different way. An important detail here is that the ‘symbolic links’ seen in Figure 3 are not direct links to files (which would suggest that there are four of them), but links to pseudo-directories. The number of drivers depends on the malware version. Unruy.AD includes three.
+The trojan uses a data structure for sharing functions between the three drivers and its user-mode components. The functions include the execution of tasks such as writing to the trojan’s file system, writing data or code to memory, and so on. The first driver acts as a service dispatcher, providing user-mode code access to these functions via DeviceIoControl.
+The second driver creates mutexes of other known malware families (e.g. Win32/Sality), so that they cannot execute – this may indicate competition between different malware authors and gangs.
+The third driver is responsible for injecting the payload into user-mode processes. Even this injection is done in several steps, which adds a layer of self-defence. The driver reads the encrypted payload binary from the malware’s file system and, along with a loader stub, injects it into services.exe. The code within services.exe creates a thread in svchost.exe, to which it attaches itself as a debugger and passes the payload. This thread finally decrypts and runs the payload binary. Further self-protection techniques prevent the termination of the malware’s user-mode processes (svchost.exe and iexplore.exe).
+The final payload implements a backdoor which is able to download, store and run files from a remote server. This allows the malware to perform various activities subsequent to infection. Unruy.AD contains three advertisement-related URLs in the backdoor itself (see Figure 4), to which it tries to connect, but the backdoor is also capable of being reconfigured. A fourth advertisement-related URL is contained in the initial installer (Figure 5).
+Figure 4. URLs in the backdoor.
+Figure 5. URL in the initial installer.
+In addition to the ability to download other files from these URLs, the HTTP requests sent by the trojan include information about the infected computer (volume information, Windows product ID, computer name and system information) as parameters (see Figure 6).
+Figure 6. URL format strings.
+The trojan has the option to send the requests either via Internet Explorer (iexplore.exe) or directly, and to spoof the referrer value (see Figure 7). This behaviour simulates clicks on advertisement banners, which suggests that the trojan is attempting to cheat a pay-per-click business model and/or carry out black hat search engine optimization (SEO).
+Figure 7. Spoofed HTTP referrer.
+
+Future development
+When analysing the binary, we also noticed some worm-like functionality for distributing the malware across the network – however, these features are inactive in the current release. The current release also lacks rootkit techniques for hiding itself in the infected system – but considering the fact that the malware is under development, and bearing in mind its apparent sources of inspiration, this is likely to change in the near future.

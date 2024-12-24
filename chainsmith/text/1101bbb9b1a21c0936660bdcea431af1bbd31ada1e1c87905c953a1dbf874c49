@@ -1,0 +1,51 @@
+Learning PowerShell: some basic commands
+My first Powershell script
+The first PowerShell script I wrote (see below) was a quick fix to remove certificates from the “Untrusted” registry key after a Vonteera infection. After some initial commands, this script basically loops back for every certificate that doesn’t belong under a certain key.
+
+$path = "HKLM:\SOFTWARE\Policies\Microsoft\SystemCertificates\Disallowed\Certificates\C1437F2BC6F11..."
+$acl = Get-Acl $path
+$rule = New-Object System.Security.AccessControl.RegistryAccessRule ("Everyone","FullControl","Allow")
+$acl.SetAccessRule($rule)
+$acl |Set-Acl -Path $Path
+Remove-Item –Path $path
+
+What it does is:
+
+Define the path to the key
+Set the permissions for that key
+Remove the key
+
+Current challenge
+The problem I have been faced with is finding the hexadecimal values that were the registry keys of the certificates. I have had to take registry snapshots before and after the infection to find out which ones were added. Getting an overview of the certificates that are present before the infection is not that difficult. Deciding what information to keep and how to store it is less trivial.
+I ended up with this command, which I will explain in detail as this is a learning experience:
+
+Get-ChildItem -Path cert:\currentuser\disallowed -Recurse | select Thumbprint, FriendlyName, Subject | ConvertTo-Html | Set-Content c:\users\public\desktop\certificates.html
+
+The cert: drive is provided by the Windows PowerShell Certificate Provider, and using the Get-ChildItem cmdlet lets you get certificate store locations, certificate stores, and certificates from it.
+They have chosen the “disallowed” path as that is where some malware samples have been known to block the download and operation of certain security programs. But of course, you can change that to any of the other possibilities you might be interested in.
+The “Recurse” parameter allows me to search subdirectories of the “path”.
+I want to see these properties of each certificate:
+
+Thumbprint, because that is the name of the registry key
+FriendlyName, because that shows the reason for the certificate not to be trusted (which is sometimes helpful)
+Subject, because that is the one that holds the humanly readable information we can see in the certmgr
+
+The last two bits of the command are necessary to prepare the output for export and to define the export location. I choose the public desktop so everybody can copy the command without having to change it to fit their own circumstances. And I have decided on HTML because that gives me a nice table.
+So, taking a snapshot is one thing. Now, we have to compare the sets of certificates before and after infection. Luckily, there is an obvious choice, which is the compare-object cmdlet.
+click to enlarge
+To compare the new set of certificates with an older snapshot, I have changed the previous command a little bit, for practical reasons. Below is the command to export it to a text file:
+
+Get-ChildItem -Path cert:\currentuser\disallowed -Recurse | select Thumbprint, FriendlyName, Subject| Set-Content c:\users\public\desktop\certificates.txt
+
+I have made the change to avoid getting tables within tables when I do this comparison on text files. To have something to compare with, in this case, I have used the certificate dropper section of a malware file we detect as Trojan.Wdfload. Wdfload is an infection that combines a bitcoinminer with a module that disables the download and use of antimalware software by altering the hosts file and dropping certificates in the Untrusted category. After running the command above, before and after the infection, I also renamed the corresponding files to add before and after to the filenames. And used this command to get yet another easy to read output file.
+
+compare-object (get-content c:\users\public\desktop\certificatesbefore.txt) (get-content c:\users\public\desktop\certificatesafter.txt)| ConvertTo-Html | Set-Content c:\users\public\desktop\comparison.html
+
+Let’s look at the above image again. The SideIndicator column is added by the compare-object cmdlet. It shows on which side of the comparison the line was an extra compared to the other. In this case the arrows indicate whether a certificate was added ( => ) or whether it was removed ( <= ).
+The certs dropper I used does not add any FriendlyName items, which is why that column shows up empty in the screenshot above.
+So far we have concentrated on creating some useful PowerShell commands. Next time I will attempt to write a Powershell script that uses my output (or a smaller version of it) to remove the certificates that were added by the certsdropper without me having to hardcode all the registry key names manually.
+Earlier in this series:
+
+Learning PowerShell: The basics
+
+Your comments and constructive criticism are welcome.

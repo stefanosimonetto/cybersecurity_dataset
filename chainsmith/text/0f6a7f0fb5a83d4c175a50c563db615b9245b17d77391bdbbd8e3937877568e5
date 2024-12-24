@@ -1,0 +1,37 @@
+How to Unpack a Self-Injecting Citadel Trojan
+The Citadel Trojan is nothing new, but I found one recently obtained from our collection systems and had a fun time unpacking it. I thought I would share some notes for researchers who wanted to study the Trojan for their own learning purposes.
+Citadel shares a lot of the Zeus source code. In fact, most AV engines will detect the malware as Zeus when scanned. AhnLab released a nice analysis paper on the Trojan at the end of 2012, which provides a thorough analysis of the Trojan and its capabilities.
+When you first look at the Trojan, it’s easy to tell the code is obfuscated. Like a lot of malware, the Trojan will decode strings used for libraries and functions and resolve them using runtime linking.
+(click to enlarge)
+The procedure I’ve labeled “callFunction” in the image above will allocate memory where code for a window procedure will be placed. Code in the window procedure will call functions resolved using runtime linking, and is accessed using CallWindowProc.
+
+The memory for the window procedure is repeatedly rewritten and a new function is referenced every time CallWindowProc is called. Notice how the memory addresses are the same when CreateFile is called after GetModuleFileName.
+
+Eventually, a suspended child process of the Trojan is created using this window procedure rewrite method. By Using NtUnmapViewOfSection, the memory segments containing the original PE are unmapped from memory in the child process, and then a call to VirtualAllocEx maps a new segment where the unpacked PE will reside.
+
+As usual, the unpacked code is injected in the newly remapped memory using WriteProcessMemory.
+
+The memory will be written at the virtual base address of the unpacked PE in the child process, which is 0x400000. Because I’m going to want to know where the unpacked PE starts executing, I need to locate its original entry point (OEP). This is located in the IMAGE_OPTIONAL_HEADER structure (AddressOfEntryPoint) within the PE header.
+
+The bytes are read in reverse order (Little Endian), so the offset to the OEP is 0x2B055. This call to WriteProcessMemory is only writing 0x400 bytes, the next call will be writing code starting at the virtual address 0x401000.
+
+Before we write these 0x34000 (212,992) bytes of memory to the child process, we first need locate the OEP of the unpacked PE within the parent process’ memory. We need to do this so we can place a breakpoint there before it’s written to the child process.
+In order to find the OEP, we have to do a little math, because there is a space of 0xC00 bytes that we have to account for in the child process. Allow me to explain.
+The first write to the child process started at 0x400000, and was 0x400 bytes long, meaning it ended at 0x400400 in the child process virtual address space. The second write starts at 0x401000 and is 0x34000 bytes long. If we subtract the two, we can see how much zero-filled memory is between the two writes.
+0x401000
+–  0x400400
+0xC00 byte difference
+However, when observing the unpacked PE in the parent process, the first 0x400 bytes are adjacent to the next 0x34000 bytes in memory, so there is no byte difference here. Therefore to find the OEP of the unpacked PE within the parent process, we use the following equation.
+First Write Start Address + Entry Point Offset – 0xC00 = Unpacked binary OEP.
+0x4E8928 + 0x2B055 – 0xC00 = 0x512D7D
+
+To create a breakpoint, change the JMP opcode (0xE9) to that of an INT3 breakpoint (0xCC). Now we can go ahead and write these bytes to the child process memory. After that, we need to select a just-in-time (JIT) debugger, I use Ida Pro.
+
+Once ResumeThread is called in the parent process, we can finally start analyzing the unpacked program in the child process. The first thing you might notice is information on who the real malware author is (a joke, of course, see here).
+
+If you’re a researcher and you’d like to analyze the file yourself, here are the details.
+File name: ~tmp8882937138333177377.tmp
+md5: 5d72b63b3a3aa83bf6b07b9b8204c634
+As always, please use the comments below for any questions.
+_________________________________________________________________
+Joshua Cannell is a Malware Intelligence Analyst at Malwarebytes where he performs research and malware analysis. Twitter: @joshcannell

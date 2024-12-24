@@ -1,0 +1,59 @@
+Fileless malware: part deux
+In part one of this series, we focused on an introduction to the concepts fileless malware, providing examples of the problems that we in the security industry face when dealing with these types of attacks.
+In part two, I will be walking through a few demonstrations of fileless malware attacks that I have created. These labs demonstrate the problems we face when trying to detect fileless malware.
+I will first start off with a demonstration of malware that is detected strictly with static signatures. The file I will be using is a custom binary, which I created from scratch and does not actually perform malicious activities. It is completely benign.
+
+The reason for using a benign file for the demo is that I do not want any of the other more advanced components of the AV to kick in and try to detect this file. I want to show what happens when we rely purely on static signatures. We have simply created a static signature for this specific binary so that when executed or scanned on any computer running Malwarebytes, it will be detected.
+After this test, I will then be testing a legitimate malware via the same fileless methods to illustrate the necessary detection technology that needs to be in place to catch the threat.
+
+Before we begin, I will first cover how static detections work in order to make clear what exactly is being evaded with these fileless methods. Then I will cover some more sophisticated detection methods, which in this modern age of security are the most important components to detect the new and unknown threats.
+Static detection
+There are a few ways to detect malware statically. The most basic, and frankly, the most useless detection method nowadays is by hashing the file. In this case, there’s a one to one detection rate of signature to malware.
+In order to have a single signature cover a lot more ground, modern day static detection engines extract key areas of the binary and allow signatures to be made on specific op-codes or strings within sections of the binary. The best open source example of this would be YARA rules. If you are unfamiliar with YARA, please take a minute to look it up as it is a valuable tool for malware analysis.
+Below is an example of a detection using YARA. The example rule is completely random and not made to detect any malware.
+rule ExampleDetection
+{
+strings:
+$hex_string = { AA (BB | CC) [3] FF [2-4] 00 }
+$string1 = “malString” wide ascii fullword
+$hex2 = {CC DD 33 DD}
+condition:
+$hex_string and #string1 > 3 and $hex2 at entrypoint and filesize > 200KB
+}
+A single rule similar to this, although in the category of static signatures, can detect hundreds or thousands of malware that have similar characteristics. A good static signature still allows you to be dynamic and detect malware even when a writer modifies his code.
+But, even though these static detection methods are quite effective in certain cases, there are a few major downfalls. The first and most obvious downfall is if the binary codes and strings are changed beyond what the signature writer took under consideration, the detection will no longer trigger. This is the main reason why antiviruses have added more dynamic methods for detecting sophisticated malware to their solutions. These include behavioral signatures, behavioral detections, heuristics, self-contained emulators, machine learning, and artificial intelligence.
+Some of these technologies are included in Malwarebytes’ consumer and business products, and are listed below:
+
+The second downfall to static signatures is what I will be illustrating in this first lab. If there is no binary on disk to run a static signature against, then the static signature has nothing to detect against. So, in short, it fails. This is where the fileless attacks succeed.
+In a perfect world, with unlimited computing power, we would theoretically be able to extract every bit of data from memory at all times and run static signatures against then to overcome this downfall. But because performance is always an issue, this is not possible, and static signatures will fail in this scenario. Having said that, I will proceed to the first lab.
+Lab 1: Static-only bypass
+First, I will run the test detection file manually on a system with Malwarebytes so that we can see the static signatures portion catching the file.
+
+As you can see, the file was detected as Trojan.Vhioureas.POC. Again, this is because I created a test detection on a unique string I made using this simple program. If the program succeeds, it will pop up a calculator application.
+Now I will load the same test file using the inception framework: a fileless execution framework.
+
+As you can see, the vhioureasPOC file did not trigger any detection, and Calc popped up. The reason is because the inception framework streamed the malware source completely from a server and executed it purely within memory.
+You can see this in the command parameter to UpdateService.exe, which is the inception client loader binary. It pulled the source code of the vhioureasPOC from the server I set up at the address in the URL. The fileless streaming method evaded the static signature engine of the AV.
+
+Inception framework
+Before continuing on to Lab 2, I will discuss the inception framework and how it can be used to load any .NET executable in memory. We will start with the server side.
+The server side of inception has two main components: the payload generator and the actual malware server. The payload generator takes as an input, a C# source code file, and provides you with a custom URL token for fetching on the client’s side.
+
+After we have generated the payload, when we run the malware server component, we can retrieve the source code in an encoded form via any http request. For example,if we navigate to the URL generated in a browser on our client machine, we will see a long base 64 string in the browser window. This is the payload.
+Now moving onto the client side of inception. The client in and of itself is benign. It does not contain any malicious code. It’s simply a command-line tool that takes a URL as input. It fetches whatever is on the end of that URL and attempts to read it in as text, specifically looking for proper formatting of C# source code. It then takes the C# text and, using the operating system’s native compiler, performs run-time compiling purely in memory. It then executes the generated code.
+This is how we were able to evade the static detection engine. There is never any point in which the malware code from the server exists on the hard drive. Because of that fact, there is no file for the static engine to scan.
+
+As a side note, I would like to add that in general, no AV detects source code of the compiled language. The reason here is that source code can never run without being compiled, and thus can never cause harm. This is an interesting point because even a network signature, such as snort or any IDS would be unlikely to pick this up. The malicious binary is never streamed, it is only the source code that is streamed. So, it evades all static signatures, even on the network side.
+Fighting this threat
+Being that we evaded the static engine, modern-day antiviruses as I mentioned earlier must contain technology to dynamically detect malicious activity on the system rather than simply detect malicious signatures.
+To test that this technology exists and works properly, we will be running inception once again against the victim machine, only this time it will be with a payload which actually performs malicious functionality to the victim. We should hope that the AV engine has the ability to determine that the execution on the system is malicious based on its activity. This is exactly what we will be testing in Lab 2.
+Lab 2: fileless ransomware
+For this lab, I will load a source code of a ransomware sample via inception. Essentially, nothing changes from the above steps. Only now, the payload generation on the server side points to a ransomware source code file instead of the POC test.
+
+As you can see, a detection was triggered this time. Although the static engine did not detect the malware, the application behavior portion of the engine stepped in and determined that there was malicious activity on the system that behaved like ransomware, and it triggered the detection. This is why you see it detected as Ransom.Agent.Generic.
+Static vs. dynamic
+I have created these demonstrations to show some of the problems that fileless malware can cause—mainly that they were able to easily bypass static engines. This doesn’t mean that I believe static signatures do not have their place in malware detection. I am simply showing their weakness when it comes to fileless attack.
+Static signatures help researchers properly classify malware families and provide more detailed detections. This is usually because, behind a signature, there is a malware analyst who has spent the time to research and understand the malware’s characteristics. I have seen many situations where a good signature has caught malware that machine learning engine failed to identify. However, when the static detection fails, dynamic detection must take over. This symbiosis is key.
+I am of the school of thought that both static and dynamic detection are necessary, and a good mix of both is still extremely valuable. Typically, when an anti-malware vendors uses signatures in addition to next-gen technology in their repertoire, that’s a sign that there are active malware analysts on the other side of the screen.
+This gives me a peace of mind—that vendors are not leaving the fight against malware purely up to algorithms and technology. Technology is not quite advanced enough to be left fully in charge, and in the meantime, a mixture of humans and technology, malware analyst and machine, is still the best bet.
+Stay tuned for part three of this series, where I will provide a detailed analysis of various fileless malware families.

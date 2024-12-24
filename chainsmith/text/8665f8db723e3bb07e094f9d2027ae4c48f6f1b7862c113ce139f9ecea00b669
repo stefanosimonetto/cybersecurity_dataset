@@ -1,0 +1,81 @@
+A new BIOS rootkit spreads in China
+2011-10-01
+
+Zhitao Zhou
+Microsoft
+,
+China
+Editor:
+Helen
+
+Martin
+Abstract
+The BIOS rootkit is the most complex type of rootkit researchers have come across so far. It is hardware dependent, and an attacker must have extensive knowledge of the computer – including software and hardware – in order to create one. Until now this type of rootkit has remained in the realm of academic research – but recently things have changed. Zhitao Zhou details TrojanDropper:Win32/Wador.A.
+Copyright © 2011 Virus Bulletin
+
+Obtaining a good opportunity to run is always important for malware, and using the stealth provided by a rootkit may be the most effective way to achieve this goal. However, rootkits (particularly kernel-mode rootkits) are notoriously difficult to create. They require a thorough understanding of the system kernel, and usually a good knowledge of assembly language and hardware protocols. Furthermore, the author needs to be cautious with the code, as programming errors can crash the affected system.
+The BIOS rootkit is the most complex type of rootkit we have come across so far. It is hardware dependent, and an attacker must have extensive knowledge of the computer – including software and hardware – in order to create one. Programming errors not only crash the system, but may also render the computer’s hardware unusable (similar to the infamous CIH [1]). Because of this complexity and the risks involved, this type of rootkit has until now remained in the realm of academic research – but recently things have changed.
+The Microsoft Malware Protection Center (MMPC) has recently been tracking a BIOS rootkit being distributed in China. The rootkit (SHA1: 331151dc805875de7a7453ad00803ee9621ea0ce, detected as TrojanDropper:Win32/Wador.A) is often distributed as a fake video player, and downloads malware from a remote website.
+The malware comprises the following five components:
+BIOS ROM flasher
+Malicious BIOS ROM payload
+Infected MBR
+Infected WINLOGON.EXE/WININIT.EXE
+Protected malware code in track 0.
+
+The BIOS ROM flasher
+The BIOS ROM flasher is a kernel-mode driver, bios.sys (SHA1: 17bce192b67790b16dc1fa19bc3d872ee77cd296, detected by Microsoft as Trojan:WinNT/Wador.A), which is dropped by TrojanDropper:Win32/Wador.A This malware doesn’t register a new service, but instead ‘borrows’ the registry information from an existing service – that is, it changes the original image name of the service and then renames itself using the old name. It then starts the service, which causes the driver to be loaded into memory. Once the driver is loaded in memory it changes the name of the original driver back to its original name.
+Next, it tries to identify whether the BIOS of the current system is an AWARD BIOS by searching for the signature of AWARD BIOS at system IO space address 0x000F0000-0x000FFFFF. The signature is ‘@$AWDFLASH’. If found, it saves the 16-bit value at offset 0x2A from the above IO space – this value is the SMI port number used to flash the AWARD BIOS. It also tries to search the signature for ‘_SM_’ and ‘_DMI’ in order to identify the size of the BIOS ROM.
+If it can confirm that the BIOS in the current system is an AWARD BIOS, it injects its malicious payload into the BIOS ROM. The malicious BIOS payload is actually an ISA optional ROM, which is currently the most popular way for BIOS rootkits to be used to inject malicious code into the BIOS ROM. This module is dropped by the malware and saved as the file hook.rom (SHA1: 127d2fd8da40098aa698905112e4da198cf7ed79, detected as Trojan:DOS/Wador.A) in the %Temp% directory.
+The injection process is completed with the following three steps:
+Save the old BIOS ROM to disk.
+This is done by mapping the BIOS IO space with a specified size (attained from the previous step) to a virtual address space and then saving the memory as ‘C:\bios.bin’, which is hard-coded in the code.
+Add the malicious ROM code to the saved file.
+It is a very complicated process to modify a BIOS ROM file manually (taking into account decompression, modification, compression, checksum, and so on). So, rather than modifying the BIOS ROM himself, the malware author uses the official BIOS ROM Flash utility (cbrom.exe, SHA1: 1b12084b80290534f0ba76f093e49f0569a838bb) from Phoenix Technologies to add the malicious payload to the BIOS ROM file. It calls cbrom.exe and passes an ‘/isa’ argument to add the malicious ROM to the BIOS ROM image file.
+Flash the modified ROM image file to the BIOS ROM.
+This is the most crucial step in the whole process. However, the methods used to flash BIOS ROM are undocumented. We think the malware author may have reverse engineered the official BIOS ROM flashing tool in order to do this. It first erases the BIOS ROM by sending 0x29 commands to the SMI port.
+After successfully erasing the BIOS ROM, it sends 0x2F commands to the SMI port to flash the BIOS ROM with the new ROM image. The CPU registers EDI and ECX and saves the address and size of the data that will be flashed to the BIOS ROM. Only 0x10 bytes can be flashed to the BIOS ROM each time.
+Thus, the malicious payload is injected into the BIOS ROM. When the computer is rebooted, as the last step of the BIOS boot block initializing the hardware, the malicious payload is loaded into memory, and the computer is controlled by the BIOS rootkit.
+
+The malicious BIOS ROM payload
+Infecting the Master Boot Record (MBR) is the sole purpose of the malicious BIOS ROM payload.
+After being loaded into memory by the BIOS boot block and given control, it checks whether the MBR has been infected by searching for the infection marker ‘int1’ at offset 0x92 of the MBR.
+If the infection marker is not found, it infects the MBR immediately by overwriting the first 14 sectors of the disk (which includes the MBR) with data located in the BIOS ROM – this data was flashed to the BIOS ROM in a previous stage. The original MBR was saved at sector 8 of the disk.
+
+The infected MBR
+At first, the infected MBR loads the six sectors following it (sectors 2 to 7) into memory and executes.
+It saves the number of times the infected MBR has run at offset 0x25 of sector 2 of the disk.
+(If a system doesn’t support the extended INT 13H service, the system will not be able to boot up again until the BIOS ROM is flashed.)
+Then it loads the original MBR, which is located at sector 8, and analyses it to determine the location of the active partition.
+After locating the active partition, it loads and analyses the Volume Boot Record (VBR) of the active partition to start doing its main job – infecting either WINLOGON.EXE or WININIT.EXE (depending on the affected computer’s Windows version).
+It uses a special trick to determine the Windows version, by searching for the string ‘NTLD’ in the boot record, as illustrated below:
+Windows versions prior to Vista (2000, XP, 2003, etc.) use NTLDR to load the system itself, but Windows Vista and later versions (Windows 7, etc.) use BOOTMGR to load the system. In either case, when the boot record can’t find these files, it displays an error message on screen. The message is ‘NTLDR is missing’ for Windows versions prior to Vista, and ‘BOOTMGR is missing’ for Windows Vista and later.
+It then identifies the file system type of the partition from the VBR and parses the file system manually (both NTFS and FAT32 are supported) and tries to find WINLOGON.EXE (for versions before Windows Vista) or WININIT.EXE (Windows Vista and later).
+For NTFS, it traverses the MFT. For each pass, it gets the $FILE_NAME attribute and compares it with ‘WINLOGON.EXE’ or ‘WININIT.EXE’ to get the corresponding file record.
+When it finds the target file (WINLOGON.EXE or WININIT.EXE), it also tries to make sure the file is located in the Windows\system32 or WINNT\system32 directory. After that, it loads the first sectors of the file into memory to check for the infection marker ‘cnns’ at offset 0x50 of the file.
+If the infection marker is not found, it infects the file by writing the malicious code located in sector 9 (with a size of 0x230) to the free space of the .text section of the file. It changes the entry point to this offset and adds the writable characteristics to the section. The file’s original entry point (OEP) is saved at offset 0x60 of the file.
+After successfully infecting the file, it displays the message ‘Find it OK!’ on screen, then loads the original MBR and returns control to it.
+
+The infected WINLOGON.EXE and WININIT.EXE
+The infected WINLOGON.EXE or WININIT.EXE decrypts its code, creates a dedicated thread to download a file from http://dh.3515.info:806/test/91/calc.exe (SHA1: 6d30a08e63beec01478959d96a792d43bf03fb23, detected as Exploit:Win32/ShellCode.gen!B), saves it as ‘c:\calc.exe’, and then executes it. Because WINLOGON.EXE and WININIT.EXE are both started very early, many components may not have been initialized properly, so it does this in a dead loop until the file is downloaded completely.
+After that, it creates a service named ‘fileprt’ (an abbreviation of ‘file protection’). The image for this service is ‘c:\my.sys’, and is described in the next section.
+
+Sectors’ hidden helper
+To prevent software from accessing the MBR, the malware also drops a kernel-mode driver, my.sys, in the c:\ directory (This path is hard-coded in the PE file header at offset 0x60).
+The driver hooks the read, write and device control dispatch routines of the ‘\Device\HardDisk0\DR0’ device object’s driver, disk.sys:
+‘Disk.sys’ is a class driver for the disk. In Windows layered device driver architecture, all the non-cached I/O requests targeting the disk are routed to a disk class driver. The disk class driver then routes these requests to the corresponding port drivers (atapi.sys, scsiport.sys, etc.). Many rootkits try to hook the dispatch and I/O routines of these drivers in order to hide or modify sensitive information. Dogrobot is a typical example of a rootkit that does its job in a lower layer than this. It hooks atapi.sys and sends hardware-related control commands (SCSI REQUEST BLOCK, SRB) to write a file to the disk directly, in order to bypass anti-virus software or disk protection methods. (For more information, see [2].)
+When this driver runs, it produces the following effect:
+For any successful non-cached read requests targeting a disk offset within the 0x00-0x7E00 limit (that is, sector 1 to sector 0x3F, 0x3F sectors in total), the return data is cleared (i.e. filled with zeros). Software issuing this request will only get zeros returned.
+For any non-cached write requests targeting a disk offset within the 0x00-0x7E00 limit, the write operation is immediately completed successfully with a zero length, which in effect writes nothing to disk. Software issuing this request cannot write anything to disk.
+There is also a hidden backdoor here – that is, a write request falling into the above limit with a length greater than 0x2800 and at offset 0x100 with a 64-bit length marker (0xFBFBECECFCFCEBEB) is written to disk successfully.
+Any request for the disk’s physical parameters (such as the number of partitions, number of cylinders, and so on) will fail.
+
+The downloaded malware
+The downloaded malware (SHA1: 6d30a08e63beec01478959d96a792d43bf03fb23) is another trojan downloader. This downloads many other malicious programs, most of which are advertising auto clickers. This is a very popular way for malware authors in China to generate ‘grey’ income, and may not be viewed quite as severely as other more obviously illegal activity.
+
+Scope
+It is not easy to clean a computer infected with this malware, but there is some good news. First, after the destruction wreaked by CIH, many BIOS vendors started providing double BIOS in order to defend against this type of attack. Second, not many computers have AWARD BIOS installed nowadays, because more and more modern computers use EFI to interface between hardware and software. So the potential scope for this form of attack may not be very great.
+
+Bibliography
+[1] http://www.microsoft.com/security/portal/Threat/Encyclopedia/Entry.aspx?Name=Win95%2fCIH.
+[2] Feng, C. http://www.microsoft.com/download/en/details.aspx?id=10266.

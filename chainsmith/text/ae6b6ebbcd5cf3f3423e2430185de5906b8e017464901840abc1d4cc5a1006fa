@@ -1,0 +1,162 @@
+In-browser mining: Coinhive and WebAssembly
+
+After a few evolutionary steps via Application Specific Integrated Circuits (ASICs) mining algorithms seem to have returned to their roots: the ‘humble’ personal computer. The suitability of algorithms such as CryptoNight (which underlies the Monero currency) ultimately led to the porting of the source code to JavaScript and a departure from the more traditional approach of having standalone executables for mining, instead executing code from within browser processes. This blog looks at the development and modern realities of in-browser mining.
+
+2018 Radicati Group Market Quadrant Reports Kit
+Read the Report
+
+We covered the basic concepts of blockchain, cryptocurrencies, and coin mining in our previous blog.
+As we discussed, after a few evolutionary steps via Application Specific Integrated Circuits (ASICs) mining algorithms returned to their roots: the ‘humble’ personal computer. The suitability of algorithms such as CryptoNight (which underlies the Monero currency) ultimately led to the porting of the source code to JavaScript and a departure from the more traditional approach of having standalone executables for mining, instead executing code from within browser processes.
+The beginning of in-browser mining
+This new approach meant that any browser supporting JavaScript could be used for coin mining, and services soon arose to use the process for the monetisation of websites. This naturally appealed to cybercriminals as there was now no need for the laborious process of deploying and keeping binaries persistent – all that was required was a simple code injection on a web page.
+The downside of this solution is that, while JavaScript is platform independent, it runs in a browser sandbox, far away from the bare metal and therefore from optimal performance. Another considerable aspect is persistence: while the earlier PC- and IoT-based implementations would run practically forever (or at least until someone found and killed the corresponding process) the browser-based approach can only work for as long as the page containing the miner is kept open.
+On the other hand, for malicious actors, the web-based approach also provides extra flexibility: there is no need to store everything on the same page. Functionality and components can be split across multiple domains, and previously rented or hacked servers can be (re)used for a new purpose.
+Coinhive et al.
+Coinhive is a legitimate service which first surfaced in mid-2017 as a JavaScript-based miner supporting Monero (XMR) mining. Once embedded in a website it uses the visitor's CPU resources for mining, thus providing alternative revenue stream to conventional advertisements. Thanks to its relatively fast adaption – which can at least be partly attributed to the fact that The Pirate Bay was one of its early backers – over a thousand websites included its code by the end of 2017.
+Fingers soon started to point at the creators, primarily as a result of sites not always being willing to provide an opt-out from running the scripts on their visitors’ PCs. Many didn’t even bother to inform their visitors about their computers being used in this way.
+In response, Coinhive created a new version which would become enabled if permission was explicitly given. Unfortunately this offered no guarantee of Coinhive users adopting the new build, especially ones with clear malicious intent in mind.
+Naturally, the strong uptake of Coinhive resulted in the development of competing services in late 2017 and early 2018 along with several easy to use mining plugins for popular web platforms such as WordPress.
+WebAssembly
+Key to the majority of in-browser coin miners is WebAssembly (abbreviated Wasm): a new binary instruction format using a stack-based virtual machine, designed as a portable target for high level languages like C/C++. Its main design goals include load time efficiency and close to native execution speed in a memory-safe sandboxed environment – i.e. the in-browser JavaScript sandbox. The WebAssembly Community Group is responsible for the open standard.
+The first ‘Minimum Viable Product’ (MVP) release of WebAssembly was in March 2017 and the standard is currently supported by all major browsers including Firefox, Chrome, WebKit /Safari and Microsoft Edge.
+While it has numerous use-cases, many of which are listed within the WebAssembly design documents, it’s easy to see how the technology would appeal to coin miner developers: in-browser miners have to live with a significant performance drop compared to ‘native’ code, and WebAssembly’s focus on speed assists in closing this gap. For reference, the developers of Coinhive provide the following performance guidance:
+
+Of course, when running through JavaScript performance still takes a bit of a toll, but it's not that bad. Our miner uses WebAssembly and runs with about 65% of the performance of a native Miner.
+
+Is it malware?
+Whether or not in-browser mining is inherently malicious is a matter of contention, with even the security industry harbouring mixed views.
+Running a hashing algorithm on someone else's PC without their knowledge is a malicious action: ultimately, it is appropriating someone else’s resources without their permission. While it shouldn’t do any harm to the data or integrity of the machine, it will result in a slower-responding PC and an increased electricity bill, especially if goes unnoticed for a long period of time.
+On the other hand, performing hashing with a user’s consent is not a malicious action – at least some users may be willing to run these scripts if it means no adverts on a website. In early 2018 the Salon website experimented with this approach.
+From here onwards, please note that when we use the term Coinhive we are exclusively referring to abuse of the Coinhive code and service for the purposes of mining without user consent.
+When good dogs do bad things
+Malicious users quickly came up with multiple schemes to get miners into people’s browsers. Chrome extensions featuring Coinhive code were quickly developed, providing a much-improved return over simple web pages as the miner would run whenever the browser was open. In parallel, a number of Coinhive blocker extensions were developed to try and prevent unauthorised mining on websites.
+Google's Web Store policy was initially permissive with regards to mining extensions: as long as the extension's sole purpose was mining and the user was adequately informed, it would not be banned. Still, many failed to comply with these policies and, as a result, Google recently moved to tighten the rules effectively banning any mining extensions from the Chrome Web Store.
+This left the bad guys with the tried-and-true approach of website code injection.
+How does all this work in the wild?
+Miners get injected into unwitting websites’ code by compromising them, mostly through some vulnerability. Much as has happened for years now, this is typically done by automated software scanning for known vulnerabilities and, once a vulnerable website found, exploitation happens and the malicious JavaScript code is injected.
+As the popularity of browser-based miners is high amongst cybercriminals, a vulnerable web site can potentially be compromised by more than one actor: as an example, the web site shown below was compromised by three separate cybercriminals - all using slightly different browser miner tools. Note the lack of visible evidence of the miners on the site itself.
+
+The image below shows the full infection chain visible in the packet capture when visiting this site:
+
+By the time we analysed the site the first of the three miners had been removed, however the other two were still working. The injected code for this inactive miner is shown below.
+
+Active Infection #1: ‘Basic’ Miner
+The first active miner is a widely available browser miner tool (‘Basic Miner’ in the diagrams).
+It is less sophisticated and easier to block with a web security gateway than the second active miner as it uses minimal obfuscation and static domains for relaying mining traffic to mining pools through WebSocket-based intermediary proxy servers. The image below shows the injection for the ‘basic miner’.
+
+Upon loading, it first downloads the CryptoNight WASM binary and then immediately begins mining, routing its traffic through publicly known coinhive.com WebSocket proxies (see below).
+
+Active Infection #2: ‘Advanced’ Miner
+Many publicly available ‘grey/black’ miners also have private versions for subscribers which are generally intended to be much harder to detect. The second active sample (‘Advanced Miner’ in the diagrams) is potentially one of these. Its injection code is shown below.
+
+It uses a URL shortening service to retrieve the main mining script and uses a slightly more advanced obfuscation technique than the ‘basic miner’ – although it should be noted that this is still only simple base64 obfuscation, something which would be considered very basic amongst more advanced threats such as exploit kits.
+Interestingly, this miner uses at least one dynamic-DNS proxy server (see code snippet below) for relaying mining data through WebSocket connections making detection and blocking much more difficult.
+
+{"domains":["d.cfcnet.top","d.cfcnet.gdn","d.cfcdist.gdn","cfcd.duckdns.org"]}
+Comparing the Two Active Miners
+It is worth noting that the underlying code in the ‘basic’ and ‘advanced’ miners is very similar – this broadly appears to be the case with a large number of in-the-wild WebAssembly-based miner, many of which appear to be minor variants of codebases available on GitHub. These ‘copycats’ are mostly tweaked only slightly in order to avoid detection, usually by altering function names in a ‘creative way’ (batmanrobin, darkshadow, krypt0n1ght) or by completely removing references to the original C source.
+The table below compares the functionality of the two miners.
+
+'Basic' Miner
+'Advanced' Miner
+
+Injection
+Easily detectable, contains in-browser mining related keywords.
+More innocuous looking, the main miner script is hidden behind a URL shortener.
+
+Miner Script Obfuscation
+Almost non-existent, only the most critical keywords are obfuscated using hex values.
+Base64 encoding for the whole script, critical keywords are hex encoded, plus some dynamic obfuscation.
+
+WebSocket Proxy Infrastructure
+Publicly known and static, uses coinhive.com WebSocket servers.
+Private and dynamically updated, making takedown much more difficult.
+
+Mitigation
+Web Sockets
+A peculiarity of in-browser miners is their reliance on WebSockets for communication. As processes running in a browser sandbox are not permitted to open system sockets, WebSockets were designed to allow full-duplex, asynchronous communications between code running on a webpage and servers – for example, chat applications such as Slack make heavy use of WebSockets.
+As the standard for WebSockets calls for sessions to be opened as HTTP and then ‘Upgraded’ to a WebSocket (see the example below), this does not allow for direct communication with the majority of coin mining ‘pools’ which generally use a protocol called Stratum.
+
+As a result, the operators of in-browser mining operations need to set up WebSocket servers to listen for connections from their miners and either process this data themselves if they also operate their own mining pool or ‘unwrap’ the traffic and forward it to a public pool if they don’t.
+While a coin mining script may appear on dozens or even hundreds of websites, there are likely to be significantly fewer of these WebSocket servers involved in any deployment, thus dramatically simplifying blocking using web proxies: no ability to communicate with the mining pool generally means no mining activity.
+Disabling WebAssembly and/or JavaScript
+Note: The following actions are undertaken at your own risk.
+Something of a nuclear option, only Firefox and Chrome support disabling Wasm as of April 2018. To do this, follow the instructions below. Before doing this, consider that this approach is likely to prevent the normal operation of an increasing number of sites as the technology is further adopted.
+In Firefox: navigate to about:config and set javascript.options.wasm to false
+In Chrome: navigate to chrome://flags/#enable-webassembly and change it to disabled
+If disabling Wasm is the nuclear option, then disabling JavaScript all together is the thermonuclear option. Security advice frequently includes recommendations for plugins such as NoScript for this purpose. While this dramatically improves security, it will once again have an impact on the functionality of websites and you should consider whether it is appropriate for your organisation and browsing habits.
+Conclusions & protection statement
+With the ever-increasing popularity of cryptocurrencies (despite the unstable value of Bitcoin in 2018) the ongoing interest in coin mining is no surprise. The question for the security industry is the one posed above: is it malware?
+Reduced to its simplest, the mining process is nothing more than arithmetic instructions executed in order to solve a pre-defined piece of a puzzle. This can hardly be considered malicious on its own.
+The key question is whether this activity occurs with the explicit understanding and approval of the user. As such, blanket blocking all mining scripts without examining their context is not necessarily the best approach.
+Forcepoint take a combinatory approach to detection and blocking of coin miners associated with compromised websites, blocking the instances of the scripts which we identify but – more critically – blocking the WebSocket command/relay servers which entire campaigns depend on.
+Thus, Forcepoint customers are protected against this threat at the following stages of attack:
+Stage 5 (Dropper File) - Malicious files are prevented from being downloaded.
+Stage 6 (Call Home) - Attempts to contact the C2 server are blocked.
+Indicators of Compromise
+Note: The following list of IOCs is non-exhaustive and focuses primarily on the Wasm samples and campaigns discussed in this article.
+WebSocket Relay Servers
+
+cfcnet[.]top
+cfcnet[.]gdn
+cfcdist[.]gdn
+cfcdist[.]loan
+cpufan[.]club
+coinhive[.]com
+Hashes (WebAssembly Files)
+
+978c69b6b93a66e47236abc0f36c79096429111d
+5117b6d9fd649e5946be0d3cbe4f285d14f64ca2
+99e5c6e9bd5ffebf7afe070fb53ee08f10cc707f
+96d82c07ef7e15465073bff9e07c30e54f867f50
+8a31ff73da067ac87e098effcce909390b568965
+16340175dad11597028d434a34365ee46fb815d9
+f43a873add72fa6e6b5465d5cdd7ec275dadfaa5
+f3353f1a3da825bcc4a552805cf345531a1e48dd
+eba038b18f32227a9dd1e761fb69029dda6bdbdd
+730efe35879cd09c2dc1e18c21f79896fe611120
+72616671f4fcebf2b357de851c3598b33108c9a1
+957b140c2b28508c78e9b526769f2e9ab6e664da
+54612d3dc9ac23c1b49ac3243db12eb5c003118e
+a3da43bb12093017143c2888c8fddd7e12479bd6
+b6c6e98ddca1030b4d9261972506088115fcd04f
+58776b6dccf4c0d7a329e64fdeb4f6d13dc3cd2e
+cbf527baabc7e344cb8f9ec37f0ee490ce800dc1
+9392401eb40c0bdac3e22d5430a79af16f3424d5
+bcf77c7424c4707b9ea57c82abf1a0859a456784
+ba38dc9fb45946228081bd6932e533461e4b3a98
+ef58f8c31ab2bc380afc13f691f7b9415aa2dac2
+07506bbb3873180d97834622cd55e6cd890a92d2
+19c0abdfcf37fdf0bd102b90f6c05b081ea772d0
+7bc4adbb43f26f0d954946ae3c4a5e3b91882e9c
+04e7b1e1251fb0c18753d0b413f69d5c34c17acf
+f6a08de1f9c9f79d39455ab31d91c1b44f859116
+2a35af592d672d45848548fa17c67b7cc952f05d
+bc387716f4de26ae78a8c10c9d41b3f40cf517ab
+d0a66bc0e408e04776e0bec1fc18864974df0198
+da6269118b9b8aec68ba7c22de689a7f8e3e1d42
+ad765a663c40457cf96c8023500d24f02711f30d
+b3338cae76b9eacf477af92b4bcfd8cba8f2a516
+59d33942585d970b75d2c2e9993d18335edb07bc
+8ca54a1a926e5cb0b3a33baa3c58ff3acdbfc515
+432fac1f706388be3f7257dd71388021e53038ad
+971960066074c62f986215cdf0d85f36b0b33f0f
+032c4d6c50c11b3dc247f1941bf77700720ac7e0
+29122c16de434eccb4c3abe0c899ae47f9829dde
+8c964de7bb13fa9683eed76c419256462393c55c
+957cc99377fadb192483a9810660a2fc1f5451fb
+608a65e5d08e4cb8362ffbb773a99e78b89d1b5c
+a0afabb912d593dd2ca9332a1367c1a7614dc3e3
+f234378e7b3a93e1dfe06f3efebcee204becaa49
+6b7423ab78e38cb8a4263d12c1c2158536fd02cd
+57d9f3e422fca7dddbaa381230a6e20921d4a2ac
+11c91a43f77f0a7b1da10f52160d52478464c86a
+b1ce36407b3a456e8bd0fb33b777d84f884db072
+c8e27ae2938ea4be173e796f83c843009d21d883
+198370faa7488ad8bb95d170880bd52045576eff
+4387f76d9c49232f62a41c55c6a48eb38dc97eee
+786df01387091a23b15b11385e61e3d441b50bca
+b291f9545faea0cc4ff8ab44e7ea766f85d4993c
+5abf24ed6a7b85b0fae6560fe67bcdc9f8406a11
+edd53e16aee9344d580bc3e57b1b2e30d11f5d14
+c147b98d461210f8aa835bb9636db2dbf358cd0a

@@ -1,0 +1,89 @@
+Advancing malware techniques 2008
+2009-01-01
+
+Alisa Shevchenko
+Independent researcher
+,
+Russia
+Editor:
+Helen
+
+Martin
+Abstract
+Alisa Shevchenko presents an overview of protection bypassing techniques found in current Windows-targeting malware.
+Copyright © 2009 Virus Bulletin
+
+The following article is an overview of protection bypassing techniques found in current Windows-targeting malware. It is a sequel to a previous paper on the topic [1] and presents a basic, but far from exhaustive, overview of current malware survival tricks.
+
+Research details
+Research has been conducted mainly upon a random list of malware found in the wild over the last six months. The list includes malicious proxy samples (such as Trojan-Proxy.Win32.Agent.xd), simple downloading malware (such as Trojan-Downloader.Win32.Small.htz), and anti-virus-killing trojans (specifically, various modifications of Trojan.Win32.KillAV). In addition, a number of tricks were found inside commercial malware, such as the so-called ‘Emotions Loader’, a malicious downloader bot heavily traded on the Russian black market and widely distributed in the wild.
+Since tracking malware is not in my daily routine, I was not in a position to distinguish brand new ‘zero-day’ techniques from older ones in my research; however, I am sure of the following:
+The techniques listed in this review are relatively new (they have appeared and/or have been popularized during the last year).
+The techniques work very well (since malware writers are still implementing them).
+The techniques are widespread (most of them are found in mass-distributed malware rather than in targeted malware).
+The techniques are listed below with brief descriptions and are grouped by their purpose.
+
+Anti-malware protection bypassing
+These are techniques that are used to bypass various security software and technologies, including anti-virus behavioural heuristics, anti-virus products in general, Host Intrusion Prevention Systems (HIPS) and personal firewalls.
+
+Kernel function hook
+A common approach to bypassing a personal firewall (to achieve a silent malicious download, for example) consists of implementing some kind of brute force technique, from attempting to kill a firewall process or remove its required API hooks, to injecting into firewall-trusted modules.
+A technique I encountered recently is curious in that the only modification made to the state of the operating system is a single kernel function hook. With such an approach, a firewall will never know it is being fooled, and a HIPS will not detect a process injection attempt.
+The following is a summary of the technique in intuitive pseudo code:
+If NdisRegisterProtocol address lies outside of
+ndis.sys //which means it’s hooked
+
+{
+
+Hook IoGetCurrentProcess:
+
+If the return value of the original IoGetCurrentProcess corresponds to the bypassing malware’s own process
+
+and
+
+If IoGetCurrentProcess stack return address falls around NdisRegisterProtocol  //which means the caller
+is NdisRegisterProtocol hook master = most probably a firewall!
+
+Return fake process pointer //a trusted one.
+
+}
+The realization of this technique is quite elegant, exploiting the fact that many personal firewalls hook NdisRegisterProtocol to guarantee the securing of newly added protocols. While feeding a firewall a trusted process pointer in place of a malicious process pointer is an obvious idea, the idea of locating a firewall module via its own hook is cute, resulting in an unobtrusive, compact and quite generic approach to firewall bypassing.
+
+Sending IO control code
+Another technique, which also demonstrates the unobtrusive trend of protection bypassing, consists of forcing a security application to quit, or otherwise controlling it, by means of sending its own driver a valid IO control code. The necessary IO control codes may be retrieved by means of reverse engineering.
+The concern in both these cases is that malware writers have arrived at the idea of ‘turning the enemy’s armour into a weakness’ – in other words, defeating a security measure by its own specifics, instead of fighting against it. Why bother to fight, if you can make the enemy trip itself up?
+In respect of the trend, security software vendors are urged to consider their products’ architecture, including component communication mechanisms, and to protect their binary code.
+
+Process termination from kernel mode
+Some malware writers still prefer to kill the security program completely rather than bypass it. But, given that most security vendors now equip their products with some kind of self-protection mechanism, killing a protected process can be a hard task, even from kernel mode.
+The following technique is an advanced process termination from kernel mode, which allows basic self-protection mechanisms to be bypassed. It consists of initializing (via KeInsertQueueApc) an asynchronous procedure call to ZwTerminateProcess for the process to be killed. In this case, the process termination API is called in the context of the process being killed and not from a third-party process which may be restricted by self-protection code.
+Note: some anti-virus vendors ignore the challenge of checking/securing kernel events, justifying this by the fact that once a piece of malware gets into the kernel, fighting it is pointless. While the statement is reasonable, the conclusion is arguable. Even though all known methods of getting into the kernel are monitored by most anti-malware products in the first place, new methods continue to appear. Malware often manages to get into the kernel despite our best attempts to prevent it. Thus, considering kernel events (checking them by code heuristics or against behavioural patterns etc.) is no less important than securing the kernel entry gates or monitoring basic system events.
+
+Surviving System Restart
+
+Image File Execution Options registry key
+Current malware in the wild makes extensive use of the ‘Image File Execution Options’ registry key. The key, located under HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\, is normally in charge of keeping persistent execution options for various standalone executables. Among them is the option to always run a certain executable under a debugger, the latter defined explicitly in the form of a path to an unvalidated .exe under the ‘Debugger’ value in the executable subkey.
+One of the ways to misuse this key is for a piece of malware to insert a path to itself into the ‘Debugger’ property for a common-use executable, resulting in the malware being executed each time the executable is run.
+
+Modifying service registry key
+This technique is pretty old and simple, but still widely used by malware in the wild, which may mean that some security vendors fail to flag it by heuristic or behavioural signature.
+The technique consists of modifying an existing service registry key to provide a malicious component startup, putting the path to a piece of malware into the ‘ImagePath’ value instead of a valid service executable. An example of a service which runs by default and is very rarely used by an end-user (thus making it a perfect spoofing goal) is the Scheduler service, located under the SYSTEM\\CurrentControlSet\\Services\\Schedule key.
+
+Minor tricks
+
+Disabling WSFP
+An ‘old, new’ approach to bypassing Windows System Files Protection is simply to disable it temporarily, by calling an undocumented API function named SetSfcFileException (ordinal 5) from the sfc_os.dll. Making use of this API provides a way to replace system files, patch them or upgrade them with exportable malicious functionality.
+Previously malware writers patched the sfc_os.dll to bypass file protection.
+
+Calling alternative API functions
+Some malware still calls alternative API functions from ntdll.dll instead of the common-use APIs in order to fool anti-virus heuristics. As an example, a piece of malware may call NtDuplicateObject instead of DuplicateHandle to obtain the necessary access rights to a process via duplicating its handle, and subsequently kill a process or inject into it. Another example is to call LdrLoadDll instead of LoadLibrary to execute a malware component.
+
+Recommendations
+The following are some recommendations for security software vendors and researchers to help keep ahead of the protection bypassing game:
+Take time to thoroughly analyse regular downloading malware and their propagation vectors. Since downloading malware represents one of the basic tiers of the computer criminal industry, their creators are highly motivated to provide effective and up-to-date mechanisms for bypassing security software.
+Monitor and analyse publicly traded commercial malware. For clear reasons it is the most quickly developing category of malware, yielding only to privately traded and targeted malware in respect of technological advance.
+Track researcher blogs and forums. Researchers from Russia and China seem to be particularly interested in advanced malware technologies and security software bypassing.
+The author welcomes comments/suggestions at [email protected]
+
+Bibliography
+[1] Shevchenko, A. Bypassing and enhancing live behavioral protection. InSecure Magazine #17.

@@ -1,0 +1,60 @@
+HandBrake hacked to drop new variant of Proton malware
+Last year, the Transmission torrent app was hacked not just once, but twice, to install the KeRanger ransomware and, later, the Keydnap backdoor. Now, the same thing has happened to the popular DVD-ripping HandBrake app, which is installing a new variant of the Proton malware.
+The real HandBrake 1.0.7 app was replaced with a malicious copy on May 2. This issue was discovered and the malicious app was removed on May 6, also a security warning was posted on the HandBrake website. Both the HandBrake website and the copy of HandBrake available via Homebrew (a command-line software installation system) were affected.
+Am I infected?
+The security warning provides SHA1 and SHA256 hashes for the malicious HandBrake-1.0.7.dmg file, recommending that you check this against the hash of your download before installing. To do this, enter the following command in the Terminal app (found in the Utilities folder in the Applications folder):
+shasum /path/to/HandBrake-1.0.7.dmg
+(Of course, be sure to insert the proper path to the .dmg file. Note that you can drag a file onto the Terminal window to insert its path into the command automatically.)
+Compare the value returned by this command to the SHA1 hash. If it’s a match, throw that .dmg file in the trash, delete your copy of HandBrake, and scan your Mac with Malwarebytes for Mac. We detect this malware as OSX.Proton.
+At this point, you can – in theory – safely download a new copy of HandBrake. I say “in theory” because we don’t know yet how the HandBrake site was hacked and what mitigations have been put in place to prevent future hacks.
+If you download a new copy of HandBrake, you can check it against the checksums listed on the HandBrake site to verify that it is valid. However, there’s a big problem with this: If the website has been hacked to replace the legit copy of the software with a bad one, it’s reasonable to assume that the checksums there could be replaced with bad ones as well.
+Unfortunately, HandBrake is not code signed, so there’s no real way to verify with 100% certainty that the copy you have has not been tampered with.
+Malicious behavior
+The malicious copy of HandBrake, when run, will immediately ask for an admin password.
+
+This is not normal for HandBrake, which may tip off a veteran user of the software. However, for a new user, or someone installing an update who isn’t yet familiar with the behavior of that update, this may not raise any red flags.
+If you are suspicious and click the Cancel button, it seems that the malware is not installed. Further, in my testing, there were no additional prompts in opening the app after the first. Still, I wouldn’t trust that copy of the app at all, even if it doesn’t appear to be dropping the payload under those conditions.
+Unfortunately, checking for updates in the malicious copy does not result in any kind of a warning. When the same thing happened to the Transmission app, the Transmission Project quickly put out an update that would replace the infected app with a clean one, as well as cleaning up any traces of the infection on the system. Hopefully, the same will happen for HandBrake, but at the time of this writing that has not been done yet.
+If the password is given, the malicious app will install the malware on the system in the following locations:
+~/Library/LaunchAgents/fr.handbrake.activity_agent.plist
+~/Library/RenderFiles/activity_agent.app
+The launch agent runs the activity_agent app at login and keeps it running in the event something terminates it.
+However, it seems that this malware may be a bit buggy. On the first install, it also dropped a non-functional launch agent named fr.handbrake.activity_agent.plist-e with some of the contents missing. In another install, the launch agent contained the following non-functional plist data:
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+<key>KeepAlive</key>
+<true/>
+<key>Label</key>
+<string>P_MBN</string>
+<key>ProgramArguments</key>
+<array>
+<string>P_UPTH</string>
+</array>
+<key>RunAtLoad</key>
+<true/>
+</dict>
+</plist>
+It appears that the malware installs this .plist template, then uses the Unix sed command to search for and replace the P_MBN and P_UPTH values but fails to do some in some cases. Thus, the malware does not always successfully install.
+The fact that the malware requests an admin password yet installs all components in user space where no admin password is needed was initially puzzling, but that password request is actually not a system-generated prompt. It’s a phishing dialog displayed by the malware to obtain your password, which will be sent in clear text to api[DOT]handbrake[DOT]biz, the command & control (C&C) server for this malware.
+The malware will create some or all of the following files:
+~/Library/VideoFrameworks/CR_def.zip
+~/Library/VideoFrameworks/FF.zip
+~/Library/VideoFrameworks/GNU_PW.zip
+~/Library/VideoFrameworks/KC.zip
+~/Library/VideoFrameworks/OP.zip
+~/Library/VideoFrameworks/proton.zip
+~/Library/VideoFrameworks/SF.zip
+These files contain a number of bits of data to be exfiltrated from the machine, such as browser data (including stored form auto-fill data), keychains, and even 1Password vaults. Since the user’s password was phished previously, that can be used to unlock the keychains, and either it or other passwords found in the keychain may be able to unlock other encrypted files. (Pro tip: never store the master password for your password manager in the keychain and make sure it’s a unique, strong password!)
+The proton.zip file is a master archive containing everything in the VideoFrameworks folder. It, too, will be sent to the C&C server, handbrake[DOT]biz, a domain that was just registered on April 29 of this year, presumably in preparation for this attack.
+Interestingly, the only two Mac apps ever to be hacked in this manner—Transmission, and now HandBrake—were both originally developed by Eric Petit. Though I don’t know if it means anything at all, it’s certainly a fair question to wonder who has access to both of these projects that could be abused in this manner.
+What is Proton?
+Many people may never have heard of Proton before. Earlier this year, a signature for Proton was silently added to Apple’s XProtect signatures, but nobody ever saw a copy. Later, Sixgill wrote up findings that revealed Proton was malware up for sale on the dark web.
+Proton is a professionally-developed backdoor, which at the time was selling for around 40 BTC (bitcoins), an amount that is currently worth more than $63,000. At that price, unlimited installations were allowed. A single-use license cost around 2 BTC, or more than $3,000.
+As an aside, I find it rather ironic that this variant of Proton appears to be a bit buggy, with some installs failing. Hopefully, Proton, Inc’s customers will have similar questions. A little discord among criminals wouldn’t be a bad thing.
+Impact
+This is a general-purpose backdoor with all the usual backdoor functionality. In addition, it appears this malware is exfiltrating the entire keychain, with all passwords. Thus, if you’re infected, the first priority should be changing all your online passwords. (After ensuring that your computer is free of infection, of course! Never change passwords on a device that may still be infected.)
+You’ll also want to take any necessary precautions if you have sensitive data that may have been exfiltrated and business users should contact their IT departments if a company Mac is found to be infected.
+Seems like this is increasingly becoming something Mac users have to worry about.
+Thanks to Amit Serper for analysis that provided some clarifying details about the behavior.

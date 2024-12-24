@@ -1,0 +1,116 @@
+BackDoor.Tdss.565 and its modifications (aka TDL3)
+2010-03-01
+
+Alexey Tkachenko
+Doctor Web
+,
+Russia
+
+Artem Baranov
+Doctor Web
+,
+Russia
+Editor:
+Helen
+
+Martin
+Abstract
+New BackDoor.Tdss rootkits are sophisticated pieces of malware. Alexey Tkachenko and Artem Baranov detail the BackDoor.Tdss.565 rootkit - which presented surprises within minutes of the start of its analysis.
+Copyright © 2010 Virus Bulletin
+
+The BackDoor.Tdss.565 rootkit presented us with surprises within minutes of embarking on its analysis. For instance, its non-typical method of injection into a system process during installation was completely unexpected. Though documented, the method has never before been implemented in any known virus, and therefore it allows the rootkit to bypass most behaviour blockers, install its driver and remain undetected.
+The installation process continues in kernel mode. The rootkit searches through the stack of devices responsible for interaction with the system disk to determine which driver it will infect. The choice depends on the hardware configuration. If the system disk uses the IDE interface, it will pick out atapi.sys; in other cases it may be iastor.sys. There are other rootkits that infect file system and network drivers or even the system kernel to ensure their automatic launch (e.g. BackDoor.Bulknet.415, Win32.Ntldrbot, Trojan.Spambot.2436 and others), so this case is not an exception. Note that the file size remains unchanged because the malicious code is written over a part of the file’s resources section. In fact, the piece of code only occupies 896 bytes (in later versions this is reduced to 481 bytes) and it loads the main body of the rootkit. At the same time it changes the entry point, sets the driver signature link to null, and recalculates the file’s hash sum. Addresses of the API functions used by the loader for infection are located in its body as RVAs. This both reduces the size of the loader and complicates analysis of the infected driver in the system that uses a different version of the kernel.
+Next, the malware assesses the available disk space and utilizes a small part (24,064 bytes) from the end of the disk for storage of the rootkit’s main body – or, more precisely, for storage of the part of the driver that performs the installation saved as binary data instead of an executable image. The block starts with the ‘TDL3’ marker, followed by 896 bytes of the genuine resource code of the infected driver. The malware also creates a separate virtual drive where its user-mode components and configuration file are located. It seems likely that this trick was inspired by BackDoor.Maxplus, which also created a virtual disk to deploy its components in the system. The process will be described in more detail later in this article.
+One of the rootkit’s later versions, BackDoor.Tdss.1030, stores original resources data and its body on the hidden encrypted drive in rsrc.dat and tdl files respectively, which significantly simplifies its updating.
+Upon completion of the installation the driver returns a STATUS_SECRET_TOO_LONG (0xC0000154) error which informs user-mode components (http://vms.drweb.com/ search/?q=BackDoor.Tdss.565) that installation has completed successfully and causes the system to unload the driver that is no longer used by the rootkit.
+
+The loader
+The viral loader starts working along with the infected driver. As mentioned above, its main task is to load the rootkit’s body stored at the ‘end’ of the hard drive. Since the loader starts working when the hard drive port driver is loaded by the kernel, it still can’t work with the disk or the file system. This is why it first registers a notification routine for the creation of FS (FileSystem) control device objects, and only then does it load the rootkit’s body. Early versions of the malware used the IoRegisterFsRegistrationChange function for this purpose, while the later ones resort to the temporary interception of the victim’s IRP_MJ_DEVICE_CONTROL in DRIVER_OBJECT where the dispatcher waits for a certain request from the file system. Remarkably, in both cases the entry point of the infected driver is used both to start the original DriverEntry as well as for the FS standby (Figure 1).
+Figure 1. The entry point of atapi.sys compromised by BackDoor.Tdss.565.
+Let’s assume that atapi.sys is the compromised driver.
+Now let’s take a closer look at how the BackDoor.Tdss.565 loader works. Once it has gained control, it will go over the sections table of its media and modify it to make detection of the initialization section more complicated: it nulls the IMAGE_SCN_MEM_DISCARDABLE bit of each section, and replaces the first byte of a name with zero if it is INIT. It also reserves an auxiliary data structure to save the pointer to the atapi driver object. After that it uses the CDO (Control Device Object) to register the FS creation notification sent to the kernel.
+As the file system request is received, the second part of the loader is started. It checks all object-devices of the port driver (e.g. ‘\Device\IdePort0’, ‘\Device\IdeDeviceP0T0L0-3’) and uses the disk offset placed in its body during installation to read the rootkit’s body. Although using the ordinary ZwOpenFile and ZwReadFile functions for this purpose seems rather unsophisticated (as the malware has to check devices one by one), it allows the loader to remain compact and serves its purpose quite well. The TDL3 signature placed at the beginning of the data segment is used to verify that the reading has been successful (Figure 2). After that, the notification is deleted (IoUnregisterFsRegistrationChange) and control is transferred to the body of the rootkit.
+Figure 2. The first sector of the rootkit’s body located in end sectors of the hard drive.
+
+The rootkit
+An encrypted drive with its own file system is certainly among the most notable technical features of TDL3, but the mechanism used to hide an entire file or the part of an arbitrary disk sector on the port driver level is equally remarkable. No other known rootkit has implemented these concepts in full.
+It is well known that the main feature of the NT virtual file system is the availability of all input-output devices on the descriptor layer where the key element is the file object created by the kernel and objects that represent the device. An application opens the descriptor for one channel, hard drive, volume or file, and different layers of the input-output devices stack participate in the interaction. The kernel only needs information about a request to start a corresponding dispatcher function.
+The authors of the rootkit used a similar approach and implemented their file system to work on the level of the device object’s port driver so that the virus mounts its FS to the device object.
+The atapi driver creates several types of device object (Figure 3). The upper two are devices representing hard and CD drives, while the other two are controllers interacting with the mini-port driver implemented in Windows XP as a hybrid mix of a port and mini-port. To mount its hidden drive the rootkit chooses a device object with the FILE_DEVICE_CONTROLLER type.
+Figure 3. Devices created by atapi.sys.
+An ordinary (‘healthy’) atapi driver uses only one IRP dispatch function to serve read/write requests – IRP_MJ_SCSI (IRP_MJ_INTERNAL_DEVICE_CONTROL). The client uses Srb and sends it to the disk device object. SUCCESS is always returned for Create/Close atapi requests, since the atapi doesn’t use them. However, the Create operation is very important for the FSD (File System Driver) because it initializes FILE_OBJECT which is used for file operations.
+The path to rootkit files located in the protected (hidden) area is as follows: \Device\Ide\IdePort1\mjqxtpex\, where mjqxtpex is an eight-byte signature generated randomly at system start-up. The hidden drive is used by user-mode components of the rootkit to store files received from the Internet or to read their configuration.
+The following are some full path examples:
+\\?\globalroot\Device\Ide\IdePort1\mjqxtpex\tdlcmd.dll
+\\?\globalroot\Device\Ide\IdePort1\mjqxtpex\tdlwsp.dll
+\\?\globalroot\Device\Ide\IdePort1\mjqxtpex\config.ini
+In order to understand how the rootkit works with its file system, let’s take a look at a flow chart showing how a create request is normally processed (ntfs or fastfat), how \Device\HarddiskVolume1\directory\config.ini is opened on an ordinary drive, and how \Device\Ide\IdePort1\mjqxtpex\config.ini is accessed on the hidden drive (see Figure 4).
+Figure 4. Opening a file on an ordinary disk drive (left) and on the hidden drive (right).
+The rootkit has one shared dispatch function for all requests from atapi clients and user-mode components. Therefore it performs two important tasks:
+It hides data located in the protected area from atapi clients and provides clients with an original file as they try to read data from the disk.
+As with FSD, it handles create/close/query information requests for files from the protected area, as well as requests from the rootkit itself, such as to read a section of config.ini.
+The rootkit replaces parameters in the dispatch functions pointer table as follows: it finds the end of the first section of the atapi.sys file in memory and writes the following template into the cave (the remaining free space in the section):
+mov eax, ds:0FFDF0308h
+jmp dword ptr [eax+0FCh]
+In some cases the instructions can overwrite data in the adjacent section since there is no verification procedure. Therefore, interceptions are still directed to atapi.sys (Figure 5). This fools many anti-rootkits, so the malware remains undetected. The rootkit utilizes a large structure for storage of all configuration information that may be required to perform its routines. The structure pointer is placed at 0xFFDF0308, i.e. a part of KUSER_SHARED_DATA is used. The request dispatcher is found at the +00FCh offset (invoked in the example above – jmp dword ptr [eax+0FCh]). Structures describing which sectors must be hidden and what should replace them are also stored there. If an atapi client requests data from the protected drive, it will simply zero-fill it or replace it with original data. Let’s take a look at the pseudo code showing how it works:
+if( DeviceObject == ROOTKIT_PARAM_BLOCK. AtapiBootRootkitDevObj &&
+IoStack->MajorFunction == IRP_MJ_SCSI &&
+IoStack->Parameters.Scsi.Srb->Function == SRB_FUNCTION_EXECUTE_SCSI
+)
+{
+if( RequestedStartSector + cSectors > ROOTKIT_PARAM_BLOCK.HideAreaStartSector)
+{
+if( IsRead )
+{
+Replace the completion function of the current stack location with its own function
+}
+else if( IsWrite )
+{
+End operation and return an error
+}
+else if( a request to the atapi or oep resource section, chksum,
+security data dir entry)
+{
+Replace the completion function of the current stack element with its own function
+}
+}
+Figure 5. Windows XP SP3 atapi.sys interceptions.
+So it is the completion function where the data is replaced.
+When the first versions of TDL3 were found in the wild, some developers of anti-rootkit software made corresponding changes to their products so that they would at least detect the rootkit. However, virus writers were quick to respond and created new versions of the malware featuring new interception techniques which are harder to detect.
+The dispatch table of the compromised driver remains clean. The authors of the rootkit used a non-standard approach. They simply ‘stole’ from the atapi driver the device object that is working with the system drive they intend to use (see Figure 6).
+Figure 6. Clean system (left) and infected system (right) with the device ‘missing’.
+The abnormality can only be detected with a debugger (see Figure 7) – an unknown device using an unknown driver. Moreover, the DRIVER_OBJECT header of the ‘unknown driver’ is corrupt while the driver is removed from the system drivers list (as well as the ‘stolen device’). The driver object is created by the rootkit to hide sectors of the hard drive and provide the malware with access to the hidden sectors. It has already become visible, but you still need to find or guess a device with a name comprised of eight random characters.
+Figure 7. Detecting the abnormality with WinDbg.
+Developers of anti-rootkits will have to devise a new way to use a specified device object to find a real driver used by the device.
+The debug output of the rootkit upon its launch is also quite unusual. It reveals that the virus writers have a passion for cartoons. For instance, it may display one of the following lines:
+Spider-Pig, Spider-Pig, does whatever a Spider-Pig does. Can he swing, from a web? No he can't, he's a pig. Look out! He is a Spider-Pig!
+This is your life, and it's ending one minute at a time
+The things you own end up owning you
+You are not your f*cking khakis
+And in the later versions:
+Alright Brain, you don't like me, and I don't like you. But lets just do this, and I can get back to killing you with beer
+I'm normally not a praying man, but if you're up there, please save me Superman.
+Dude, meet me in Montana XX00, Jesus (H. Christ)
+Jebus where are you? Homer calls Jebus!
+TDL3 is not a new TDSS!
+
+The rootkit file system
+At the end of the hard drive the rootkit occupies a certain area in which it stores its body and the virtual drive. The structure of a physical drive in a compromised system looks like this:
+Sector numbers of the virtual drive increase from the upper sectors to the lower ones and the rootkit uses the negative offset starting from the sector that is used as a descriptor of the virtual directory (Figure 8). So, expanding backwards, it can overwrite data in other sectors of the physical drive.
+Figure 8. BackDoor.Tdss.565 virtual directory descriptor.
+File metadata and other information is placed in one file in the hidden disk drive. The size of the metadata is 12 bytes and it has the following format:
++00 Signature [TDLD – a directory, TDLF – a file, TDLN – a file from the Internet]
++04 an ordinal number of a sector with valid data
++08 data size, if the sector provides sufficient space for storage or if zero is not set for the preceding field, the offset from file data to the next sector where the file code is stored (i.e. +0xC for metadata, so the field usually contains 0x3F4, 0x3F4 + 0xC = 0x400)
+In Figure 8 you can see three files written onto the disk during the rootkit’s installation (config.ini, tdlcmd.dll and tdlwsp.dll) and the bfn.tmp temporary file downloaded from the Internet. All sectors locating the drive are encrypted using RC4. The same encryption algorithm is used by other components that are not involved in the operation of the file system. The file described above is encrypted using the bot ID stored in config.ini. After decryption it appears as a set of commands for the rootkit (Figure 9).
+Figure 9. Contents of bfn.tmp.
+Figure 10 shows a descriptor for the BackDoor.Tdss.1030 directory. Here we can see new file metadata fields and data for separate files of the rootkit body (tdl) and original resources of the infected file (rsrc.dat).
+Figure 10. BackDoor.Tdss.1030 virtual directory descriptor.
+The directory incorporates a metadata structure and subsequent file entries. The size of each entry is 32 bytes (Figure 11 – an entry on Figure 7 is highlighted).
+Figure 11. File descriptor.
+The first 12 bytes of the file descriptor contain metadata with the TDLF or TDLN signature, the number of the next sector and size placed at the beginning. For example, in Figure 12 you can see the specified file size 0x10C bytes.
+Figure 12. Reading sectors of the virtual drive.
+In the rootkit’s file system, a sector containing data is followed by a ‘trash’ sector since the rootkit works with 0x400 byte units (Figure 12) instead of 0x200 (for standard systems).
+
+Conclusion
+All in all, new BackDoor.Tdss rootkits are sophisticated pieces of malware. Their detection and neutralization pose a serious challenge for anti-virus vendors – and, as has already been seen with BackDoor.MaosBoot (Mebroot), Win32.Ntldrbot (Rustock.C) and others, not all vendors are able to rise to that challenge.

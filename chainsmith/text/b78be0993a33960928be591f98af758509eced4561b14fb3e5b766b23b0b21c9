@@ -1,0 +1,73 @@
+Hard times on The Moscow Times
+The Moscow Times, ‘Russia’s only daily newspaper in English’, has been a popular source of information for expatriates since it started back in 1992.
+In addition to the paper version, there are an official website (themoscowtimes[dot]com), a Facebook page and a Twitter account, all with a significant number of followers.
+
+A few days ago, several people began reporting a malware alert (Google Safe Browsing) whenever they visited The Moscow Times’ website:
+
+This prompted the paper’s owners to release a statement on Facebook:
+
+Dear readers, the malware alerts you may be experiencing are due to a coding error in our ad banners. We will fix this asap, but in the meantime please ignore the alerts and proceed to the website. We apologize for the inconvenience!
+This was quickly followed by another message advising readers to bypass the ‘fake warnings’:
+
+Please see our latest post about the malware alerts. In short, they’re fake warnings and you can continue to the page by refreshing the url and removing everything in front of the “http://”. Hope this helps and our apologies.
+Unfortunately, it turns out that there was indeed a real malware problem when visiting The Moscow Times’ website:
+
+But the story doesn’t end here. While there was a claim that the issue had been fixed, someone responded right back to them on Facebook saying it was still going on.
+I went data-mining into our honeypot logs and we detected many incidents from October 25 all the way to December 29 (after The Moscow Times had announced the problem was fixed).
+What was called a ‘coding error in our banners’ turns out to be malicious ads (malvertising?) redirecting visitors to an exploit kit landing page.
+First malicious ad: http://ad.themoscowtimes[dot]com/openx/www/delivery/ag.php
+
+Second malicious ad: http://ad.themoscowtimes[dot]com/openx/www/delivery/ajs.php?zoneid=1&cb=82264722442&charset=windows-1251&loc=http%3A//www.themoscowtimes.com/arts_n_ideas/calendar/cinema.html
+
+Both ads were injected with a malicious iframe: http://fastandfurios.cvfamilymed[dot]com/banners.cgi?advert_id=2&banner_id=2&chid=341aa8fca26bcff7830499c1c5f8e359
+
+A pornographic ad also was injected with a malicious iframe (second malvertising!).
+
+So, let’s summarize what happened on The Moscow Times’ website for about a week:
+
+At least two of their ads were compromised
+A nasty porn advert was injected in the page (although it would not have been visible to the naked eye because of its size: height: 1px, width: 1px)
+A silent redirection (with no user interaction required) launched an exploit kit payload
+
+Drive-by download infection
+Once the malvertising takes place, the infection is pretty straightforward. The following URLs show a pattern belonging to the Neutrino exploit kit and we will quickly analyze it.
+http://keico7x.allwebpermit[dot]com:8000/znumwwcfd?irwpgkcogmgg=4389617
+http://keico7x.allwebpermit[dot]com:8000/dixtepwiaccvhiled
+http://keico7x.allwebpermit[dot]com:8000/tdpjzlvqpmuoge
+http://keico7x.allwebpermit[dot]com:8000/arenkyclyryg?fxlkh=dqhqaamdu
+http://keico7x.allwebpermit[dot]com:8000/META-INF/services/javax.xml.datatype.DatatypeFactory
+http://keico7x.allwebpermit[dot]com:8000/ebkrajrqnooaw?fvntiyrkj=dqhqaamdu
+The first URL holds the key to what happens next. It is not a ‘landing page’ in the traditional sense (exploit kit). Its real purpose is to load ($.post(“/dixtepwiaccvhiled”,!1,c)) the real landing page and decode it on the fly with a particular key.
+
+As you can see, this one is so obfuscated you cannot make sense of it:
+
+To better understand what it does, I re-arranged the code from the first URL and added an extra ‘alert(o)’ right after the ‘function c’:
+
+This will show you how the content of the landing page is loaded just before getting decoded:
+
+Now all we need to do to find out the decrypted content is put another alert way down near the end:
+
+We can finally see the typical landing page using PluginDetect to do a fingerprint of the user’s computer before unleashing the desired exploits.
+
+In this case we got a Java exploit, VirusTotal detection here. (If you know which CVE is targeted, please let me know.)
+If the Java exploit succeeds, an executable is dropped and executed. The binary is identified as Trojan.Ransom.ED by Malwarebytes Anti-Malware (file analysis here).
+Closing thoughts
+
+Perhaps the people in charge thought this was a mistake on Google’s part. However, there are numerous documented incidents for this website also reported by Google’s Safe Browsing indicating an ongoing problem with malicious advertisements.
+
+At the time of writing this article, The Moscow Times‘ website was still pushing out malware onto its visitors, as reported by Sucuri’s real-time SiteCheck.
+
+Given the infected ads’ URL (http://ad.themoscowtimes[dot]com/openx/www/delivery/ag.php) we can deduce that the site is running OpenX, an open-source advertising server software which has had many vulnerabilities in the past.
+
+Also, back in August, it was found that the OpenX ad server software downloaded from openx.org (the official website) contained a backdoor giving any attacker remote code execution. Reports indicate this Trojanised version had existed for several months before it was finally discovered.
+
+It is quite possible that the problem lies within the OpenX software running on The Moscow Times’ server, either an outdated version or a backdoored one. What at first seemed like a malvertising issue may very well be a typical website compromise.
+
+I’ve heard many times before website owners complain that Google was blocking them for no good reason. The reality with web malware is that it can be extremely sneaky and like a bad case of fleas, very hard to get rid of.
+
+It is unfortunate that poor advice was given on the company’s official Facebook page. The browser warnings are there for a reason and when in doubt it is better to err on the side of caution.
+StopBadware has a really good article on “misconceptions about malware warnings” and I could not agree more with their statement:
+Please, don’t ignore malware warnings—or encourage others to—because a high-profile case or two claim to have been false positives. It’s up to all of us to help stop badware, and malware warnings play a critical role in protecting the Internet ecosystem.
+
+—
+Jérôme Segura @jeromesegura

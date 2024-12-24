@@ -1,0 +1,79 @@
+How Anubis uses Telegram (and Chinese characters) to phone home
+
+The ubiquitous Android bank credential thief tries new methods to conceal where it gets its instructions from
+
+Written by
+Jagadeesh Chandraiah
+
+May 01, 2019
+
+SophosLabs Uncut Android Banker Android malware Anubis Bankbot Banking Trojan
+
+Anubis, the persistent banking Trojan targeting Android phones has continued to abuse social media platform: The malware uses the encrypted messaging service Telegram to retrieve its initial command and control instructions and the address of its C2 server.
+Anubis has been abusing public services like Twitter for some time to do the same thing, but it seems to have switched to use Telegram almost exclusively.
+The malware continues to plague the Google Play Market, infiltrating by masquerading as desirable tax calculators, currency converters, games, or utility applications. The app on the Play Market doesn’t contain any malicious code other than the ability to retrieve code from the internet and install it on the phone; That payload application is the component that’s capable of stealing banking passwords and other credentials.
+Since we first wrote about Anbuis back in August 2018, new variations of Anubis downloaders regularly appear on Google’s Play Market and on third-party app stores.
+
+Abuse of Twitter and Telegram
+Anubis is known for using Twitter to fetch the address of its command and control (C2) server, but recently it switched to use Telegram.
+Telegram messages are supposed to be encrypted from end-to-end, but a test device connected to a computer with some of Google’s Android development kit tools revealed just how easily you can see what the bot is retrieving. The bot attempts to connect to a URL on the t.me domain used by Telegram.
+Once it successfully connects, the bot retrieves a message in simplified Chinese characters from a specific account on Telegram. Unlike the actual Telegram application, the contents of the message are plainly visible in the Android system log.
+Though it can be hard to read in this screenshot, the bot attempts to read a status update from a Telegram account called @fanili11 . Once you know where to look, it’s easy to browse to the user’s profile.
+It’s pretty easy to see how this behavior is just an incremental change from Anubis’ use of Twitter accounts for command and control purposes.
+
+a
+
+What are those Chinese characters?
+When we wrote our last post, the crooks who ran the Anubis bots just used simple key-based encoding, which they further encoded with base64, in their command and control strings. Now they have added an additional layer of obfuscation by using Chinese characters.
+Here’s how the Anubis author obfuscates the messages.
+1. The bot first replaces the Chinese characters with Latin alphabet or digit characters using a substitution table like the one below.
+replaced_char = new String[]{"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "A", "S", "D", "F", "G", "H", "J", "K", "L", "Z", "X", "C", "V", "B", "N", "M", "q", "w", "e", "r", "y", "u", "i", "o", "p", "a", "s", "d", "f", "g", "h", "j", "k", "l", "z", "x", "c", "v", "b", "n", "m", "=", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+chinese_char = new String[]{"需", "要", "意", "在", "中", "并", "没", "有", "个", "概", "念", "小", "语", "拼", "亡", "及", "注", "鲜", "新", "死", "之", "类", "阿", "努", "比", "拉", "丁", "化", "体", "系", "都", "只", "斯", "一", "套", "用", "恶", "件", "来", "标", "音", "的", "符", "号", "而", "不", "是", "字", "母", "寂", "寞", "肏", "你", "妈", "屄", "引", "脚", "吸", "员", "会", "膏", "药"};
+
+Using this method to decode the Chinese text posted to Telegram, we get a base64 string of MDM3M2QzMzA3NzIzMTk5ODgyNzgxZDBhNTdhN2FiYzNiZTU0ZjM=
+2. Next, it strips away the base64 encoding, and passes that data to its key-based decoder, shown here.
+decode1(arg2, "7day"); 7day is key
+
+decode2((key.getBytes()).a(this.b(new String(Base64.decode(arg3, 0), "UTF-8"))));
+
+for(v1 = 0; v1 < arg7.length; ++v1) {
+this.b = (this.b + 1) % 0x100;
+this.c = (this.c + this.a[this.b]) % 0x100;
+this.a(this.b, this.c, this.a);
+v0[v1] = ((byte)(this.a[(this.a[this.b] + this.a[this.c]) % 0x100] ^ arg7[v1]));
+}
+
+After decoding, we get the C2 address being used by the malware (which we have modified to prevent accidental clicks):   hxxp://cleanwin[.]top
+So, what the author(s) of Anubis has done is to just add another layer of obfuscation, in the form of meaningless Chinese characters, to make it one additional step more difficult to determine, and block, the C2 domain.
+Why is Anubis using Telegram and Twitter for this?
+Telegram and Twitter are popular sites whose domains are less likely to be filtered or blocked than the low-reputation domains used by Anubis for its C2. The bots can easily slip through web filtering rules. Another advantage of using these sites is that the botnet operator can change the C2 domain easily, if one of them gets blocked or shut down, by posting a new Telegram status update.
+Both Twitter and Telegram have been relatively quick to suspend the accounts used for this purpose, but the shutdowns don’t happen instantaneously. By the time Telegram removes the account being used for C2, it’s likely that several victims have already installed the malware and obtained their initial c2 server address from the malevolent Telegram account.
+Downloaders are the Play Market’s Achilles’ heel
+Android malware with downloader capabilities appear frequently on Google’s Play Market. Most of the Anubis malware we see on Play appear as benign-looking apps — with the ability to download additional content. The downloader portion of the app, verified by the Play Market, looks clean to Google’s internal app scanner tools used by their security services and Google Play Protect.
+After a fixed delay, the malware checks to make sure it is running on a physical device (as opposed to an Android Virtual Desktop) and then downloads its payload from the command and control server. The malware application uploaded to play store will have minimal permissions, activities to pretend its clean and to evade security services checks.
+Anubis adds one or more switches to the Accessibility settings menu, in this case, something called Active Secure Service
+After the payload gets downloaded, it abuses the Accessibility service by adding a switch to the settings. Flipping that switch to the on position grants the payload with the permissions it needs to perform malicious actions.
+If you leave the switch flipped off, the malware prevents you from opening any settings page other than Accessibility, and immediately flips the Accessibility settings page open, re-prompting the victim to turn on the new switch. On this sample, the malware named the switch “Active Secure Service.”
+The Anubis payload temporarily installs an icon in the apps tray, but it disappears as soon as the victim activates the service
+Payload behaviour
+Anubis targets a large number of banks worldwide, and also applications usually connected with people’s finances, like Paypal, eBay, or Amazon shopping.
+Depending on the application you open, the Trojan produces a fake login dialog box ( overlay ) over the top of the legitimate app or browser window on your phone. You can see, in this screenshot below, the Kiwibank overlay pushed by Anubis over the top of the legitimate Kiwibank application after we opened it. Kiwibank is far from the only bank targeted, and is used here only as a canonical example of how the malware appears from the end-user’s perspective.
+Any data entered will be sent to the crooks running Anubis. In addition to its bank credential theft capabilities, Anubis also has Remote Administration tool (RAT) features that let someone remotely make changes to the infected phone, and a ransomware module that will lock you out of the phone until you pay the criminals.
+
+Difficult to uninstall
+If the victim is unfortunate to get this malware and if they try to uninstall the payload which appears as ‘System update’ or ‘Google Services’ or ‘ Assistant service,’ etc., they will see a popup warning that looks like the screenshot below (in this case, because the application targeted users in Turkey, the warning is in the Turkish language), as the malware tries to monitor the removal of application.
+The easy way to get rid of the malware is to reboot into ‘safe mode,’ if that feature is available on your phone. (On the phones that have this feature, hold down the power button for a few seconds, until a dialog appears to reboot into safe mode.) Once the phone is in safe mode, you can uninstall the app from there by going into settings -> apps and uninstalling it.
+Performing a factory reset, which removes all applications that are not part of the phone’s firmware, may be the only way an infected phone can clean off the otherwise inaccessible payload application if your phone doesn’t support safe mode. If you choose to do this, make sure you back up any important files, photos, music etc. from the phone’s internal storage before you do so, as those files will get wiped out as well.
+
+Translation - ERROR! System Files Cannot be Removed!
+As always, install only from reputable vendors (though even that may not preclude an infection) and check the origin of the application and background of the developer before you install an app you’re not familiar with.
+Sophos Mobile security should detect these apps as Andr/Dloadr-EEP and Andr/BankSpy-AH.
+
+Payload - b4bd65520d764bea63e2956f63cfe1e79109aa63efc39f3fd938e29df77cf0fd
+Downloader - 390d4e5227d7a68ff7759138d10e2415806ca735728fe06948bffb1a11474ad8
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

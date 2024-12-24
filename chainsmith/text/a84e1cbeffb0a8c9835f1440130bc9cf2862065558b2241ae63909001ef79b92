@@ -1,0 +1,47 @@
+The great prepender: W32/Nubys-A
+2007-01-01
+
+Robert Poston
+Sophos
+,
+UK
+Editor:
+Helen
+
+Martin
+Abstract
+W32/Nubys-A looked, at first glance, like a trojan downloader. However, most samples contained not one, but several legitimate PE files in the appended data. Samples with one appended executable would have suggested a prepending virus, but why several? Robert Poston makes sense of the conundrum.
+Copyright © 2007 Virus Bulletin
+
+Introduction
+When samples of W32/Nubys-A first came in for analysis it looked, at first glance, like a trojan downloader. However, it was spreading rapidly across the network of a large international company, and most samples contained not one, but several legitimate PE files in the appended data. Samples with one appended executable would have suggested a prepending virus, but why several? It did not make sense.
+
+A closer look
+Analysis of the malware code revealed two major pieces of functionality:
+A thread to download and execute six files from a website. Samples of these files were obtained, and found to be password stealers for popular online games.
+A subroutine, periodically called from a timer, using the API call WnetEnumResourceA to find executable files to infect on the network. The virus extracted the correct icon from the target host, and then prepended itself to the file.
+So this was indeed a prepending virus, and its purpose was clear: to spread the password-stealing trojans silently, as widely as possible, without drawing attention to itself. Infected hosts should appear to run as normal.
+
+A silly mistake
+The author got one thing wrong. Upon finding a new host to infect, a prepending virus would normally just prepend its own viral code. However, this author’s infection routine prepended the whole of the currently executing viral file – including any previously infected hosts. Furthermore, the infection marker ‘by USA!’ (see Figure 1) was appended each time. The URL for the downloads was also part of the appended data, but appeared just once.
+Figure 1. The infection marker, ‘by USA!’, followed by a length string and a new host.
+Figure 2 illustrates the resulting file structure after each generation of infection. Except for the marker, which is of fixed length, each piece of appended data was prefixed by a decimal text string giving its length.
+Figure 2. File structure for three generations of infection.
+This explains the chains of appended files observed at the beginning. Each successive infection produced a longer and longer sequence. It also explains why several of the samples had the same sequence of initial hosts.
+
+The cost of mistakes (1)
+Each time an infected file was executed, the virus would execute its downloading and infection routines then drop and execute a temporary copy of Host1 (using a filename of ‘~’ followed by the original file name).
+This is where the virus writer’s mistake becomes clear: for second and subsequent generations it should be the final host that is executed. For example, suppose the first generation is an infected copy of notepad.exe. For the user, this file will appear to execute as normal. However, if the infected notepad.exe itself infected, say, Internet Explorer then when the user next attempted to run Internet Explorer they would find notepad executing instead.
+This would at least raise the alarm that something has been tampering with files, which is not what the virus author wanted. It is also unfortunate for the infected user, since it will break many applications.
+
+The cost of mistakes (2)
+It is doubtful that malware authors do much quality control testing – they don’t care if they mess up other people’s computers. Conversely, anti-virus companies need to produce a response that is fast, yet accurate. For a new trojan or worm it is often possible, after only a few minutes’ analysis, to confirm the malicious nature of the file and to have detection quality control tested and published soon afterwards. For a virus, detection is not enough. Simply deleting infected files would also delete the original hosts, so where possible disinfection is provided to restore infected files to their original form.
+Thus a detailed analysis of the infection mechanism is required, and a way must be found to reverse its actions. For a complicated polymorphic virus analysis this may take days, while for a non-polymorphic prepender, like W32/Nubys-A, a response can usually be made within a few hours. However, care must still be taken to understand what is going on. When the virus writer makes mistakes, the anti-virus researcher must be careful not to fall into the same trap.
+For W32/Nubys-A this means that, instead of restoring the first appended host, the final one must be restored. One possible strategy to locate this host would be to scan backwards from the end of the file for an MZ and PE header. However, this would be slow and, in certain situations, unreliable. Thankfully, the infection mechanism of W32/Nubys-A supplies sufficient information for a much better disinfection routine. The viral code is of a fixed length, so it is possible to locate and read the length of the encrypted URL, and from there to calculate the position of each successive length field until the last one is reached. This identifies the correct part of the file to restore.
+
+Conclusion
+Mistakes made by malware and spam authors are nothing new. There are thousands of damaged variants of the Netsky worm that fail to execute. There are spam campaigns that send out millions of gibberish emails. For their authors, these careless mistakes are not a problem. They are not accountable to anyone, and they do not take responsibility for the effects of their creations.
+However, for the researchers who take on the responsibility of clearing up other people’s mess, this can create some interesting challenges. Writing a disinfection algorithm for W32/Nubys-A is just one example of the importance of a flexible and extensible anti-virus engine. It is thanks to such technologies that most problems have a solution.
+Virus: W32/Nubys-A
+Aliases: Trojan-Downloader.Win32.Agent.bam.
+Type: Non-polymorphic prepending virus.

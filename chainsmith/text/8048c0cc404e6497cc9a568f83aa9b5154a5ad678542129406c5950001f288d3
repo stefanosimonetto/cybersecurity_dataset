@@ -1,0 +1,59 @@
+A Plugin’s Expired Domain Poses a Security Threat to Websites
+
+Do you keep all of your website software (including third-party themes, plugins, and components) up to date? You should! We always recommend this to our clients and readers. Applying updates quickly will make sure that you replace any vulnerable code as soon as the security patch is released. However, this isn’t the only reason to keep your website software as fresh as possible.
+About a month ago, we shared research in which the domain of a WordPress theme had expired and was parked by “domainers”. The result was unwanted ad images being displayed on sites that still used the unsupported theme. In that case study, the issue was original theme files using scripts hosted on its own domain. This caused the affected sites to redirect visitors to ad pages; a default behavior for JavaScript requests using that particular domain parking service.
+Recently our incident response team had a case in which a website was redirecting users to an external domain. Ad pop-ups were displayed, and some were obviously malicious. For example, below is this Comcast tech support scam pop-up that tried to block a web browser and asked to call their number.
+
+Flexytalk Widget Plugin
+While investigating this issue we noticed JavaScript attempting to load from flexytalk[.]com. This in itself was not suspicious – the plugin was named flexytalk-widget. After cleaning however, the malware persisted. We started digging deeper and it turned out that the domain flexytalk[.]com had expired. Somebody that wasn’t the original domain owner purchased and parked the domain. They proceeded to put it on a web server that pushed all sorts of ads onto visitors.
+The version of the plugin we were analyzing was more than a year old and it had this iFrame in the FlexyTalk_Widget.php file:
+<iframe src=“http://panel.flexytalk[.]com/account/pluginlogin/‘.$usr.’/'.$pwd .'/1" width="100%" height="100%" style="min-height:850px; width:100%" frameborder=0 ></iframe>
+The plugin stores and sends the password in plain text, but that’s not the main problem. The real problem is the fact that via the iFrame, the parked domain can be used to inject payloads into unsuspecting websites, redirecting visitors and presenting them with pop-ups like the one above.
+Behind the scenes, the plugin also makes requests to another flexytalk[.]com URL:
+$response= curl2("http://panel.flexytalk[.]com/plugin/FlexyID?usr=".$username ."&psw=".$password);
+log_me($response);
+Now that the domain name no longer belongs to the developer, the results of such requests are unpredictable. Best case, they’ll break some plugin functionality. Worst case, the new domain owner will steal the credentials (there are still many people who reuse their passwords across all systems) and, depending on the quality of the plugin code, may inject malware into web pages or compromise the server.
+Hijacked Scripts
+The plugin also used a hosted script on flexytalk[.]net, which also expired more than a year ago and was re-registered by a different person who parked it on another domain parking service.
+$htmlCode="<script id='ftcontent' data-flexytalk=".$widget_id." ".$datadept. ">var script =
+document.createElement('script');script.src = ('https:' == document.location.protocol ? 'https:' : 'http:') +
+'//www.flexytalk[.]net/app/v3/js/flexytalk.js';document.getElementsByTagName('head')
+[0].appendChild(script);
+In this case, the domain parking service didn’t return a redirect code for JavaScript requests as in the previous case. This one returned a code that created ad pop-ups when you click anywhere on a web page (e.g. on a page that includes an older version of the Flexytalk widget.)
+
+Domainers in Action
+This Flexytalk plugin was severely affected by the expiry of both domain names it used for its operation. Interesting that the .net and the .com domains were re-registered by different people a year ago and that they independently decided to park the domains.
+Domain Name: flexytalk[.]com
+Registrant Name: wenjie chen
+Creation Date: 2015-09-30T18:03:17Z
+IP: 103.224.182.207
+
+Domain Name: flexytalk[.]net
+Registrant Name: Milen Radumilo
+Creation date: 2015-07-09T18:03:41Z
+IP: 185.53.178.8
+These two people might not know each other but they are in the same business. They register abandoned, expired domains in bulk then try to sell them for a much higher price than they paid for them. While they are waiting for buyers, they park their domains on servers where they generate revenue from ads when people occasionally visit the sites. It could be clicks on old links from existing sites, typos in URLs, or (as in our case) via software that relies on resources on those expired domains. As you might expect, expired domains with lots of live links to them (including links to images and JavaScript libraries) are among the most valuable types of loot.
+If you doubt that the domains now belong to professional domainers, just check how many domains these two own:
+
+Wenjie Chen (and the email address) is associated with ~4,884 domains
+Milen Radumilo is associated with ~100,000+ domains
+
+You can imagine how many expired domains have similar behavior – ads, pop-ups, redirects. For example, the server with IP 185.53.178.8 (where flexytalk[.]net is parked now) is also used by about 75 thousand other parked websites. The name servers of this domain parking service (PARKINGCREW[.]NET) are used by over a million domains.
+Flexytalk Widget Gets New Name
+What happened to the plugin? It turns out that even after the expiry of the domain names, the plugin is still being developed and updated. But they changed the name and here’s the explanation from their changelog:
+3.1.8
+IMPORTANT INFORMATION: All IM accounts change to xyz@chat.frescochat.com (instead of xyz@flexytalk[.]im)
+The update points your script to our new FrescoChat servers
+Due to operational problems, we’ve changed our name to FRESCOCHAT”
+According to the plugin repository, this happened 16 months ago. They changed the plugin name and servers but left the same flexytalk-widget plugin id so that users of the old versions of the plugin could be notified about the new versions and easily update them. Three versions with the new domain names have been released since then. Still, some webmasters refused to update the plugin – which is really strange – because it’s a live chat widget and no one needs a live chat that doesn’t work (and it didn’t work since they changed their servers 16 months ago).
+Lessons Learned From This Case
+Expired domains of third-party components and services that you may be using on your site can be a security problem for you and your site visitors.
+There are many good reasons to keep everything up to date and get rid of unsupported legacy software. A possible dependency of legacy code on expired domains that might have changed hands since then is just one of them.
+When choosing third-party software for your site (CMS, themes, plugins, components), consider whether the developers will be able to support it long term. Be wary if the software is an interface to services provided on the developer’s own domain or any other third-party domains. Try to imagine what could happen if that developer goes out of business and either stops supporting the software or sells it along with the domain name. What happens if the developer’s site gets hacked? In all these scenarios, your own site may be at risk of experiencing redirects, unwanted ads, malware injections, data theft, and server compromises.
+Summary:
+
+Install software only from reputable developers.
+Remove everything that is not critical for your site functionality.
+Get rid of all unsupported software.
+Keep everything else up to date.
+Regularly scan your site for broken links and remove references to no longer existing sites.

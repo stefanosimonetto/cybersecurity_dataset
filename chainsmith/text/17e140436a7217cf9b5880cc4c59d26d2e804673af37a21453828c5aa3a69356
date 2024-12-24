@@ -1,0 +1,116 @@
+How to Create Website Backups Using Command-line Tools
+
+Creating website backups should be one of the most important recurring tasks for a website administrator, and yet backups are often forgotten when thinking about website security.
+Creating backups using command-line tools are available to all Linux/Mac users for free. If you’re not on Linux/Mac, we have step-by-step guide on how to create website backups using software with a graphical interface that works on Windows.
+This post is not intended to provide a complete solution for backups, but instead, for someone who has the time and wants to learn a few basic command-line tools that can be used to create backups.
+Requirements
+Your host should be able to assist you with confirming that you have the required software and credentials.
+Software on the Server:
+
+tar
+
+Software on Your Computer:
+
+SSH (used to create/delete backup files)
+SCP (used to download the backup file)
+Terminal (such as gnome-terminal – used to run all commands)
+
+Information You Need:
+
+Your server’s IP and SSH credentials
+Your database credentials
+Your website’s root directory (and any directory you want to include/exclude from your backup)
+What your database is: MySQL, PostgreSQL or SQLite (if your website uses one)
+
+Steps to Create a Backup
+Once you connect your computer and your server, you can use commands to quickly backup your website.
+Connecting to the server over SSH:
+SSH stands for Secure Shell, and it’s commonly used to perform remote command execution.
+
+Open your terminal and type the following command to connect to your server using the SSH protocol:
+ssh username@serversIP
+Once you are connected to the server in terminal, every command you type will be executed on your server. Now, we’re going to create a new folder on your server named “backup”. You can locate this folder anywhere as long as it’s not publicly available.
+If the root directory of your web application is /home/username/html you can create your “backup” folder in /home/username/ without a problem. We will remove backups from the server once they are transferred to your computer.
+If you don’t know what your website’s root directory is, you can find this information in your cPanel account:
+
+Here you can see that the root directory for this website is /home/ma658tvk.
+In Linux and macOS you can create a directory using the mkdir command, like this:
+mkdir -p /home/username/backup/{db,core,logs,conf}
+This command will create the “backup” directory in /home/username/. Inside this folder, we have created four more directories: db, core, logs, and conf.
+Just a note for the -p flag of the mkdir command; this flag indicates that there will be no errors if the directories already exist and will also create parent directories as needed.
+It is very important that you backup your entire application, including database dumps, core files, plugins, and media files. If you want to go the extra mile, server configuration files and logs. These can be important in the event of a compliance issue, where forensic analysis is required.
+Exporting the Database
+One of the reasons why I love creating backups from the command line is because most of the time I don’t have to use any external tool to backup the database. Most database engines have command-line utilities that makes this a simple and painless process. You just need your database credentials.
+
+The following commands will export a dump of your database and locate the dump at  /home/username/backup/db/
+If your site uses MySQL, run the following command:
+mysqldump -u [database_user] -p [database_name] > [/home/username/backup/db/yourdomain.sql]
+If your site uses PostgreSQL, run the following command:
+pg_dump -U [database_user] [database_name] > [/home/username/backup/db/yourdomain.sql]
+
+These commands will prompt you for the password. Once you type it (characters will not be visible in your terminal) the dump will be saved in the specified backup folder.
+If your site uses SQLite, you just need to copy the file:
+cp [/path/to/your/SQLite.db] [/home/username/backup/db/]
+
+Creating a Tar File of Your Website Files
+Now we are going to compress (for convenience) the core files of your website. For this step, all you need to have installed on your server is the tar program and know the location of your core files plus any folder you want to include or exclude from the backup.
+Again, let’s assume your website is located in /home/username/html. You can create a tar file with the following command:
+tar -cf /home/username/backup/core/core.tar /home/username/html
+
+The above command will work effectively if you want to include all files inside /home/username/html, but what if you don’t?
+Let’s imagine your website structure is as follow:
+html
+├── cache
+├── core
+└── www
+├── index.php
+└── media
+
+If we compress the complete directory, the cache folder will also be backed up. This is not necessary, and by removing it from your backup you can save a lot of time and bandwidth. With the tar command, you can easily exclude directories with the flag –exclude. Now, let’s compress the website directory again, by this time excluding the cache directory.
+tar --exclude='/home/username/html/cache' -cf /home/username/backup/core/core.tar /home/username/html
+
+And voilà – a .tar file named core.tar will be saved inside /home/username/backup/core/. You can use the –exclude flag as many times as necessary to exclude everything you don’t need from your backup!
+Optional: Backup Your Configuration & Log Files
+I have found it worthwhile to backup configuration and log files. There have been times when I have forgotten what my `httpd.conf` looks like, and in those times it’s way easier to review it on my personal computer. I’m a lazy person, please understand – the same applies to log files.
+There is no universal location for configuration and log files, but fortunately, you can add multiple locations to the tar command. Below is an example:
+tar -cf /home/username/backup/conf/conf.tar \
+/full/path/to/first_location \
+/full/path/to/second_location \
+/full/path/to/third_location
+
+The “\” character at the end of the first line tells your terminal not to execute the command when pressing the “Enter” key but rather to expect the command to have multiple lines. The last line is the only one that does not include the “\” character.  This tells the terminal that the command is now ready to be executed. In this way, you can create a .tar containing your configuration/log files located in different folders across your system!
+Restoring your configuration files will only allow you to replicate your configuration as long as you install the exact software as in the backed up server. If you restore configuration files into a production server and the software differs, you will end up with a lot of errors. Be careful.
+Time to Wrap Everything Up
+
+Creating a Final Tar File
+Now that we have all the files that we want under the /home/username/backup/ folder, all we need to do is create a final tar and download it to our personal computer. This is not a requirement since we could download the whole backup folder without compressing it, but I’d rather download a single file instead of many.
+tar -cf /home/username/latest.backup.tar /home/username/backup/
+
+This will create a file called latest.backup.tar containing all of our backup files. You can disconnect your computer from your server by typing exit in your terminal.
+Downloading the File with SCP
+In order to download the latest.backup.tar file, you will need the scp command. Here’s how you download the file:
+scp username@serversIP:/home/username/latest.backup.tar /home/username/backups/domainname/backup_$(date +%Y%m%d_%H%M%S).tar
+
+What this command does is grab the latest.backup.tar file from your server and download it to your computer to the folder /home/username/backups/domainname/ then renaming it with the help of the standard date command (e,g. backup_20170730_142422). This a very easy way to name your backups in an incremental way.
+Deleting the Backup from the Server
+Now that the backup is safe in your computer, you can safely remove it from your server.
+To do this, you need to login back to your server using SSH and run the following commands
+rm /home/username/latest.backup.tar
+rm -rfi /home/username/backup/
+
+With the first command, you are deleting the final tar file from your server, and with the second command, you are deleting the backup folder recursively from your server.
+Please make sure to use the right path to this file and folder because recovering something deleted from the command line is pretty hard and time sensitive. Once something gets deleted, all links to the file are broken and the OS might free the blocks used by the file at any time. Again, make sure to use the right paths!
+Once you deleted your backup files, you can exit your server by typing exit. Now you have a complete backup in your personal computer. Success! Or is it?
+See our post on restoring backups from the command line to test your backups!
+A backup is never successful unless you test it!
+Conclusion
+This is not a complete solution, although it will get you started in the science of making backups.
+In future posts we will cover a few things we are lacking in this post:
+
+Restoring backups (testing and using backups in the event of an issue)
+Incremental backups (backup full once and then save history of modified/new files)
+Integrity checks for the backups (don’t trust anything that is not signed!)
+Automation (who backs up your websites when you’re vacationing?)
+Replication (backups of your backups!)
+
+These five reasons should be enough to keep you thinking on a professional hassle-free backup solution. But think no more, we got you covered.

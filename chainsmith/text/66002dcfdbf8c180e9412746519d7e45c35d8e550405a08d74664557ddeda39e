@@ -1,0 +1,22 @@
+vBSEO’s Vulnerability Leads to Remote Code Execution
+
+We were notified last week that the vBulletin team sent an email to all their clients about a potential security vulnerability in vBSEO. After further investigation, we confirm that this is a very critical issue as it could allow an attacker to execute malicious PHP code on your website, manually patching this add-on should be done immediately.
+Is Everyone Using This Add-on at Risk?
+It really depends, as vBulletin is a highly configurable piece of software, you may or may not be directly affected.
+The vulnerable snippet of code executes upon loading vBulletin’s memberinfo_visitormessage template. That means that if you allow your visitors (authenticated or not) to leave and see the “visitor messages” section of a user’s profile, you’re at risk.
+
+Technical Details
+For some reasons, vBSEO will insert user-provided referer link into the visitormessage template:
+
+As you can see at lines 653 and 658, it does so by passing the $permalinkurl variable to the vbseo_modify_template34() function, which by itself doesn’t look that bad, beside presenting an obvious XSS vulnerability (the variable is not sanitized before being put in there).
+That said, things gets a little bit uglier when having a look at vbseo_modify_template34()‘s code:
+
+At first glance, we can tell that these preg_replace()  calls aren’t anything good, particularly for us as an attacker can control $replacewith‘s content – with which he could craft a payload that matches any of these regular expressions to insert what looks like PHP code in the template!
+We could confirm our thought by analysing the vbseo_modify_template() function which essentially just replaces the specified snippet of code in vBulletin’s template cache.
+So, to inject PHP code, an attacker would have to insert something like this in the referrer field (making it very easy to flag by looking at your HTTP server’s logs):
+
+http://www.somesite.com/?a=$stylevar[${${phpinfo()}}]
+
+Patch as Soon as Possible!
+This is a very critical issue, you should definitely patch this plugin by changing the lines specified in our earlier post.
+Note that if you’re using our Website Firewall, you’re already protected from this vulnerability.

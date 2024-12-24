@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: Sender authentication – practical implementations</title>
+<meta name="description" content="Previously Terry Zink has looked at how SMTP works, email headers, SPF, SenderID and DKIM. But what about some practical realities? How well do these technologies work in real life? Can we use them to solve actual problems? Here he describes a real case in which SPF and SenderID were combined to solve a problem." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 2047;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/remo_expand/blocks/remo_expand/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.color.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/remo.expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<div class="titlepage" xmlns=""><div><div><h1 class="title" xmlns="http://www.w3.org/1999/xhtml"><a id="vb201104-sender-authentication"></a>Sender authentication &ndash; practical implementations</h1></div><div><p class="pubdate" xmlns="http://www.w3.org/1999/xhtml">2011-04-01</p></div><div><div class="authorgroup" xmlns="http://www.w3.org/1999/xhtml"><div class="author titlepage"><h3 class="author"><span class="firstname">Terry</span> <span class="surname">Zink</span></h3><span class="orgname">Microsoft</span>, <span class="orgdiv">USA</span></div><b class="editedby">Editor: </b><span class="editor"><span class="firstname">Helen</span> <span class="surname">Martin</span></span></div></div><div><div class="abstract" xmlns="http://www.w3.org/1999/xhtml"><p class="title"><b>Abstract</b></p><p>Previously Terry Zink has looked at how SMTP works, email headers, SPF, SenderID and DKIM. But what about some practical realities? How well do these technologies work in real life? Can we use them to solve actual problems? Here he describes a real case in which SPF and SenderID were combined to solve a problem.</p></div></div><div><p class="copyright" xmlns="http://www.w3.org/1999/xhtml"><i>Copyright &copy; 2011 Virus Bulletin</i></p></div></div><hr /></div>
+<div class="ccm-remo-expand">
+<div id="ccm-remo-expand-title-3456" class="ccm-remo-expand-title ccm-remo-expand-closed" data-expander-speed="200">Table of contents</div><div id="ccm-remo-expand-content-3456" class="ccm-remo-expand-content"><div class="toc"><dl><dt><span class="sect1"><a href="#id3028556"></a></span></dt><dt><span class="sect1"><a href="#id2966817">The real-life weaknesses of SPF and SenderID</a></span></dt><dt><span class="sect1"><a href="#id3914940">Combining SPF and SenderID</a></span></dt><dt><span class="sect1"><a href="#id3646005">Naming the feature</a></span></dt><dt><span class="sect1"><a href="#id2721778">Actions</a></span></dt><dt><span class="sect1"><a href="#id3321090">Results</a></span></dt><dt><span class="sect1"><a href="#id4439415">Conclusion</a></span></dt></dl></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3028556"></a></h2></div></div></div><p>In my six-part series on sender authentication [<span class="citation"><a href="#citation.1">1</a></span>], [<span class="citation"><a href="#citation.2">2</a></span>], [<span class="citation"><a href="#citation.3">3</a></span>], [<span class="citation"><a href="#citation.4">4</a></span>], [<span class="citation"><a href="#citation.5">5</a></span>], [<span class="citation"><a href="#citation.6">6</a></span>], I wrote about a number of topics: how SMTP works, email headers, SPF, SenderID and DKIM.</p><p>I mainly wrote about the theoretical constructions of the system and illustrated some considerations for mail receivers when they implement the technologies. But what about some practical realities? How well do these technologies work in real life? Can we use them to solve actual problems? The answer is yes, and that is the subject of this article.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2966817"></a>The real-life weaknesses of SPF and SenderID</h2></div></div></div><p>SPF and SenderID are two technologies that are very similar and accomplish similar things, but each has its weaknesses and strengths. <a href="#table.1">Table 1</a> shows a comparison between the two technologies.</p><div class="table"><a id="table.1"></a><table border="1" summary="Comparison between SPF and SenderID."><colgroup><col align="center" /><col /><col /></colgroup><tbody><tr><td align="left"><span class="bold"><strong>Feature</strong></span></td><td><span class="bold"><strong>SPF</strong></span></td><td><span class="bold"><strong>SenderID</strong></span></td></tr><tr><td align="left">DNS records</td><td>v=spf1</td><td>v=spf2.0</td></tr><tr><td align="left">Domain that it works on</td><td>Envelope sender (P1)</td><td>PRA (P2 &ndash; much more common) or envelope sender (much less common)</td></tr><tr><td align="left">How does it treat SPF records</td><td>Works per normal</td><td>Treats it like a SenderID record if the SenderID record does not exist</td></tr><tr><td align="left">How does it treat SenderID records</td><td>Ignores it</td><td>Works per normal</td></tr><tr><td align="left">Strengths</td><td>- Can stop some phishing, good for some whitelisting</td><td>- Better at stopping phishing (or spoofing) that visually tricks the user</td></tr><tr><td align="center">&nbsp;</td><td>- Can prevent backscatter by only sending bounces to messages that pass an SPF check</td><td>- The PRA derives from actual Resent-* headers, and Sender and From headers; this makes validation on forwarded mail theoretically possible</td></tr><tr><td align="center">&nbsp;</td><td>- Can reject some messages in SMTP before accepting any data</td><td>&nbsp;</td></tr><tr><td align="center">Weaknesses</td><td>- Doesn&rsquo;t catch phishing when the P1 From is Neutral or None and the PRA is spoofed</td><td>- Prone to false positives when mail is sent on behalf of another</td></tr><tr><td align="center">&nbsp;</td><td>- Doesn&rsquo;t work on forwarded mail</td><td>- Doesn&rsquo;t work on forwarded mail</td></tr></tbody></table><p class="title"><b>Table&nbsp;1.&nbsp;Comparison between SPF and SenderID.</b></p></div><p>The weaknesses of SPF became apparent to me several years ago. The year was 2007. The mortgage financial crisis was still ahead of us, Rudy Giuliani and Hillary Clinton were their party front runners for the presidential nominations, and I was still a fledgling spam analyst. The years 2006 and 2007 were quite turbulent in the spam world. In 2006 we saw a major influx of image-only spam, and spam filters were caught scrambling to react to it because it was very effective in evading content filtering. This was also the time that botnets really hit their stride and we saw massive increases in the volume of spam hitting our inbound servers. Finally, in the summer of 2007, spam with PDF attachments was just emerging. It was short-lived, but it was still a new and creative spam technique that hadn&rsquo;t been seen previously.</p><p>I wasn&rsquo;t nearly as familiar with SPF at that time as I am now. I had only recently become a Program Manager at <span class="emphasis"><em>Microsoft</em></span> and this meant that I would be exposed to an increasing number of customer escalations. This also meant that anything I couldn&rsquo;t speak confidently about would come back to haunt me.</p><p>In mid-2007, I was looped into an escalation for a new customer who was receiving a lot of phishing messages in which the attacker was spoofing the From: address. These messages were evading our filters and landing in people&rsquo;s inboxes. Users were being fooled by the messages, clicking the links, and their workstations were being compromised. This was occurring regularly enough for the IT personnel of the company to escalate the matter to us. (<span class="emphasis"><em>This was the first instance I had seen of a spear phishing attack, although in retrospect it was probably less sinister than it sounds. A targeted spear phishing attack customizes everything, right down to the recipients. This attack spoofed the From: address, but nothing else in the message content was customized</em></span>.)</p><p>At the time, I knew that SPF was an anti-spoofing technology but I didn&rsquo;t know much more beyond the basics so I did some research and learned a lot more. The spammer was sending mail from a domain with no SPF records in the &lsquo;P1 Mail From&rsquo; and was spoofing the recipient&rsquo;s organization in the &lsquo;P2 From&rsquo; address field. The result was that the recipients of the message were fooled into believing that it was from an internal sender because they recognized their &lsquo;own&rsquo; domain as the sender.</p><p>For example, suppose that the organization receiving the mail was the government of Washington State (<span class="emphasis"><em>the government of Washington State is not our customer, I use this as an example</em></span>):</p><pre class="programlisting">SMTP Mail From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="680904031f061a28120d0a1d120d12460b0705">[email&#160;protected]</a>
+P2 From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="f9989d949097b98e98d78a8d988d9cd79e968f">[email&#160;protected]</a>
+To: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="17636d7e797c57607639646376637239707861">[email&#160;protected]</a>
+Subject: Update your credentials
+
+Dear recipient,
+
+We are upgrading our security infrastructure. Please login to the following site 
+and enter your credentials so it will update in our systems otherwise your account 
+will be locked out.
+
+http://security.wa.state.gov/user/login
+
+Thanks for your co-operation in this regards.
+
+Department of IT Security</pre><p>Let&rsquo;s take this message apart and see what happened:</p><div class="orderedlist"><ol type="1"><li><p>The state of Washington has published SPF records and tagged them with &lsquo;-all&rsquo;, which means that receivers should Hard Fail any mail that purports to come from its servers but whose sending IP is not in its SPF record. This is something that a responsible organization does to prevent being spoofed and then delivered to someone&rsquo;s inbox.</p></li><li><p>Upon receipt of the message, the spam filter executes an SPF check on the email address in the &lsquo;P1 Mail From&rsquo;, which is the randomized <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="8feee3f8e4e1fdcff5eaedfaf5eaf5a1ece0e2a1">[email&#160;protected]</a> The domain zebuzez.com exists in DNS and has an A-record but does not publish SPF records. The spam filter checks it out and the result is SPF None. It continues to pass it down to the rest of the filter.</p></li><li><p>The URL in the message is a newly created domain, and the message is sent from a new IP address that is part of a botnet but is not on any blocklists. It evades the spam filter&rsquo;s other reputation checks and ends up in the customer&rsquo;s inbox. This is a false negative.</p></li><li><p>The user sees the mail which appears to come from their own internal department, <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4322272e2a2d0334226d30372237266d242c356d">[email&#160;protected]</a> Since it seems to come from a domain they recognize, they trust the message and decide to click on the link. The spammer has been clever enough to send the message in HTML format and the link in the message actually points to a spammer&rsquo;s domain. The user&rsquo;s computer has now become part of a botnet because they clicked on the link. (<span class="emphasis"><em>One dismissive argument I hear regarding SPF&rsquo;s ability to prevent spoofing by Hard Failing spoofed addresses is that all a spammer has to do to circumvent it is to send mail from a slightly different account, say, state.wa.gov.ghsataw.com. This is true, and spammers do this. However, they also spoof the actual domains and they do this a lot. I have not measured which is more prolific, but the spoofing occurs so often that it is a legitimate scenario that requires a solution.</em></span>)</p></li></ol></div><p>If you only use SPF as part of your spam filter, then your filter will be prone to these types of attack. Whether spammers spoof your specific domain intentionally or are randomizing the domains in the senders, the fact is that SPF cannot prevent these emails from reaching your inbox.</p><p>I was left scratching my head. How could we combat these types of spam messages using content filtering? I started to investigate SPF and how it executes on the &lsquo;P1 From&rsquo; address. The SPF documentation discourages the use of SPF on the &lsquo;P2 From&rsquo; address because, while the P1 and P2 From addresses are often the same, sometimes they are not, and it is difficult to predict what will occur in the event that they are not the same. Will a spam filter flag legitimate messages as spam (i.e. generate false positives)? For example, suppose that the state of Washington wanted to send out a large mail campaign to residents of the state who had opted in to receive special announcements &ndash; e.g. about road repairs, government office closures, breaking news reports or results of legislative changes. Rather than sending these out themselves, the state might decide to use a marketing company, say, Big Communications, Inc. The marketing company wants the emails to look like they came from the state of Washington, but needs to avoid them being marked as spam.</p><p>Since SPF is the most common authentication technology, they would do something like the following:</p><pre class="programlisting">SMTP Mail From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="d5a1beb2b2bda6b4a6e8a2b4fba6a1b4a1b0fbb2baa395b7bcb2b6bab8b8a0bbbcb6b4a1bcbabba6fbb6bab8">[email&#160;protected]</a>
+P2 From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="5a393537372f3433393b2e333534291a2d3b74292e3b2e3f743d352c">[email&#160;protected]</a>
+To: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="fa8e80939491ba8d9bd4898e9b8e9fd49d958c">[email&#160;protected]</a>
+Subject: Latest results of bill 2101
+
+Dear <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="7307091a1d183304125d00071207165d141c05">[email&#160;protected]</a>,
+
+The results of Bill 2101 are in! The legislature has voted to approve the use 
+of $2 million to the University of Diamondville to study the effects of weightlessness 
+on tiny screws! This can have vast repercussions here in the future, everything 
+from watch making to watch repair!
+
+Stay tuned for more updates!
+
+Washington State Department of Communications
+</pre><p>Obviously, the contents of the mail above are entirely fictional and far fetched, and a government department might not outsource their communications. However, large corporations like <span class="emphasis"><em>Microsoft</em></span> do. If an SPF check in the above example were performed on the &lsquo;P1 From&rsquo; address, the result would be an SPF Pass. However, if it were performed on the &lsquo;P2 From&rsquo; address &ndash; the one that is displayed in the mail client &ndash; the result would be an SPF Hard Fail. Many spam filters assign this a heavy weight and there is a good chance that the message would subsequently be marked as spam &ndash; the exact opposite of what is desired.</p><p>Thus, we are in a position where performing a standard SPF check leaves our recipients open to phishing attacks. Performing a modified SPF check on the &lsquo;P2 From&rsquo; address (i.e. performing a SenderID check) has the very real possibility of marking legitimate messages as spam and generating false positives. What can we do? How can we get the best from SPF and SenderID (stopping phishing) while avoiding the worst of SPF and SenderID (false positives)?</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3914940"></a>Combining SPF and SenderID</h2></div></div></div><p>While investigating these two technologies, I liked SenderID&rsquo;s ability to combat spoofing of the &lsquo;P2 From&rsquo; address because that is what is displayed to the end-user. However, I could not stomach the idea of generating false positives.</p><p>The solution was to combine SPF and SenderID and perform both checks. They would not both be performed every time, but conditionally: a SenderID check would only be performed in the event that a standard SPF check returned a non-authoritative authentication result.</p><p>What do I mean by non-authoritative? Rather than the conventional Internet industry use of the term, I use it to refer to an assertion that we cannot say something for certain either one way or the other. To illustrate this, here are the results of an SPF check:</p><div class="itemizedlist"><ul type="disc"><li><p>SPF Pass &ndash; We can state with certainty that the sending IP of the message is permitted to send mail for that domain. It is explicitly stated in the SPF record published by that domain.</p></li><li><p>SPF Hard Fail &ndash; We can state with certainty that the sending IP of the message is not permitted to send mail for that domain and should be treated with great suspicion.</p></li><li><p>SPF Soft Fail &ndash; We can state with certainty, although a lot less of it, that the sending IP is not permitted to send mail for that domain.</p></li><li><p>SPF None &ndash; We cannot state one way or the other whether the sending IP is permitted to send mail for the sending domain, and the result is ambiguous. This is what I mean by non-authoritative. We just don&rsquo;t know.</p></li><li><p>SPF Neutral &ndash; Similar to SPF None, we don&rsquo;t know whether or not the IP is permitted to send mail for the sending domain. Again, it is ambiguous. Is it neutral because the sender forgot to include the IP in the SPF record, because the message is forwarded, or because the sender is forged? We can&rsquo;t assert either way.</p></li><li><p>SPF Temp Error, Perm Error &ndash; The same as the above, we can&rsquo;t say one way or the other whether the sending IP is permitted to send mail for the domain.</p></li></ul></div><p>The implementation we came up with was to send all messages in our pipeline through a standard SPF check. If the message returns Pass or Fail, then we know if the message is authenticated or spoofed. However, we don&rsquo;t know one way or the other if we get None, Neutral, Temp Error or Perm Error. If we get one of these results, then we perform a SenderID look up on the &lsquo;P2 From&rsquo; address to see if that address is being spoofed &ndash; a SenderID check is conditional upon the result of an SPF check. Once that result comes back, appropriate action can be taken:</p><div class="itemizedlist"><ul type="disc"><li><p>Use the Hard or Soft Fail as weights in the spam filter.</p></li><li><p>Use the other results with the same actions that you would take for the results of a regular SPF check.</p></li></ul></div><p>The idea is that, since we didn&rsquo;t have an authentication answer the first time, we try it again a second time on a different field and see what the result is.</p><p>Let&rsquo;s return to our two previous examples and see how we can get the results we want while avoiding the results we don&rsquo;t want:</p><pre class="programlisting">SMTP Mail From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="adccc1c6dac3dfedd7c8cfd8d7c8d783cec2c0">[email&#160;protected]</a>
+P2 From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="84e5e0e9edeac4f3e5aaf7f0e5f0e1aae3ebf2">[email&#160;protected]</a>
+To: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4236382b2c290235236c31362336276c252d34">[email&#160;protected]</a>
+Subject: Update your credentials</pre><div class="orderedlist"><ol type="1"><li><p>Perform an SPF check on <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="b0d1dcdbc7dec2f0cad5d2c5cad5ca9ed3dfdd9e">[email&#160;protected]</a> It returns SPF None. This is a non-authoritative result.</p></li><li><p>Perform a SenderID check on <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="6a0b0e0703042a1d0b44191e0b1e0f440d051c44">[email&#160;protected]</a> It returns SPF Hard Fail.</p></li></ol></div><p>We therefore interpret this as a spoofed message and treat it as such. Whereas before it was a false negative, now it is detected as spam.</p><p>What about our other example?</p><pre class="programlisting">SMTP Mail From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="a1d5cac6c6c9d2c0d29cd6c08fd2d5c0d5c48fc6ced7e1c3c8c6c2ceccccd4cfc8c2c0d5c8cecfd28fc2cecc">[email&#160;protected]</a>
+P2 From: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="b0d3dfddddc5ded9d3d1c4d9dfdec3f0c7d19ec3c4d1c4d59ed7dfc6">[email&#160;protected]</a>
+To: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="16626c7f787d56617738656277627338717960">[email&#160;protected]</a>
+Subject: Latest results of bill 2101
+</pre><p>In this case:</p><div class="orderedlist"><ol type="1"><li><p>Perform an SPF check on <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="66120d01010e1507155b11074815120712034801091026040f0105090b0b13080f0507120f0908154805090b48">[email&#160;protected]</a> It returns an SPF Pass.</p></li></ol></div><p>We therefore interpret this message as authenticated and proceed with the rest of the filtering pipeline. No further authentication is performed. Whereas before this message was a true positive with SPF, and a false positive with SenderID, now it is back to being a true positive again.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3646005"></a>Naming the feature</h2></div></div></div><p>After it was decided that this was the way we would address the spoofing issue, we had to come up with a name for the feature. It isn&rsquo;t SPF and it isn&rsquo;t SenderID, it&rsquo;s a combination of the two of them. Since the feature is designed to authenticate against the &lsquo;From:&rsquo; field in an email message, we called it &lsquo;From Address Authentication&rsquo;. It authenticates against the &lsquo;From:&rsquo; address of an email message. (<span class="emphasis"><em>Technically speaking, SenderID authenticates against the PRA, which is either the Resent-Sender, Resent-From, Sender or From field. In the majority of cases, this is the From: field</em></span>.)</p><p>We decided that this feature would not be enabled by default on all inbound mail hitting the network. Instead, it would be a custom spam filter action that was off by default. In order to get the benefit of this feature an organization would have to activate it manually.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2721778"></a>Actions</h2></div></div></div><p>Next, we had to decide on an action to take in the event that a message received a Hard Fail with the second check. Spam filters usually use the results of an SPF check as a weight in their scoring engines. Some (like ours) allow users to enable an option to auto-reject all mail that Hard Fails a traditional SPF check. I don&rsquo;t typically recommend this because more legitimate mail than you might think fails SPF checks &ndash; although for certain organizations that are heavily spoofed it makes sense.</p><p>We had to decide whether we wanted a Hard Fail to be used as a weight in the engine or to automatically mark the message as spam. Experience had taught me that auto-marking anything that Hard Fails an SPF check as spam would be prone to false positives. My proposal was to use the failure of this feature as a weight in the engine by default, and then give users another option to mark anything that Hard Failed the check as spam. However, a colleague pointed out that this would over complicate things for users. For one, they would have to enable this option manually. Second, they would subsequently have to click another checkbox to mark a message as spam instead of using the Hard Fail as a weight in the spam evaluation. That was too much. Better to pick one action and give the user the on/off option than to make them do two things. (<span class="emphasis"><em>Years later, when researching choice architecture &ndash; the process of providing users with a list of options &ndash; I discovered that giving users fewer choices is better than giving them more. The reason is that the more options we are given, the more difficult it is to make a decision and the less likely we are to be happy with that decision. This seems counterintuitive, but in fact a simplified interface with fewer options helps people make decisions faster and to remain happier with their decisions. </em></span>)</p><p>I decided to go with the auto-mark-as-spam option in the event that a message performed a From Address Authentication and returned a Hard Fail. Simplifying the design was the best option even if it had the potential to cause false positives. All of the other results (Soft Fail, Neutral, etc.) have their own weights associated with them and used in the spam filter evaluation. By itself, Hard Fail can single-handedly mark a message as spam. Thus, if an organization selects this option and publishes SPF records, then a spammer will not be able to spoof the organization in either the &lsquo;P1 From&rsquo; or &lsquo;P2 From&rsquo; address. Those messages will be marked as spam and hidden from the end-user.</p><div class="figure"><a id="figure.1"></a><div class="mediaobject"><img alt="From address authentication in Forefront Online." src="/uploads/images/figures/2011/04/zink1.jpg" /></div><p class="title"><b>Figure&nbsp;1.&nbsp;From address authentication in Forefront Online.</b></p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3321090"></a>Results</h2></div></div></div><p>The feature was coded, tested and deployed into the production network within a couple of months. Yet, for all of the work we had put in and the research we had done, I was still nervous. All of the reading I had done that looked at performing SPF checks on the &lsquo;P2 From&rsquo; address suggested that the results were potentially unreliable. Would we get false positives? Would there be a whole bunch of scenarios that I hadn&rsquo;t considered and lots of complaints pouring in? The best case scenario was that it solved the problem of spoofing for the original customer who had complained, that it was adopted by others and that no complaints came in. The worst case scenario was that piles of false positives occurred, the original customer complained and disabled the feature, phishing messages still came in and we would be back to square one.</p><p>As it turned out, it was the best case scenario. We solved the problem for the customer and stopped the phishing messages from hitting their inboxes. We didn&rsquo;t get false positive complaints from other people, and the feature was adopted by a number of other organizations as well. The feature worked exactly the way it was supposed to (how often does that happen in real life?). By getting creative with SenderID and SPF, we had managed to use them in a unique way that combined their strengths while avoiding their weaknesses.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4439415"></a>Conclusion</h2></div></div></div><p>SenderID and SPF each have their advantages and weaknesses, but it is possible to use them together to create an effective anti-phishing mechanism that targets a specific case. Obviously, this is a special scenario. It doesn&rsquo;t solve the overall problem of phishing, which is still with us today; we even have an organization &ndash; the Anti-Phishing Working Group &ndash; that was formed in an effort to address the problem. Furthermore, this technique doesn&rsquo;t address the issue of when the phisher uses visually or phonetically similar domains to the one that&rsquo;s being spoofed (for example state.gov.wa.com.br), which don&rsquo;t publish SPF records but which look like a domain that the organization in question might use.</p><p>However, this solution does stop spammers who attempt to spoof either the &lsquo;P1 From&rsquo; address or the &lsquo;P2 From&rsquo; address when the targeted domain has published SPF and/or SenderID records. This scenario occurred so often that we were driven to come up with a response to it. It&rsquo;s true that SPF and SenderID each have their limitations, but it is equally true that they have their place in an anti-spam environment.</p><p>We have the evidence to prove it.</p><div class="bibliography"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3908063"></a>Bibliography</h3></div></div></div><div class="bibliomixed"><a id="citation.1"></a><p class="bibliomixed">[1] Zink, T. What&rsquo;s the deal with sender authentication? Part 1. Virus Bulletin, June 2010, p.7. <span class="bibliosource"><a href="/uploads/pdf/magazine/2010/201006.pdf" target="_blank">http://www.virusbtn.com/pdf/magazine/2010/201006.pdf</a></span>.</p></div><div class="bibliomixed"><a id="citation.2"></a><p class="bibliomixed">[2] Zink, T. What&rsquo;s the deal with sender authentication? Part 2. Virus Bulletin, July 2010, p.16. <span class="bibliosource"><a href="/uploads/pdf/magazine/2010/201007.pdf" target="_blank">http://www.virusbtn.com/pdf/magazine/2010/201007.pdf</a></span>.</p></div><div class="bibliomixed"><a id="citation.3"></a><p class="bibliomixed">[3] Zink, T. What&rsquo;s the deal with sender authentication? Part 3. Virus Bulletin, August 2010, p.15. <span class="bibliosource"><a href="/uploads/pdf/magazine/2010/201008.pdf" target="_blank">http://www.virusbtn.com/pdf/magazine/2010/201008.pdf</a></span>.</p></div><div class="bibliomixed"><a id="citation.4"></a><p class="bibliomixed">[4] Zink, T. What&rsquo;s the deal with sender authentication? Part 4. Virus Bulletin, September 2010, p.17. <span class="bibliosource"><a href="/uploads/pdf/magazine/2010/201009.pdf" target="_blank">http://www.virusbtn.com/pdf/magazine/2010/201009.pdf</a></span>.</p></div><div class="bibliomixed"><a id="citation.5"></a><p class="bibliomixed">[5] Zink, T. What&rsquo;s the deal with sender authentication? Part 5. Virus Bulletin, December 2010, p.12. <span class="bibliosource"><a href="/uploads/pdf/magazine/2010/201012.pdf" target="_blank">http://www.virusbtn.com/pdf/magazine/2010/201012.pdf</a></span>.</p></div><div class="bibliomixed"><a id="citation.6"></a><p class="bibliomixed">[6] Zink, T. What&rsquo;s the deal with sender authentication? Part 6. Virus Bulletin, January 2011, p.8. <span class="bibliosource"><a href="/uploads/pdf/magazine/2011/201101.pdf" target="_blank">http://www.virusbtn.com/pdf/magazine/2011/201101.pdf</a></span>.</p></div></div></div> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=Sender authentication – practical implementations&url=https://www.virusbulletin.com/virusbulletin/2011/04/sender-authentication-practical-implementations"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2011/04/sender-authentication-practical-implementations'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2011/04/sender-authentication-practical-implementations&title=Sender authentication – practical implementations"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2011/04/sender-authentication-practical-implementations&t=Sender authentication – practical implementations"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2011/04/sender-authentication-practical-implementations"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

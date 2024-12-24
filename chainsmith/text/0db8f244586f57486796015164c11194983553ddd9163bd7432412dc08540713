@@ -1,0 +1,59 @@
+Quicktime and SCUP
+
+Posted by Roger on 6 September 2010, 8:43 am
+
+When Quicktime 7.6.7 came out, I wanted to deploy it with Microsoft System Center Update Publisher (SCUP).   I’d recently used SCUP to deploy Flash (for IE) and the Dell Inventory Agent.   It made sense to look at using SCUP and SCCM Software Updates to deploy patches rather than continuing to use the old Software Distribution method.   The funny thing was, when I Googled/Binged Quicktime and SCUP, I didn’t find a lot of answers.   I found a link or two to my blog.   Well, I better actually write something since the search engine expects me to have it.
+SCUP can deploy MSP, MSI or EXE.   In the past I had used a BAT file to set registry keys, copy configuration files and run the install.   So that isn’t going to happen unless I compile that into a EXE.    Quicktime also requires the update of Apple Application Support.
+I decided to use my old friend SMS Installer to package the install files into one EXE and perform the installation actions.    I decided to make it as simple as possible.   The SMS install script is something like this:
+Get Environment Variable %WinDir% into variable windir
+Install File \\server\sourceDIR\quicktime to %empt\quicktime\
+Execute %temp%\quicktime\appleapplicationsupport.msi /qn reboot=reallysuppress (wait)
+Execute %temp%\quicktime\quicktime.msi
+ALLUSERS=1 DESKTOP_SHORTCUTS=0 QTTASKRUNFLAGS=0 REGSRCH_INSTALL_ASU=0 /qn reboot=reallysuppress (wait)
+The command-line options seem to kept the “Q” systtray icon or desktop shortcuts from occurring.   But I didn’t manage to disable checking for updates when Quicktime is opened.   It also has the really annoying new interface.   In the past I solved those problems by dropping configuration files.   That could still be done with a bit more testing.
+Compile your EXE in SMS Installer (or your favorite tool to create an install file).
+Once you’re install file is ready to go you’re ready to add it to SCUP.   Select Create Update and run through the wizard.
+Update Information
+Update Title: Quicktime 7.6.7   (this could be anything)
+Description:  Quicktime 7.6.7 improves security and is recommended for all Quicktime 7 users on Windows.   (generally I take the description from the security advisory)
+Classification: Security Advisory
+Bulletin ID: HT4290
+Vendor: Apple
+Product: Quicktime
+Extended Properties
+Artcle ID: HT4290
+CVE ID: CVE-2010-1799
+Severity: Critical
+Support URL:  could be an internal url or http://www.apple.com/quicktime/download
+More Info URL: http://support.apple.com/kb/HT4290
+Impact: Normal
+Reboot Behavior: I left this on ‘can request reboot’ although SMS Installer is returning a 0 by default
+Define prerequisite Rules
+Processor Architecture = x86
+and
+Windows Version Greater than or Equal to
+major Version 5, SP Major Version 2, Minor Version 1
+Product Type = workstation
+Apple supports Quicktime on XPsp2 or greater.   Apple uses a separate install file for x64.   I chose keep things simple for now and not try to package that in here.
+Select Package
+Installer Type = EXE
+Update Package Source = Browse to your install file (I used UNC path)   doesn’t need to be accessible to anything but your installer.
+Download URL or UNC = Paste the same path as above.
+Command Line = /S   (this tells the SMS installer file to run silently.   If you used a different packager you’re on your own)
+Define Applicability Rules
+File Version:
+Common Paths – select program_files
+Path – quicktime\quicktimeplayer.exe
+Comparison – Less than
+Version – 7.67.75.0
+AND
+Registry key exists
+HKLM\Software\Apple Computer, Inc.\Quicktime
+Define Installed Rules
+File Version
+Common Paths – Program_Files
+Path – quicktime\quicktimeplayer.exe
+Comparison – Greater Than or Equal To
+Version 7.67.75.0
+Now you’ve got an update that is ready to go.   Publish it to WSUS and then sync to SCCM as you would with any other SCUP update.    I always see people complaining that very few venders supply CAB files for SCUP.   The fact is before this year, very few SCCM admins were using SCUP.   Vender supplied CABs might not be configured they way you want anyway.   For example the Adobe CAB for Flash assumes you want all your computers to have Flash.   If you only want to upgrade existing Flash you need to either collection limit the update or write your own detection rules.
+I hope reading thought this you understand now how to roll your own update for even a complicated update like Quicktime.   Make sure you thoroughly test your deployment.

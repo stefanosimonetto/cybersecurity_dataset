@@ -1,0 +1,114 @@
+Raising the bar: Rustock and advances in rootkits
+2006-09-01
+
+Elia Florio
+Symantec Security Response
+,
+Ireland
+
+Prashant Pathak
+Symantec Security Response
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Recently a new type of rootkit was discovered in the wild and it is unique given the techniques it uses. Elia Florio and Prashant Pathak take an indepth look at Backdoor.Rustock.A.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+The never-ending game of hide-and-seek between the anti-virus industry and rootkits has begun a new chapter. Recently a new type of rootkit was discovered in the wild and it is unique given the techniques it uses.
+Backdoor.Rustock.A is an advanced rootkit that could be considered the first-born of a next generation of stealth malware, thanks to the special characteristics it possesses. It uses a mixture of old techniques and new ideas that, when combined, make a piece of malware that is stealthy enough to remain undetected by many commonly used rootkit detectors (such as RootkitRevealer, BlackLight, IceSword, DarkSpy and GMER).
+We can consider this rootkit to be an advanced example of 'stealth-by-design' malicious code [1]. At the time of writing this article, it has been reported that a new variant of this malware (Rustock.B [2]) has been discovered in the wild and, although it is similar to its predecessor in certain aspects, this rootkit is significantly improved. However, this article will focus mainly on the .A variant.
+
+Why is Rustock.A special?
+Table 1 summarizes the reasons why Rustock.A is considered to be an advanced rootkit. It shows in the left-hand column all the typical anomalies detected by rootkit detectors and in the right-hand column the countermeasures adopted by Rustock.A to avoid detection.
+Rootkit detection
+Rustock countermeasure
+Detection of hidden processes
+Rustock.A has no process; the malicious code runs inside the driver and in kernel threads.
+Detection of hidden files
+Rustock.A does not hide files; it uses the NTFS Alternate Data Stream to store its driver. In addition, the rootkit prevents access to the ADS by locking it.
+Detection of registry keys
+The rootkit controls ZwSaveKey and intercepts any program that tries to dump the registry to a file. It also can add/delete its registry subkey based on a specific event (e.g. IOCTL code detection during DeviceIoControl).
+Detection of hidden driver
+The rootkit removes its entries from many modules' kernel structures including the Services Control Manager, Object Manager, and the loaded module list so that this enumeration fails.
+Detection of Native API hooks
+Rustock.A does not hook or patch system calls directly, it gains control by hooking the MSR_SYSENTER routine and other IRP functions.
+Detection of SDT hooks/changes
+The rootkit does not alter Service Descriptor Table pointers on a global basis, but rather modifies them on a per-thread basis.
+Detection of MSR_SYSENTER hook
+Rustock.A modifies the address of MSR_SYSENTER and also patches a routine of the
+Windows
+kernel where MSR_SYSENTER is loaded and checked.
+Detection of the malicious file
+The SYS driver uses a polymorphic packer to scramble its code and appears different from sample to sample.
+Table 1. Reasons why Rustock.A is considered to be an advanced rootkit.
+The MSR_SYSENTER hook technique is not new, it has already been documented in Greg Hoglund's book Subverting the Windows kernel [3], but Rustock.A is the first piece of malware using this method to have been discovered in the wild.
+In addition, the use of the Alternate Data Stream (ADS) as a storage area for the malicious driver gives the rootkit several advantages. In fact, by exploiting the ADS, the rootkit does not have to worry about file hiding, because the SYS file is hidden by the Windows operating system. The rootkit just prevents access to the ADS by locking it with system privileges and by hooking some special NTFS IRP functions that control create/delete operations on this stream. Manual removal of this threat is not a trivial task, because the rootkit works in safe mode and booting from a recovery console does not allow users to manipulate the ADS.
+The Rustock installer comes as an executable file with a size of around 65–70 KB and is scrambled by a polymorphic packer which mixes NOP-equivalent and floating-point opcodes together with real instructions. The executable drops the %TEMP%\pe386.sys file and then uses the CreateService and StartService APIs to run it as a service. This SYS module is compiled as a kernel-mode DLL [4] and actually works as a loader. It decrypts and decompresses the real rootkit driver inside a buffer allocated in kernel memory by using ExAllocatePool. The malware copies itself inside an ADS storage that should have the random generated name '\System32:[RND_NUMBERS]', but due to a bug (probably the lack of initialization of the random numbers generator) the ADS is always named '\System32:18467' on Windows XP.
+Figure 1. Example of Rustock.A scrambled code: useless instructions are marked in red.
+
+SYSENTER hooking
+On NT/2k systems control is transferred from user to kernel mode via software interrupt INT 2E. On Intel/AMD platforms, which support the SYSENTER/SYSCALL instruction, XP and above systems use SYSENTER/SYSCALL to transfer control from user to kernel mode. Rustock uses both SYSENTER and IDT hooks to execute code every time a system call is made. The modified SYSENTER/IDT handler hooks every thread that attempts to execute any of the below-mentioned system calls. Thus, the rootkit hijacks the system calls on a thread-level basis rather than using KeServiceDescriptorTable to hook on a global basis.
+It hooks the following system calls to hide service-related registry keys and CPU usage:
+ZwOpenKey
+ZwEnumerateKey
+ZwQueryKey
+ZwCreateKey
+ZwQuerySystemInformation
+The rootkit modifies the output of the ZwOpenKey API in a unique way. It does not modify the output if the calling process is services.exe. For all other processes, if a process is attempting to open the pe386 key, ZwOpenKey returns an error code of 'STATUS_OBJECT_NAME_NOT_FOUND'. Hence, no process other than services.exe can obtain a handle to Rustock's service keys. Rustock modifies ZwEnumerateKey by incrementing the index value by one whenever a key containing subkey pe386 is enumerated. Rustock modifies ZwQueryKey to decrement the value of the Subkeys field in the output when a key containing subkey pe386 is queried with the KeyFullInformation option.
+Rustock modifies the output of ZwCreateKey in a similar way to ZwOpenKey. It does not change the output if the calling process is services.exe. For all other processes attempting to create a key named pe386, ZwCreateKey returns an error code of 'STATUS_OBJECT_NAME_NOT_FOUND'. The modified ZwQuerySystemInformation API zeros out the user and kernel mode usage time for services.exe and adds it to the first process in the list (which is the system idle process). Since Rustock injects spam-mailing code in services.exe, zeroing out user and kernel mode usage for services.exe would not raise any suspicion in a user monitoring the system performance using tools like Process Explorer.
+Figure 2. Code snippet showing INT 2E and SYSENTER hook.
+
+Invisible module in Windows kernel
+Rustock's driver is stealthy when loaded in kernel memory. The rootkit attempts to hide its presence using the techniques shown in Table 2.
+Rootkit technique
+Description
+Unlinking the driver loaded from the module list
+Every driver in the
+Windows
+kernel has a per-driver data structure, namely DRIVER_OBJECT. The driver object structure has a DriverSection field that contains a doubly linked list of all loaded modules. A driver receives a pointer to its driver object in the startup routine. Rustock.A parses the linked list stored in DriverSection (DRIVER_OBJECT-> DriverSection- >InMemoryOrderLinks) and unlinks itself from the list. This causes the driver to be hidden from all user and kernel mode enumeration using this list (ex: PsLoadedModuleList API).
+Deleting the driver object from Object Manager Namespace
+Rustock obtains the \Driver directory object using the ObQueryObjectByName API. The \Driver object contains a list of driver objects that are loaded. Rustock parses the list and unlinks any object from the \Driver directory if the object name matches its driver name. Hence, all APIs that enumerate from this list fail to enumerate Rustock's driver.
+Unlinking itself from the service list
+Whenever a service is created, it is SCM registered with Service Control Manager (SCM). SCM maintains a linked list of services registered with it. When the status of a service is queried, SCM parses this linked list to find information regarding a particular service. By using DKOM techniques, Rustock deletes its service-related entry in this list. Once a service entry is removed from this list, all service enumerations in user and kernel mode fail to list the running service.
+Table 2. Techniques used by Rustock.A to hide its presence.
+Figure 3. Code snippet that unlinks the driver from the loaded module list
+Figure 4. Code snippet that patches NTFS driver object's IRP handlers.
+
+IRP patching technique
+Every driver object sets IRP handlers that are invoked whenever a particular type of IRP is generated. These IRP handlers are a set of function pointers stored in per-driver data structure DRIVER_OBJECT. For example, when a create event occurs for a device, I/O Manager creates an IRP of type IRP_MJ_CREATE and invokes the corresponding handler for the driver object that is registered with the device.
+Rustock.A makes use of IRP patching for two main reasons: bypassing resident firewalls at low level and protecting the Alternate Data Stream that stores the malicious driver. Once Rustock is installed on a machine it uses the machine's network connection to send spam messages. To avoid triggering any detection by firewalls present on the compromised system, Rustock patches IRP_MJ_CREATE and IRP_MJ_QUERY_INFORMATION handlers for TCP/UDP drivers.
+In addition, it patches IRP_MJ_CREATE and IRP_MJ_QUERY_INFORMATION handlers for the NTFS file system driver. Hence, any application that uses the file system stack will not be able to query for the ADS file and will not be allowed to delete an ADS with the same name.
+
+Bypassing rootkit detectors that use a cross-view approach
+Many rootkit detectors use a cross-view-based detection algorithm. This means that they detect hidden objects by finding the discrepancies between a high-level view and a low-level view.
+For example, a simple rootkit detector can enumerate the list of processes using a method similar to Windows Task Manager, and then it will try to enumerate the processes again using different low-level methods. If everything is fine, the obtained lists will not have differences or discrepancies. A similar approach can be applied also with files or registry keys enumeration.
+The strength of this method is that it is totally generic and it doesn't need to know how a particular rootkit works. The cross-view detection does not care about the type of hooks used or the kernel objects altered, it just looks for discrepancies and anomalies, so it can uncover all the common rootkits easily. However, since the cross-view detection is based on a specific enumeration algorithm, when that algorithm is disclosed, any rootkit can attempt to find a workaround to bypass the detection and maintain its invisibility.
+A similar situation has already happened with the 'FUTo' rootkit [5]. Having found out that BlackLight's detection of hidden processes relies on OpenProcess() API, a group of researchers tried to design a modified version of the popular 'FU' rootkit, enhanced sufficiently to avoid detection by BlackLight.
+In a similar case recently, a person with the alias 'PE386' (probably the same person who created the Rustock rootkit) posted on the rootkit.com website a proof-of-concept code [6] that implements a special system hook that is able to hide files from RootkitRevealer and BlackLight. The strength of these rootkits is that they are designed specifically to be stealthy and to evade the detection method.
+
+Advanced anti-detection techniques
+Rustock.A hooks the following system calls to avoid being detected by anti-rootkit programs:
+ZwSaveKey
+ZwDeviceIoControl
+It modifies the behaviour of ZwSaveKey. Whenever any registry hive containing \machine\system, i.e. HKLM\System, is saved to a file, Rustock creates a new registry hive. The registry hive is loaded under HKLM\pe386, which is a copy of HKLM\System\CurrentControlSet\ Services\pe386 and it deletes the original copy. A cross-view-based detection algorithm would not reveal anything, as nothing seems to be hidden. Once the routine completes, it creates a pe386 key and hides from registry enumeration API.
+It also modifies the behaviour of ZwDeviceIoControl. This change is targeted specifically towards Kernel SC, a tool used to detect the presence of hidden services. Rustock modifies the behaviour of ZwDeviceIoControl only when the I/O control code is 0x22265A and the target driver is Kernel SC (knlsc). It creates a new registry hive under HKLM\pe386 which is an exact copy of the data contained in the IOCTL output buffer. Once the routine has completed Rustock unloads the HKLM\pe386 registry hive to remain hidden.
+Finally, Rustock.A obtains a list of loaded kernel modules and searches for filtnt.sys, which is the kernel mode component of Outpost Firewall. It then patches the import table address of IoGetCurrentProcess to point to a new function. The modified IoGetCurrentProcess returns the EPROCESS block of the initial system process when the current process is services.exe. This modification possibly results in Outpost Firewall not triggering on an active connection from services.exe, but due to time constraints we are not able to confirm this.
+Figure 5. Generic diagram showing how the cross-view detection works.
+
+Conclusions
+All of the features that we have mentioned here make Backdoor.Rustock.A totally invisible on a compromised computer when installed. It even seems able to achieve all of its stealth functionality without problems on a beta version of Microsoft Windows Vista (6.0.5270).
+We believe that Rustock.A and .B variants are probably Russian creatures, part of a large project of stealth spam malware called 'SpamBot'. Both the rootkits contain the strings 'G:\bot-mailer\007spambot-01\driver\objfre' and 'Z:\NewProjects\spambot\last_beta\driver\objfree', which leads us to believe that we will see new versions of this malware in the future.
+[Aleksander Czarnowski will present a paper on anti-rootkit safeguards and methods of their bypassing at this year's Virus Bulletin Conference in Montréal (11–13 October). To read the abstract, view the rest of the conference programme and book your place online see http://www.virusbtn.com/conference/vb2006/.]
+
+Bibliography
+[1] Rutkowska, J. Rootkits vs. Stealth by design malware. http://www.invisiblethings.org/papers/rutkowska_bheurope2006.ppt.
+[2] Backdoor.Rustock.B analysis. http://securityresponse.symantec.com/avcenter/venc/data/backdoor.rustock.b.html.
+[3] Hoglund, G. Subverting the Windows Kernel. http://www.rootkit.com/.
+[4] Roberts, T. DLLs in Kernel Mode. http://www.wd-3.com/archive/KernelDlls.htm.
+[5] Silberman P, CHAOS. 'FUTo' http://uninformed.org/?v=3&a=7.
+[6] PE386. Hiding files from RootkitRevealer and F-Secure BlackLight. http://www.rootkit.com/newsread_print.php?newsid=526.

@@ -1,0 +1,57 @@
+SSL Testing Methods
+
+Not all SSL configurations on websites are equal, and a growing number push for HTTPS everywhere. There is an increasing demand to check and quantify that little padlock in your browser.
+Some simple online tools provide a fast SSL report. They are SSL configuration checkers, which do not just check a certificate, which is really only part of that configuration. Instead, they perform a more thorough look.
+SSL Shopper
+SSL Shopper delivers very fast results, normally within 4 seconds. It reports items generally of interest, and the most relevant for our use as analysts to share with a client:
+
+The IP address the site resolves to
+The server type (great for us to confirm if our WAF is enabled)
+Confirms if the chain (intermediate) certs are correctly installed
+Who issued the certificate
+How long until the cert expires, or if in fact it is expired
+Which host names are included on the cert, and if the cert is a wildcard
+Usually of less interest, the valid from date, the cert’s serial number and the algorithm used
+
+One thing to look out for with this test is that they do cache results, sometimes for a few days. Check the top for the SSL results if a new uncached check needs to be requested, which is an option they provide.
+
+Godaddy SSL Certificate Checker
+With very similar results but a little slower than SSL Shopper, GoDaddy SSL Certificate Checker offers a cleaner, simpler-to-read report, and provides uncached results, a bonus while troubleshooting an issue.
+
+Qualys SSL Labs
+Qualys SSL Labs provides more detail, most notably an overall rating: a simple A+ through F score (by default a site on our WAF will score an A+ if HSTS is enabled).
+Additional details of note are that may be of interest are:
+
+If an extended validation certificate
+If OCSP Stapling is being used
+If the certificate has been revoked
+Which browsers trust this SSL configuration (does not by any means show all, but will list any the configuration that would be broken)
+Which protocols are both enabled and disabled, highlighting the results green to confirm best practice.
+
+Cipher Suites that are enabled are highlighted in green for best practice. But caution  should be taken when considering results showing orange and labeled “weak.” While it would be ideal to disable these Ciphers, it is not practical to do so, as too many older and insecure browsers would be affected. It is better to rely on what would be considered PCI compliant to know where the line should be drawn.
+There is a comprehensive list of browsers and whether this SSL configuration will work for them. It’s followed by a very detailed list of known vulnerabilities that affect SSL and your site’s status regarding these.
+Qualys also supplies some excellent documentation and guides to help understand these reports. A test takes a fair bit longer to run, normally between a minute or two, and can also be served from cache.
+
+Immuniweb (formally High-Tech Bridge)
+I like Immuniweb a lot. It includes the details of the other testers, but also gives a simple score. Immuniwebclearly states if your site’s SSL configuration is PCI compliant. Also of note is that they provide a unique link for that report, so it’s easy to compare previous reports.
+One thing that aggravates me is they flag and highlight in orange the excellent Cipher CHACHA20. The only reason it is not approved by NIST guidelines is they have not got around to testing it, but t is widely used. There is no indication it causes any risk. While I understand they do need to flag it, they should add this detail as a caveat.
+
+There are other options to test your SSL configuration, but these do require some limited level of familiarity with Linux shell. Let’s look at what our support analysts tend to use:
+OpenSSL
+Described as the multitool of SSL, OpenSSL is installed differently in each operating system / environment, and may take some understanding to filter what may be relevant or not. Some examples include a simple test, like this one showing clearly the date of expiry:
+echo | openssl s_client -servername www.domain.com -connect www.domain.com:443 2>/dev/null | openssl x509 -noout -dates
+This will provide the issuer of the certificate:
+echo | openssl s_client -servername domain.com -connect domain.com:443 2>/dev/null | openssl x509 -noout -issuer
+This will provide the Subject names, expiry date, and issuer of the cert.
+echo | openssl s_client -servername domain.com -connect domain.com:443 2>/dev/null | openssl x509 -noout -issuer -subject -dates
+These are great for our testing purposes, as we can set a different target (second instance of domain.com can be a hosting server IP address) and bypass the WAF by testing the cert on the hosting server, which is not readily seen by the public internet. And conversely, we can check a certificate on the WAF when it is disabled, or not yet enabled, by pointing OpenSSL to the WAF IP to confirm the certificates are in place on the WAF.
+SSLyze
+SSLyze is an open-source script which provides as much detail and as good a report as any of the online testers. It advises in clear, easy-to-read language that can be pulled into a report, once installed using one of the many methods suggested, it’s very easy to run, and simply allows for the adding of tests for multiple domains.
+docker run --rm -it nablac0d3/sslyze --regular sucuri.net:443 google.com
+Example report here: https://pastebin.sucuri.net/ro4dyb65slhum
+It can easily be set up to run as a cron job on a Linux server: I run this from a very small cloud-based Linux server, and am able to parse 500 domains to a report in less than 10 mins, so it really is super fast and highly configurable. It’s the perfect solution for an agency or enterprise who needs to monitor many assets and requires more detailed reporting.
+Sucuri Monitoring Service
+This comes as part of our website security package. Sucuri monitoring service quite different in that it proactively monitors the SSL status, sending an email on error. We generally do not provide much detail, but the alerts are very simple. Additionally, it monitors SSL health as well as server uptime, and any inclusion on any blacklists. Finally, it scans the site for malware.
+
+Summary
+There is really not one SSL test method that’s  better than another. We have the quick and fairly detailed checks, proof of PCI compliance, large batch testing and proactive reporting. They all have a place on my desktop.

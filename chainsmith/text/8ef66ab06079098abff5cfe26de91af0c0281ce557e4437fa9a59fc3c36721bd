@@ -1,0 +1,123 @@
+Worms deliver cryptomining malware to web servers
+
+An automated attack, targeting poorly-protected Apache Tomcat servers, turns enterprise hardware into a high-end cryptominer
+
+Written by
+Andrew Brandt,
+
+Vikas Singh,
+
+Suriya Natarajan
+
+May 30, 2019
+
+SophosLabs Uncut Apache cryptojacking Cryptomining Neutrino RAT Server Tomcat2 worm
+
+Any system that serves data to the public internet lives on the edge, figuratively and literally. Whether it’s an IoT device or an enterprise-grade server, you can guarantee it will be hit with a nonstop barrage of attacks the minute you allow the world to reach it.
+We discovered an attack method recently while providing support to a company that runs an Apache Tomcat web server that was repeatedly getting infected. Operators of servers have not traditionally used endpoint antimalware tools out of concern that such tools may hinder the server’s performance or create instability that can lead to downtime, but those concerns may now be outdated.
+In this case, the owners of the server made sure the server’s operating system and the Apache software was up to date, but every time they cleaned up the infection, it would come right back, almost immediately afterwards.
+As luck would have it, the server operator was able to capture the network packets that contained the attack, a rarity. The attack looked familiar; we had seen variants of this fairly automated attack attempt to deliver cryptominers to honeypots we operate, but we hadn’t previously seen a successful attack in the wild. So we thought we’d run through the packet capture and explain how the attack works.
+Tomcat and Jerry
+The root cause of the attack appears to have been the use of a weak, or easily guessed, password by the operators of the server on the Tomcat administration page. The initial phase of the attack was marked with a brute-force credential stuffing attempt at the Tomcat admin panel, and once the attackers successfully logged in as an admin, all bets were off.
+After figuring out the right credentials to use, the attackers performed an HTTP POST to the server that looked like this:
+HTTP POST by the attacker to the newly-upoaded admin.jsp page
+This Tomcat admin page permits admins to upload web applications to the server, in the form of files with an extension of .war. The attackers uploaded their own .war file named admin-manager.war, which contained just a single, malicious JSP file named admin.jsp. This file, when called by an external attacker, produces a nicely formatted profile of the server.
+The admin.jsp file looks like this:
+The admin.jsp file produces a profile of the target’s system and can execute commands
+Admin.jsp has three functions: It can produce system profiling information, create new files on the Apache server, or execute commands on the server with the permission level of the web server account.
+The attacker can specify the function they want to invoke using a parameter of “act” (presumably for “action”) followed by one of two options. The flow of this command structure is:
+String Parameter1 = request.getParameter ( “p1” )
+
+Base64 content if action is SH,
+Filename if action is UF
+
+String Parameter2 = request.getParameter ( “p2” )
+
+True if action is SH
+Base64 blob if action UF
+
+The three functions (SI, SH, and UF) are used for the following things:
+System Information (act=SI)
+This “server information” function returns information such as OS, computer name, and user name.
+File Creation (act=UF)
+When this “upload file” function is triggered, a Base64 string sent by the attacker gets written to a file on the Apache server.
+Command execution (act=SH)
+Depending on the operating system on which the Tomcat server is running, this “shell” command will attempt to execute a command using /bin/bash (on *nix servers) or using the Windows command shell or PowerShell. This feature also supports base64-encoded command strings.
+Sequencing the commands for miner delivery
+For instance, the initial command executed by the attacker was an HTTP POST to the now-compromised server with a query string of act=SI, and the server’s response looked like this:
+
+This told the attacker that this instance of Tomcat was running on a 64-bit Windows Server 2012 machine, and even gave the attacker the machine name (which we’ve pixelated for privacy), and the full filesystem path to the malicious .jsp file. As for the “Hello, Peppa!” header data, we can only guess whether the attacker is (or is a fan of) a children’s cartoon pig.
+For some reason, the attacker issues this command twice, one second apart.
+Next, the attacker issued an “SH” command of act=SH&p2=True&p1=(base64) that looked like this:
+
+The base64 blob (p1) decodes as follows:
+
+The script first kills WMIC.exe, RegSvr32.exe, and PowerShell.exe, then checks the system for the presence of the PowerShell 1.0 file path (%systemroot%\System32\WindowsPowerShell\v1.0\PowerShell.exe). If it finds that path in the system, it executes a base64-encoded data blob (highlighted in yellow, above).
+If the script can’t find the path to PowerShell, it uses RegSvr32.exe to download and execute a script loaded from the file named init.gif it downloads from the command and control server. The line uses the script helper com object (scrobj.dll) to execute the contents of init.gif, which is coded in Javascript.
+You can even see the server’s response in the PCAP as it tries, and fails, to kill the three processes that aren’t running at the time the attacker issues the command.
+
+Because this attacker can’t get enough of base64, we have to decode yet another blob of data (highlighted in yellow) to get this string:
+
+Here’s the HTTP POST in action in the packet capture:
+
+Data blobs within data blobs
+
+Confusingly, the attacker embedded a URL where the command seems to want to upload a string of text to the server. However, that URL pointed to yet another blob of encoded data, hosted on a malicious IP address that would only return the information if the User-Agent of the requesting machine is Mozilla/PS.
+The result was a giant chunk of still more encoded data.
+
+To find out what this section is trying to do, we turned to the chef. The CyberChef, to be precise. CyberChef is an incredibly useful tool for decoding arbitrarily-encoded chunks of data like this one. Here’s the very simple recipe (yes, they’re called recipes) to decode this data:
+
+First it decodes the base64, then it performs the “Raw Inflate” function on the output from that decoded blob. Here’s the output:
+
+A neutrino is a subatomic particle with nearly no mass that has the odd characteristic that it rarely interacts with “normal” matter. This payload calls itself Neutrino, but unlike its nuclear namesake (and not to be confused with the now-defunct malware exploit kit of the same name), it interacts with the infected system a lot.
+What does Neutrino do?
+The output file is another long script that performs some additional checks on the system and then downloads a payload, depending on the processor architecture (32- or 64-bit) of the Windows server it’s running on. It writes the payload out to the system32 directory on the server with the filename lsass.exe, using the same filename as Windows own LSASS security component, just in a different location. If an alert sysadmin sees it on the list of running processes, they might not think anything of it.
+
+Neutrino also looks at the HOSTS file in %system% to determine if there are any fixed DNS records for cryptocurrency mining pools, and if it detects any, it overwrites the records with eight different domains that the criminals will use to collect their own Monero mined by the target’s server. The ctosus.ru domain is also associated with malware.
+The Neutrino script also scans the list of running applications on the host system against a list of filenames of common security tools. If it finds any of these running, it makes a record of it. (“ZhuDongFangYu,” for instance, is a component of a Chinese PUA antivirus called 360.)
+The Neutrino software also searches for security researcher tools on the host, such as debuggers, disassemblers, or packet capture tools
+After a delay that randomly varies between five and 10 minutes, the script attempts to download yet another PowerShell script, called _DL.ps1.
+
+It also modifies a number of keys in the Windows registry that have the effect of hiding any security-related notifications the server may present to an admin. It also attempts to delete the service entries for many of the security tools it scanned for earlier in the process, and also tries to kill those security tools if they are present.
+Neutrino disables local security features by modifyng the Windows registry
+Finally it downloads the miner payload, which comes across the wire as an RC4-encrypted binary file.
+
+And it decodes the binary using the 5up3r-1337 password of P@$$w0rd123456, and creates a firewall rule (unironically named Windows Update) to permit yet another payload (named _WMI.ps1) to receive inbound commands from the attackers.
+
+What can a hapless admin do?
+The most obvious countermeasure is that nobody should ever, under any circumstances, allow a public-facing Apache Tomcat server (or any server, for that matter) to go online using weak or default passwords for its administrative panel.
+As with any software that can receive arbitrary requests from the WAN, admins should ensure they’re running the latest version of both the server software and a fully updated operating system, not use the server for normal computing tasks like browsing the web, and use good password hygiene, not reusing the passwords for the database or the server anywhere else.
+We detect some of these files as Mal/VMProtBad-A, Troj/Miner-QH, or Mal/Basine-C.
+Indicators of Compromise
+Hosts/IP addresses
+134.175.33.71
+xmr.usa-138.com
+wk.ctosus.ru
+down.ctosus.ru
+blog.ctoscn.ru
+down.9ni.top
+down.sxly518.xyz
+gowel.top
+m4.rui2.net
+URLs
+hxxp://134.175.33.71/Update/PSN/_DL.ps1
+hxxp://134.175.33.71/Update/test/x64.bin
+hxxp://134.175.33.71/Update/test/x64_VMP.bin
+hxxp://134.175.33.71/Update/test/x86.bin
+hxxp://134.175.33.71/Update/test/x86_VMP.bin
+hxxp://134.175.33.71/Update/test/_WMI.ps1
+File hash
+DL.php: 2F908ECDC20923D703F05DA6EEDE76EB14DCA296
+Similar file hashes
+Many of the files involved in the attack were not recovered from the targeted machines, and the C2 hosting the payloads was offline by the time we began our investigation. However, we’ve found the following files in public repositories that appear to be substantially similar to the ones we’ve described herein.
+_DL.ps1: 408b7799c4902f4d7d0965a9a37b9ed0989ba39a
+x86_VMP.bin: 689edc2abe3eafe5f65491780e8aaa1eb68921f1
+x64_VMP.bin: ad1e25f4b87ed5837125cb84ead840e558a85bb6
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+1

@@ -1,0 +1,154 @@
+Dissecting a WordPress Brute Force Attack
+
+Update: Brute force protection now available: http://cloudproxy.sucuri.net/brute-force-protection
+
+Over the past few months there has been a lot of discussion about WordPress Brute Force attacks. With that discussion has come a lot of speculation as well. What are they doing? Is it a giant WordPress botnet? Is it going to destroy the internet? Well, as you would expect of any good geeks we set out to find a way to find out.
+This is not to be exhaustive case study or meant to be a representative sample of what all attacks look like, but it does have similar characteristics to the types of attacks and infections we deal with on a daily basis.
+In this post, my goal is to highlight a hack that occurred this weekend, July 20th to be exact, against one of our several honeypots. In this specific instance, it was setup and configured approximately 2 months ago. It had been hacked about a month and a half ago and silly me I forgot to configure what I needed to do real forensics, oops. In any event, everything was cleared and pushed out again to see what happened, it was nothing more than a matter of sitting back and waiting.
+Sure enough, about 30 days later and it was hacked, this time we were ready to see what happened..
+
+The Baseline
+The honeypot in this case is operating the current version of WordPress, 3.5.2, on a Linux distribution provided by a very popular shared-hosting platform.
+It is operating current versions of the following plugins:
+Active:
+
+Google Plus
+Sucuri Security
+
+It is operating current versions of the following theme:
+Active:
+
+Twenty Twelve – ACTIVE
+
+There are a number of other plugins and themes installed, currently inactive, that played no role in this attack, with exception to one inactive Theme – Duster.
+In terms of security, there was only one thing done, that was to disable PHP execution in wp-content. We had our Premium plugin installed, predominantly to use the auditing and integrity checks. No other configuration changes were made and it was operating a basic WP installation.
+What They Did – At a high Level
+This attack resulted in a very simple defacement:
+
+Hacked By Fayzou
+
+This is what it actually looked like, I know, so boring, but effective:
+
+That however was not the gem of the attack. If I were a betting man, the defacement was more in response to their annoyance in getting it to work. In the end, they did a number of things that help us better understand how they think and operate.
+Below is what our server side scanner picked up:
+
+File possibly compromised: ./wp-content/themes/twentytwelve/index.php.
+File possibly compromised: ./wp-content/themes/duster/footer.php.
+File possibly compromised: ./XfX.php.
+
+Each one of those are backdoors.
+If you’re not familiar with the concept of backdoors we encourage you to read some of our previous posts where we talk about them in more depth. The idea is simple however, a backdoor as implied by the name, provides an attacker the mechanism required to regain access at a later time. This idea of sustaining access is critical in today’s attacks, we have learned over the years that gaining access to a site, and being able to effectively deface or use it to distribute malware, is but one phase of the attack. The real success comes in the attackers ability to continuously regain access.
+These backdoors are the most prevalent attacks these days, they are designed such that they allow attackers to quickly bypass access control mechanisms and security protocols on most servers. They range in complexity, size and functionality, but the core principle is always the same – retain access.
+important is because it provides them access that allows them to bypass all your existing access control mechanisms.
+Who Were the Attackers
+It appears the attacker is part or attempting to represent a Tunisian hactivist group. The IP used for the attack also originated out of the Africa region:
+
+RegDate:        2004-05-17
+Updated:        2010-06-28
+Comment:        AfriNIC - http://www.afrinic.net
+Comment:        The African & Indian Ocean Internet Registry
+Ref:            http://whois.arin.net/rest/org/AFRINIC
+
+Specifically:
+
+IP Address: 197.7.44.234
+Location: Tunisia, Africa
+ISP: Agence Tunisienne Internet - ATI
+
+A little more digging leads us to the Fayzoun Hactivist group, and guess what, they have a Facebook page too:
+
+The Details of What and How they Did It
+Here is an unbiased description of the events that took place June 20th, by the attacker:
+Attack time took approximately 12 minutes:
+
+Start Time: 20/Jul/2013:02:22:03
+Stop Time:  20/Jul/2013:02:34:33
+
+They gained access by brute forcing the WordPress administrator panel, wp-admin. Fortunately for them, my username and password were as weak as they come, gaining them access after a few successive attempts.
+
+1 [20/Jul/2013:02:22:03 "POST //wp-login.php
+1 [20/Jul/2013:02:22:05 "POST //wp-login.php
+1 [20/Jul/2013:02:22:06 "POST //wp-login.php
+1 [20/Jul/2013:02:22:07 "POST //wp-login.php
+
+Once logged in they proceeded to navigate around the site for a bit. They then came across the theme editor and used that to make modifications to an existing theme file in the duster theme, note however that it was not the active theme. This is an example of modifying a file that is not currently served to the client browser in an attempt to evade detection. We have no reason to believe that the Duster theme was used for anything but coincidence.
+
+[20/Jul/2013:02:29:40 "GET /wp-admin/theme-editor.php
+[20/Jul/2013:02:29:41 "GET /wp-admin/load-scripts.php?c=1&load%5B%5D=admin-bar,hoverIntent,common&ver=3.5.2
+[20/Jul/2013:02:29:41 "GET /wp-admin/load-scripts.php?c=1&load%5B%5D=jquery,utils&ver=3.5.2
+[20/Jul/2013:02:29:48 "POST /wp-admin/theme-editor.php
+[20/Jul/2013:02:30:01 "GET /wp-admin/theme-editor.php?file=footer.php&theme=duster
+[20/Jul/2013:02:30:19 "POST /wp-admin/theme-editor.php
+[20/Jul/2013:02:30:22 "GET /wp-admin/theme-editor.php?file=footer.php&theme=duster&scrollto=9456&updated=true
+[20/Jul/2013:02:30:38 "GET /wp-content/themes/duster/footer.php
+
+They then went on to install one of their own themes, which doesn’t appear in your wp-admin dashboard:
+
+[20/Jul/2013:02:31:00 "GET /wp-admin/theme-install.php
+[20/Jul/2013:02:31:01 "GET /wp-admin/load-scripts.php?c=1&load%5B%5D=admin-bar,hoverIntent,common,theme&ver=3.5.2
+[20/Jul/2013:02:31:05 "GET /wp-admin/theme-install.php?tab=upload
+[20/Jul/2013:02:31:31 "POST /wp-admin/update.php?action=upload-theme
+[20/Jul/2013:02:32:12 "GET /wp-admin/load-scripts.php?c=1&load%5B%5D=admin-bar,hoverIntent,common,customize-base,customize-loader&ver=3.5.2
+[20/Jul/2013:02:32:43 "GET /wp-content/themes/Super_Real
+[20/Jul/2013:02:32:44 "GET /wp-content/themes/Super_Real/
+[20/Jul/2013:02:32:50 "GET /wp-content/themes/Super_Real/File_M
+[20/Jul/2013:02:32:50 "GET /wp-content/themes/Super_Real/File_M/
+[20/Jul/2013:02:32:55 "GET /wp-content/themes/Super_Real/File_M/F_M.php
+
+Lastly, being unsuccessful with the previous attempts, they modified the main theme, specifically the index.php file and were able to push their changes to the root of the WordPress install using the default load of theme files when a site is rendered:
+
+[20/Jul/2013:02:33:01 "GET /wp-admin/theme-editor.php
+[20/Jul/2013:02:33:26 "GET /wp-admin/theme-editor.php?file=index.php&theme=twentytwelve
+[20/Jul/2013:02:33:38 "POST /wp-admin/theme-editor.php
+[20/Jul/2013:02:33:41 "GET /wp-admin/theme-editor.php?file=index.php&theme=twentytwelve&scrollto=9456&updated=true
+[20/Jul/2013:02:33:47 "GET /
+[20/Jul/2013:02:34:06 "POST /
+
+This is significant because if you look at the other attempts you notice that the attacker was failing. In both attempts, prior to the last one, the attacker was attempting to modify files to allow a backdoor to be injected. Unfortunately for them, disabling php execution made it difficult to be successful, rendering their URL requests as unavailable on each request.
+This is not speculation, it’s facts based on the server error logs:
+
+[Sat Jul 20 02:30:38 2013] [error] [client 197.7.44.234] client denied by server configuration: /home/[domain]/wp-content/themes/duster/footer.php
+[Sat Jul 20 02:30:38 2013] [error] [client 197.7.44.234] File does not exist: /home/[domain]/forbidden.html
+[Sat Jul 20 02:32:44 2013] [error] [client 197.7.44.234] client denied by server configuration: /home/[domain]/wp-content/themes/Super_Real/index.php
+[Sat Jul 20 02:32:44 2013] [error] [client 197.7.44.234] File does not exist: /home/[domain]/forbidden.html
+[Sat Jul 20 02:32:50 2013] [error] [client 197.7.44.234] client denied by server configuration: /home/[domain]/wp-content/themes/Super_Real/File_M/index.php
+[Sat Jul 20 02:32:50 2013] [error] [client 197.7.44.234] File does not exist: /home/[domain]/forbidden.html
+[Sat Jul 20 02:32:55 2013] [error] [client 197.7.44.234] client denied by server configuration: /home/[domain]/wp-content/themes/Super_Real/File_M/F_M.php
+[Sat Jul 20 02:32:55 2013] [error] [client 197.7.44.234] File does not exist: /home/[domain]/forbidden.html
+
+Being unable to get the shells to work, the attacker modified the main index file of the active theme – Twenty Twelve. This was important because the index file would be loaded by default when WordPress loads, in this instance they turned the main theme into the shell. Using that, they used the shell they uploaded to upload another shell at the root.
+You can see this here:
+
+[20/Jul/2013:02:33:41 "GET /wp-admin/theme-editor.php?file=index.php&theme=twentytwelve&scrollto=9456&updated=true
+[20/Jul/2013:02:33:47 "GET /
+[20/Jul/2013:02:34:06 "POST /
+
+You then see the backdoor file appear at the root, XfX.php, and subsequent requests to verify that one the file is there and second to apply POST requests against the same file:
+
+[20/Jul/2013:02:34:11 "GET /XfX.php
+[20/Jul/2013:02:34:15 "POST /XfX.php
+[20/Jul/2013:02:34:24 "POST /XfX.php
+[20/Jul/2013:02:34:28 "POST /XfX.php
+
+When you navigate to the file you see:
+
+In case you’re wondering, that one file allows them to do exactly what I described above. The attacker can inject files, make modifications, execute server commands and other similar nefarious acts against your website and server.
+Closing Thoughts
+In this case study the results of the attack were less than exhilarating. It came down to a basic defacement, which for the most part causes no real irreversible damage to the website visitors. If you maintain solid backups, recovering from a defacement is often fairly straight forward for the website owner.
+If you are a client and don’t have backups you should look into using our Website Backup solution.
+The real challenge however comes into play with what else the attacker did. While the defacement was less than exciting, watching how the attacker went about injecting various backdoors is very interesting. Although unable to execute php within the wp-content directory they were able to use the default loading of the theme files to execute their injection, placing it in a directory in which PHP execution is allowed, the root of the site.
+Looking back however you can quickly identify at a minimum three critical things that every website owner is able to do, in a layered defense approach, to avoid a similar attack:
+
+Password strength and uniqueness
+IP WhiteListing or Two Factor Authentication
+Disabling of Theme / Plugin Editors
+Use of a Web Application Firewall (WAF)
+
+In this approach, the attacker would have gone through a series of defenses that would have likely deterred the attack to the point where they would move on to another target. For a more in depth discussion on the various things you can do within your environment you can read one of our hardening articles – Cutting Through the BS. But here is a quick breakdown of what I would have employed if I was trying to avoid a similar attack:
+
+Use of a random generator and password manager – LastPass
+IP Whitelist through CloudProxy and Two Factor Authentication through Duo Security
+Disabling of Theme / Plugin Editor – via wp-config.php
+Use of CloudProxy as the Web Application Firewall
+
+Hope you find this information helpful.

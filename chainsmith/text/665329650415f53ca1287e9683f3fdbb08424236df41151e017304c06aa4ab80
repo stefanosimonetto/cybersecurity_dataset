@@ -1,0 +1,148 @@
+Enemy at the gates: Reviewing the Magnitude exploit kit redirection chain
+Over the last few months, we have been keeping an eye on the Magnitude exploit kit which is mainly used to deliver the Cerber ransomware to specific countries in Asia. Our telemetry shows that South Korea is most impacted via ongoing malvertising campaigns.
+When a visitor goes to a website that monetizes its traffic via adverts he may be exposed to malicious advertising. Tailored ads shown in the browser are initiated on-the-fly via a process known as Real-time Bidding (RTB). Unfortunately, crooks will take advantage of this process by deceiving and abusing ad agencies, trying to win the online auction to serve their malicious content.
+
+Figure 1: Typical redirection flow via Magnigate to Magnitude EK
+In addition to traffic filtering performed by various ad networks, users are inspected at a ‘gate’ that decides whether or not they should be allowed to proceed to Magnitude EK. This gate, which has been nicknamed ‘Magnigate’ by Proofpoint [1], performs additional checks on the visitor’s IP address and user-agent to determine their geolocation, Internet Service Provider, Operating System and browser information.
+Double purpose
+Magnigate serves two goals: to be a decoy site for non-intended targets or to be a redirection mechanism to Magnitude EK (or a social engineering scheme [1]) for the visitors that meet its requirements. In other words, seeing the content of the bogus site means the redirection to Magnitude EK has failed. During our tests, we also noticed that the gate can send a 404 or 502 HTTP status code.
+
+Figure 2: Magnigate leads to e-cig decoy site (avoidance) or Magnitude EK (real target)
+Beginnings: 2013-2014
+Using publicly available packet captures as well as our own honeypots, we go back in time and explore the history and evolution of this gate. Note: this post does not intend to be completely exhaustive and the reader should know that there are other redirection chains than the ones solely presented here.
+Early packet captures are hard to find publicly but PCAPs from mid-2013 and 2014 show various techniques used to redirect users to Magnitude EK.
+302 redirect
+This one shows a 302 redirect from a possibly compromised site in August 2013 although malvertising was also an infection source at the time (MalwareDontNeedCoffee [2]). The PCAP comes from Malware-Traffic-Analysis.net.
+
+Figure 3: A site performing a redirection to Magnitude EK in the summer of 2013
+iframes
+In January 2014, we can see iframe insertions on compromised sites to redirect to a second stage server that performs the 302 redirect to the EK. The PCAP comes from Malware-Traffic-Analysis.net.
+Figure 4: iframe injections resulting in 302 redirect to Magnitude EK
+top.location.href
+Yet another redirection technique is seen in this March 2014 capture. (Side note: the website pictured below remains hacked, even 3 years later). The PCAP comes from Malware-Traffic-Analysis.net.
+
+Figure 5: A compromised site leading to Magnitude EK in the winter of 2014
+JS injection to iframe
+In this September 2014 snapshot, we see a compromised website with a malicious JS injected into it. The PCAP comes from Malware-Traffic-Analysis.net.
+
+Figure 6: This external JavaScript calls a Magnitude EK landing page
+Steganography
+In October 2014, we see an interesting redirection technique involving steganography which was not obvious at first. The malicious redirect URL is stored in an image file hosted on the hacked site (data.png). It’s a poor name choice for a file designed to conceal… data, considering the effort that was put into the JavaScript function that decodes it.
+The PCAP comes from Malware-Traffic-Analysis.net.
+
+Figure 7: An interesting and covert way to redirect traffic from a hacked site via steganography
+A more ‘predictable’ gate: late 2014-2015
+In November 2014, there is an interesting change with the redirecting infrastructure. A compromised site is injected with a hex encoded script that performs the first redirection to a .eu domain. It is the next domain called filesnews.ws, which performs the final call to the Magnitude EK landing page. It’s noteworthy that the ‘.ws’ domain and the Magnitude EK landing are in the same IP space and both running Apache 2.2.15 and PHP 5.3.3. In the following month, we also witnessed the gate sharing the same server software specs (although in different IP spaces).
+The PCAP comes from ThreatGlass.
+
+Figure 8: Overlapping infrastructure specs between gate and EK in this Fall 2014 capture
+The use of decoy sites in Magnitude EK campaigns may have started in late 2014 or early 2015. Below is an example of such a site (paypalinvest.info) where traffic originated from malvertising. The fake sites are designed to confuse analysts and have used various themes over time such as finance, gaming, e-cigs, etc.
+
+Figure 9: The use of decoy sites has been a popular trend
+Fingerprinting: 2016
+A new twist to the gate happened around March 14, 2016. So far, the redirections we had observed had been via one single web request but over the course of a few days, we witnessed the emergence of an added step which also contained ‘fingerprinting’ code. (Side note: According to MalwareDontNeedCoffee the fingerprinting code was already in Magnitude’s main landing page before).
+
+Figure 10: Fingerprinting the user via the browser is shown here in the gate to Magnitude EK
+A little over a month later and the fingerprinting gate is gone, replaced by a simple 302 redirect.
+
+Figure 11: A ‘simple’ redirection flow
+Sometime later, the first part of the gate changes slightly and reveals the detection of the Kaspersky virtual keyboard:
+
+Figure 12: Detecting (and avoiding) users that have Kaspersky software installed
+It was only a matter of time before things changed again. The Kaspersky check gets switched to the second part of the gate.
+
+Figure 13: A switch around for the Kaspersky keyboard detection
+Obfuscation: Fall 2016
+In the Fall of 2016, an important change happened with Magnitude EK as it was no longer rented as a toolkit, but instead became the sole use of one actor who decided to focus on targeting Asia, and in particular, South Korea, delivering the Cerber ransomware [1].
+During the months that followed, the gate which by now was publicly known as ‘Magnigate’, went through some code obfuscation on top of the server side checks to filter traffic by user-agent and geolocation [1]. This meant that capturing Magnitude EK in the wild became more difficult without a proper set-up.
+
+Figure 14: Various encodings in use by Magnigate over the course of a few months
+More encoding: July 2017
+The latest version of Magnigate has yet different encoding. Here’s a quick look at it.
+
+Figure 15: Magnigate seen in July 2017
+
+Figure 16: Step 1 in the Magnigate redirection flow
+
+Figure 17: Step 2 in the Magnigate redirection flow
+Step 0 in the gate?
+<Edit> This fingerprinting “gate” is not related to Magnitude EK, but rather is the S. Korean ISP injecting code into HTTP requests. Thanks to the person who provided the feedback</Edit>
+We spotted an instance where there was a redirect loop within the gate itself before finally carrying on with the usual path. This ‘extra’ check did not happen all the time though, suggesting it is either something still in development or being selectively tested.
+The server infrastructure is also quite puzzling, with for example Microsoft IIS instead of the standard Apache we normally see, and residing on an IP address (210.117.120.42) located in South Korea.
+
+Figure 18: An interesting detour before the normal Magnigate flow
+A closer look at the code used in this pre-step 1 stage reveals various types of fingerprinting, for example checking the local IP address and detecting the video driver installed.
+
+Figure 19: Getting the current user’s local IP address via the RTCPeerConnection trick
+
+Figure 20: Canvas fingerprinting used to identify the user’s video driver
+Whatever the exact purpose of this pre-gate is, it is performing some in-depth checks on the current visitor and passing those as parameters within the URL. Only time will tell if this becomes integrated as a de facto check, or whether this was some kind of temporary trap for honeypots.
+Gates and exploit kits
+A gate is not required in order to perform a successful drive-by infection so long as there is an existing redirection mechanism in place (via compromised sites or malvertising). However, gates provide an efficient way to do final traffic filtering before wasting resources on non-intended targets. It’s also a very effective means of preventing honeypots and security researchers from poking their nose into your business or perhaps tracking and logging their activity. Some exploit kits like Astrum EK do some heavy filtering throughout the infection chain to be as stealthy as possible, resulting in little information known about their malvertising campaigns or the exploit code they use.
+It’s quite likely that Magnigate will continue to evolve but the question is whether these will be slight cosmetic changes (different obfuscation techniques) or more substantial (new detection or evasion techniques).
+Malwarebytes users are protected against Magnitude EK thanks to our signature-less anti-exploit module.
+References
+[1] Cerber, not the only payload: https://www.proofpoint.com/us/threat-insight/post/magnitude-actor-social-engineering-scheme-windows-10
+[2] http://malware.dontneedcoffee.com/2013/10/Magnitude.html
+Acknowledgements
+I would like to thank David Ledbetter and Manuel Caballero for their help in this research.
+Indicators of compromise
+Magnigate Regex
+\/(([0-9]{5,8}|0)(\$|%[0-9][A-Z]|&)){13,14}$
+Magnigate domains (step 1)
+paypalinvest[.]info
+bestmoneyinvest[.]net
+roundgames[.]biz
+aroundgamez[.]org
+arcencielfoundation[.]org
+planetofsgames[.]com
+lebhaile[.]com
+sextizer[.]net
+pyfxmoney[.]com
+blowyourmindvape[.]com
+letsvapes[.]com
+letsdovape[.]com
+letsovape[.]com
+Magnigate fully qualified domains (step 2)
+cdi3e82hac4p.boxaims[.]com
+f344709fpep0ue412r.dieowed[.]com
+4lfcfq6a7g94.rarekid[.]com
+0adci9j7d7l46e.asmight[.]com
+d88o9cd59.endsits[.]com
+c00x28g6c54fax0br.ordrink[.]com
+28cdw96cl1do5.givesup[.]com
+2a2l2xfcffcb66v.hesoff[.]com
+38ffa328261.isleave[.]com
+6d82p5d2v0e4ft105s.owesdo[.]com
+175c2a53f64lbr64w.milered[.]com
+e4cua85j8w06crek833x.helpfix[.]stream
+70i4o34b724q.bestbusy[.]site
+7a48s4eu85kaeu4p3.doebulk[.]com
+906q2u4567021q.usfixes[.]com
+93c452ci0.deskif[.]com
+IP addresses
+217.172.189.199
+31.3.242.108
+78.46.29.251
+148.251.205.122
+185.130.226.117
+185.82.216.199
+185.104.11.201
+89.163.129.151
+91.134.161.63
+188.138.102.127
+95.215.63.225
+95.215.62.214
+188.138.68.153
+188.138.68.163
+94.228.223.242
+94.228.223.245
+188.165.85.28
+51.255.154.6
+149.202.232.201
+46.105.95.113
+151.80.179.144
+46.105.95.114
+37.59.140.124
+145.239.190.17
+210.117.120.42

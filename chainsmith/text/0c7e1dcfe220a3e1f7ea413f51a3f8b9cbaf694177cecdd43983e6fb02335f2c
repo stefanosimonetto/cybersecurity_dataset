@@ -1,0 +1,50 @@
+Using Session Data to Scope Events Without Signatures
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+July 27, 2004
+
+Critics of intrusion detection systems say signature-based IDSs are too easy to evade, bypass, or fool. This is true when the IDS only provides alert data to analysts. Alerts are the results of judgements made by the IDS developers, as encoded in the IDS' rules and logic. To deal with events that have no signatures, we can turn to other forms of network security monitoring data.
+
+Session data is a record of transactions between parties, typically storing source and destination IP addresses and ports, session start and end times, and counts of packets and bytes of data sent by source and destination. Session data is best captured for connection-oriented TCP traffic, but sessions can be emulated for connectionless protocols like UDP and ICMP in a request-response model.
+
+Session data is immune to encryption, because no payloads are captured. Session data is also not dependent on signatures, because every transaction is recorded. This "neutrality" makes session data an excellent candidate for investigating events for which no signatures exist, albeit in an "after-the-fact" manner.
+
+The recent MyDoom variant represents a case where session data can be used to determine if hosts have been infected.  We can ask Sguil to check its session database for evidence of connections to port 1034 TCP, after reading the report by the SANS Internet Storm Center:
+
+WHERE sessions.start_time > '2004-07-20' AND
+(sessions.src_port = 1034 or sessions.dst_port = 1034)
+and sessions.dst_port != 80 and sessions.src_port !=80
+and sessions.dst_port != 443 and sessions.src_port != 443
+LIMIT 500
+
+This SQL query excerpt says to check for sessions with source or destination ports of 1034 TCP, but to omit sessions with ports 80 or 443 TCP. This is a way to ignore outbound Web browsing records.
+
+Here are partial sample results for 26 July 2004, omitting src_bytes, dst_pckts, and dst_bytes, which are all 0 in this case:
+
+start_time   src_ip src_port dst_ip       dst_port src_pckts
+17:37:49     1.2.3.4 47076   15.136.19.27   1034    6
+
+17:38:10     1.2.3.4 47146   16.138.31.128  1034    6
+
+17:38:31     1.2.3.4 47209   16.190.234.172 1034    6
+
+17:38:52     1.2.3.4 47235   16.49.36.18    1034    6
+
+17:39:13     1.2.3.4 47317   16.133.77.85   1034    6
+
+These results show us that host 1.2.3.4 began making outbound connections to port 1034 TCP at 17:37:49. This is a strong indicator that 1.2.3.4 is infected by the latest MyDoom variant. Should any inbound connections to port 1034 TCP on 1.2.3.4 appear, we know someone is making use of this backdoor.
+
+If you're not running Sguil, you can use Argus to collect session data.  SANCP by John Curry is another option, one which is included in Sguil. The default session data recording in Sguil uses Snort's stream4 preprocessor keepstats function.
+
+If you'd like to know more about using session data to scope intrusions and other security events, please see chapters 7 and 15 in my Tao of Network Security Monitoring.

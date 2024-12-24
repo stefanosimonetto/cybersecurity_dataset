@@ -1,0 +1,97 @@
+Magniber ransomware improves, expands within Asia
+This blog post was authored by @hasherezade and Jérôme Segura.
+The Magnitude exploit kit is one of the longest-serving browser exploitation toolkits among those still in use. After its inception in 2013, it enjoyed worldwide distribution with a liking for ransomware. Eventually, it became a private operation that had a narrow geographic focus.
+During 2017, Magnitude delivered Cerber ransomware via a filtering gate known as Magnigate, only to a select few Asian countries. In October 2017, the exploit kit operator began to distribute its own breed of ransomware, Magniber. That change came with an interesting twist—the malware authors went to great lengths to limit infections to South Korea. In addition to traffic filtering via country-specific malvertising chains, Magniber would only install if a specific country code was returned, otherwise it would delete itself.
+In April 2018, Magnitude unexpectedly started pushing the ever-growing GandCrab ransomware, shortly after having adopted a fresh Flash zero-day (CVE-2018-4878). What may have been a test campaign did not last long, and shortly after, Magniber was back again. In our recent captures of Magnitude, we now see the latest Internet Explorer exploit (CVE-2018-8174) being used primarily, which it integrated after a week-long traffic interruption.
+In this post, we take a look at some notable changes with Magniber. Its source code is now more refined, leveraging various obfuscation techniques and no longer dependent on a Command and Control server or hardcoded key for its encryption routine. In addition, while Magniber previously only targeted South Korea, it has now expanded its reach to other Asia Pacific countries.
+Extracting the payload
+
+72fce87a976667a8c09ed844564adc75 – loader DLL
+
+19599cad1bbca18ac6473e64710443b7 – Magniber’s core DLL
+
+There are several stages before the final payload is downloaded and executed. After Magnigate’s 302 redirection (Step 1), we see a Base64 obfuscated JavaScript (Step 2) used to launch Magnitude’s landing page, along with a Base64 encoded VBScript. (Both original versions of the scripts are available at the end of this post in the IOCs.) After CVE-2018-8174’s exploitation, the XOR-encrypted Magniber is retrieved.
+
+Figure 1. Traffic view of a Magniber infection, via Magnigate redirection and Magnitude EK
+
+Figure 2. Decoded Javascript shows redirection to Magnitude’s landing page
+
+Figure 3. VBScript code snippet showing part of CVE-2018-8174
+Once exploitation of the Use After Free vulnerability in Internet Explorer (CVE-2018-8174) is successful, the VBScript will execute the following shellcode:
+
+Figure 4. Byte array (shellcode)
+Functionality-wise, this shellcode is a simple downloader. It downloads the obfuscated payload, decodes it by XOR with a key, and then deploys it:
+
+Figure 5. Downloading the final payload via InternetOpenUrlw API
+The downloaded payload (72fce87a976667a8c09ed844564adc75) is, however, still not the Magniber core, but a next stage loader. This loader unpacks the Magniber’s core DLL (19599cad1bbca18ac6473e64710443b7) and injects it into a process.
+Both elements, the loader and Magniber core, are DLLs with Reflective Loader stub, that load themselves into a current process using the Reflective DLL injection technique.
+Behavioral analysis
+The actions performed by Magniber haven’t changed much; it encrypts files and at the end drops a ransom note named README.txt.
+
+Figure 6. Ransom note left on the infected machine
+The given links lead to an onion page that is unique per victim and similar to many other ransomware pages:
+
+Figure 7. Magniber’s payment page
+The files encrypted by this version of Magniber can be identified by their extension: .dyaaghemy. While in the past each file was encrypted with the same AES key, this time each file is encrypted with a unique key—the same plaintext gives a different ciphertext. The encrypted content has no patterns visible. That suggests that a stream cipher or a cipher with chained blocks was used (probably AES in CBC mode). Below you can see a BMP file before and after being encrypted by Magniber:
+
+Figure 8. Visualizing a file before and after encryption
+Code changes
+Magniber is constantly evolving with big portions of its code fully rewritten over time. Below you can see a code comparison between the current Magniber DLL and an earlier version (8a0244eedee8a26139bea287a7e419d9), created with the help of BinDiff:
+
+Figure 9. Comparing an older Magniber with the newer one
+Obfuscation
+The authors put a lot of effort in improving obfuscation. The first version we described was not obfuscated at all. The current, in contrast, is obfuscated using a few different techniques. First of all, API functions are now dynamically retrieved by their checksums. For example:
+
+Figure 10. Calling API functions via checksum
+Comparing the new and the old version, we can see some overlapping fragments of code:
+
+Figure 11. Old version with normal import calls vs. new version with dynamically retrieved functions
+The function pointer is retrieved by searching through export tables of the DLLs that are currently loaded. This technique requires that the DLL from which we want to retrieve the function to be already loaded. This algorithm of retrieving function was added to Magniber a few months ago, for example in the sample 60af42293d2dbd0cc8bf1a008e06f394.
+In addition, some of the parameters for the calls are dynamically calculated and junk code is added in between the operations. A string that is supposed to be loaded is scattered through several variables.
+
+Figure 12. Adding junk code to make analysis more tricky
+File encryption
+We can also observe some changes at the functionality level. The early versions relied on the AES key downloaded from the CnC server (and in case if it was not available, falling back to the hardcoded one, making decryption trivial in such case). This time, Magniber comes with a public RSA key of the attackers that makes it fully independent from the Internet connection during the encryption process. This key is used for protecting the unique AES keys used to encrypt files.
+The attacker’s RSA key is hardcoded in the sample in obfuscated form. This is how it looks after deobfuscation:
+
+Figure 13. Deobfuscated RSA key
+Each time a new file is going to be encrypted, two 16-byte long strings are generated. One will be used as an AES key, and another as an initialization vector (IV). Below you can see the fragment of code responsible for generating those pseudo-random strings.
+
+Figure 14. Generating pseudo-random strings
+The interesting fact is what they use as a random generator—a weak source of randomness may create a vulnerability. We can see that under the hood GetTickCount is called:
+
+Figure 15. Random generator using GetTickCount
+The full reconstruction of the code generating the key and IV is available in the following snippet: https://gist.github.com/hasherezade/7fb69fbd045315b42d7f962a83fdc300
+Before the ransomware proceeds to encrypt the file, the RSA key is imported and used to encrypt the generated data (key+IV):
+
+Figure 16. RSA key import right before file encryption begins
+It produces an encrypted block of 256 bytes that is passed to the encrypting function, and later appended at the end of the encrypted file. Apart from those changes, files are encrypted similar to before, with the help of Windows’ Crypto API.
+
+Figure 16. Setting the AES key and initialization vector
+
+Figure 17. Encrypting and writing to a file
+Geographic expansion
+In early July, we noted exploit attempts happening outside of the typical area we had become used to, for instance in Malaysia. At about the same time, a tweet from MalwareHunterTeam mentioned infections in Taiwan and Hong Kong.
+Following the changes in the distribution scope, the code of Magniber got updated to whitelist more languages. Now the list expanded, adding other Asian languages, such as Chinese (Macau, China, Singapore) and Malay (Malysia, Brunei).
+
+Figure 17. Expanded language checks
+Continuing evolution
+While Magniber was not impressive at first, having simple code and no obfuscation, it is actively developed and its quality continuously improves. Their authors appear professional, even though they commit some mistakes.
+This ransomware operation is carried with surgical precision, from a careful distribution to a matching whitelist of languages. Criminals know exactly which countries they want to target, and they put their efforts to minimize noise and reduce collateral damage.
+Malwarebytes users are protected against this threat thanks to our anti-exploit module, which blocks Magnitude EK’s attempt to exploit CVE-2018-8174 (VBScript engine vulnerability):
+
+Thanks to David Ledbetter for his help with deobfuscating the VBScript.
+Indicators of compromise (IOCs)
+178.32.62[.]130,bluehuge[.]expert,Magnigate (Step 1)
+94.23.165[.]192,69a5010hbjdd722q.feedrun[.]online,Magnigate (Step 2)
+92.222.121[.]30,08taw3c6143ce.nexthas[.]rocks,Magnitude EK (Landing Page)
+149.202.112[.]72,Magniber
+Code snippets
+
+Javascript
+VBScript
+
+Magniber (original)
+6e57159209611f2531104449f4bb86a7621fb9fbc2e90add2ecdfbe293aa9dfc
+Magniber (core DLL)
+fb6c80ae783c1881487f2376f5cace7532c5eadfc170b39e06e17492652581c2

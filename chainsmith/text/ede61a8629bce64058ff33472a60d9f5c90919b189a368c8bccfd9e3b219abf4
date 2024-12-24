@@ -1,0 +1,81 @@
+Cat-and-mouse game in CVE 2012-0158
+2013-05-03
+
+Ruhai Zhang
+Fortinet
+,
+China
+Editor:
+Helen
+
+Martin
+Abstract
+Ruhai Zhang takes a look at the cat-and-mouse game of exploit samples, focusing on the widely used CVE-2012-0158 vulnerability.
+Copyright © 2013 Virus Bulletin
+
+The CVE-2012-0158 vulnerability has been widely used by cybercriminals since April 2012 and has been exploited in the wild with many anti-detection tricks. As we know, when an exploit sample is executed, the corresponding vulnerable application will initially load and parse it. While scanning an exploit file, an AV engine will also analyse its file format. For some file types with complicated structures, the AV engine may struggle to parse all of the structures listed in the format specification. Moreover, for efficiency, fault-tolerant performance purposes, or even through carelessness, an application may not fully comply with the format specification while parsing a file. These factors open a door in the cat-and-mouse game. The exploit in question can be implemented in both Microsoft Office and RTF files, which increases its spreading ability.
+
+Vulnerability analysis
+The CVE-2012-0158 vulnerability is in the ListView, ListView2, TreeView and TreeView2 ActiveX controls in MSCOMCTL.OCX, which are mainly used in Microsoft Office, as shown in Figure 1.
+Figure 1. An exploit sample’s ListView Contents stream.
+Figure 2. Vulnerable parsing function in MSCOMCTL.OCX (v6.01.9545).
+The following is the execution process for the vulnerable function in MSCOMCTL.OCX, as shown in Figure 2:
+Read a 0xC bytes record in the ‘Contents’ stream to the stack buffer, which has the following structure:
+struct CobjRecord {
+DWORD flag;
+DWORD unknown;
+DWORD next_read_len;
+}
+
+Get the value next_read_len.
+In the second call to the CheckLenAndReadRecord function, the Next Record Len value is read (see Figure 1) and compared with next_read_len value in the CobjRecord. If the two length values are equal, the following next_read_len bytes size data will be read to the stack buffer. However, only eight bytes are allocated on the stack.
+For the sample (MD5: C694ED321C758AF7D4F7582A415DEDE9) shown in Figure 1, the vulnerable function will return to address 0x27583C30 and then jump to the shellcode at 0x125DA4, as shown in Figure 3, Figure 4 and Figure 5.
+Figure 3. Stack overview after overflow.
+Figure 4. Jmp esp instruction in MSCOMCTL.OCX (v6.01.9545).
+Figure 5. Jmp to the shellcode.
+
+Office file format anti-detection tricks
+
+End of Chain Sector ID
+Figure 6 is a rough flow chart showing how Microsoft Office reads stream data.
+Figure 6. Reading stream data flow chart.
+The sample (MD5: 52a87d2cd564900904aea8869c00f6c6) shown in Figure 7and Figure 8 uses this trick. The End Of Chain SecID at offset 10252 should have been 4, a continuous value. It is likely that this value was modified in an attempt to evade detection. If the AV engine recognizes the End of Chain SecID as the end of the stream data, this kind of crafted exploit sample may slip away undetected.
+Figure 7. A sample’s Contents directory entry.
+Figure 8. A sample’s short-sector allocation table.
+
+Microsoft Excel default password
+Figure 9 shows the process of Microsoft Excel validating password-protected documents:
+Figure 9. A password-protected Excel sample’s Workbook stream.
+The decryption key is derived from the default password ‘VelvetSweatshop’ and Salt.
+The EncryptedVerifier field is decrypted using the derived key.
+The hashing algorithm output is obtained by using the above decrypted Verifier as input.
+The EncryptedVerifierHash field is decrypted using the key derived in step 1.
+If the above two hash values are equal, execution will continue. If they are not, the user will be prompted to input the password and validate it as per the above steps.
+We can see that password-protected Microsoft Excel documents can be executed without entering the password while it is set to the default ‘VelvetSweatshop’.
+Figure 10. A password-protected Excel sample’s directory entries.
+Figure 9 and Figure 10 show a sample (MD5: 5c7d74dd1c96651d22c5829039ab93bd) using this trick. The exploit relevant data is encrypted in the ‘encryption’ stream. We can see the following decrypted exploiting structure in the memory:
+Figure 11. A sample’s decrypted exploiting data in the memory.
+
+RTF file format anti-detection tricks
+This exploit can also be embedded into an RTF file as an OLE object, so some tricks relevant to RTF parsing can also be used.
+
+RTF magic checking
+While parsing an RTF file, Microsoft Word will not check the fifth character (‘f’ in the ‘\rtfN’ control word), as shown in Figure 12.
+Figure 12. RTF magic parsing in WINWORD.EXE (v11.0.5604).
+The sample (MD5: 63eb0c0ae2853c9398d94569cf5eadcf) shown in Figure 13 uses this trick. If the AV engine recognizes the RTF file totally as described in the RTF specification, this kind of crafted exploit sample will escape detection.
+Figure 13. An exploit sample using the RTF magic trick.
+
+RTF object obfuscating
+The exploit OLE file is embedded into an RTF file using control word ‘\object’. The object data is encoded using the ‘Hex to ASCII’ method. While parsing the object data, Microsoft Word will ignore space characters and other control words.
+Figure 14 shows a sample (MD5: f8ec2de6927ac7a22a88f8a2f6c2ebd3) using this trick. The OLE file magic ‘D0CF11E0A1B11AE1’ value is not continuous, but separated by some space characters and RTF control words.
+Figure 14. An exploit sample using RTF obfuscating tricks.
+The sample (MD5: 4c4d397511fd8f802950218d598c3478) shown in Figure 15 also uses this trick. In this sample, several useful characters are separated by some obfuscating RTF groups ‘{}’, which may also contain some useful characters.
+Figure 15. Another exploit sample using RTF obfuscating tricks.
+To detect this kind of crafted sample, an AV engine must also ignore the obfuscating characters and structures while parsing the OLE object from an RTF file.
+
+Conclusion
+The cat-and-mouse game of exploit samples is based largely around the differences in file format parsing between the vulnerable application and the detection engine. One exploit sample which seems corrupted because of unusual structures may indeed execute correctly. For each type of file, the engine should try to parse its file format exactly as its corresponding application does, and not simply rely on its format specification.
+
+Bibliography
+[1] CVE-2012-0158. http://www.cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2012-0158.
+[2] Microsoft Office Document Cryptography Structure. http://msdn.microsoft.com/en-us/library/cc313071(v=office.12).aspx.

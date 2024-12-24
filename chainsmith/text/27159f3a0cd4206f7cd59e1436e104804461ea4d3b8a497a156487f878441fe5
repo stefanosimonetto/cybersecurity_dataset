@@ -1,0 +1,270 @@
+Prefetch Hash Calculator + a hash lookup table xp/vista/w7/w2k3/w2k8
+June 13, 2012 in Compromise Detection, Forensic Analysis
+
+Update 4
+
+In July 2013 I added a little bit about /Prefetch:xxx command line argument. Read it here.
+Update 3
+In October 2012 I added a small addendum here describing how the UNC paths are being processed by the algorithm.
+Update 2
+I previously wrote that “Windows 7 introduces another quirky change – device path now starts from volume2 (if anyone knows why, please let me know).“. One good fellow forensic investigator (he asked to remain anonymous) came back to me with an explanation – it’s a 100MB reserved partition that occupies volume number 1 on Windows 7.
+In most cases, results of prefetch hash calculator tool will be valid for Windows 7 as most of W7 users have this hidden partition present. Now, if someone intentionally removes the hidden partition and uses volume 1 as C:, the resulting hashes will be incorrect.
+The short fix is to quickly modify the script to count volumes from C-B, instead of C-A (lines 111 and 137).
+The issue between mapping the logical drives (DOS names) and physical devices is a bit of an issue and a next version of the script will be a bit smarter in this aspect. Stay tuned.
+Update
+Added Windows 8 Customer Preview 32-bit (inline). Will update script later.
+Old Post
+I guess at this moment of time everyone is familiar with a content of \windows\Prefetch folder as well as the value it has  for a forensic investigation or IR/malware analysis. There are multiple scripts available out there that can parse the content of Prefetch files, and even running simple strings on the .pf files are good enough to point us into a place where the malware or its files are stored. Of course, one has to also remember that Prefetch analysis can be fooled by a couple of tricks eg. PrefetchADS as well as a 10+ seconds delay before opening any file trick.
+This post is about the actual hashing algorithm used by Prefetch files.
+History
+It has been already discussed previously here, here, and here, but I always felt there is more to the story, so I decided to provide some more information about what’s going on under the hood… and update the knowledge base with algorithms for newer versions of Windows.
+Algorithms covered in this post
+
+Windows XP 32-bit
+Windows Vista 32-bit
+Windows 7 32-bit
+Windows 7 64-bit
+Windows 8 32-bit (Customer Preview)
+Windows Server 2003 32-bit
+Windows Server 2008 32-bit
+Windows Server 2008 64-bit
+
+As far as I can tell:
+
+The presented algorithms most likely work for all the service packs, new releases (one exception is 2008 R2 – see below).
+Prefetching is by default disabled on Servers  (2003 and 2008), but can be enabled.
+Prefetching on 2008 R2 is disabled and doesn’t seem to be available for enabling (prefetch calculation code is still present; relevant discussion here).
+
+Prefetch file naming algorithm vs. hashing function
+There is fundamentally one single Prefetch hashing algorithm used by various Windows versions, except it has been slightly modified over the time. I must emphasize here a distinction between a Prefetch file naming algorithm and a hashing function (I chose these names on my own, but I think they are quite relevant):
+
+Prefetch file naming algorithm – produces the string e.g. RUNDLL32.EXE-35A2A03F.pf
+Hashing function – produces a hash or multiple hashes that are building the final part of a Prefetch file name e.g. 35A2A03F
+
+The reason why I need to emphasize it will become clearer later.
+Hashing functions
+There are 3 hashing functions  used by variations of Prefetch file naming algorithm that I am aware of:
+
+Windows XP 32-bit/Windows Server 2003
+Windows Vista 32-bit
+Windows 7/Windows Server 2008/Windows 8 32-bit
+
+The code implementing all of them as well as for Prefetch file naming algorithm is available in a script attached to this post.
+Prefetch file naming algorithm – analysis 1/2
+When you run an application for an example say…  notepad.exe, the following things happen:
+
+The full path for the file is determined e.g. c:\windows\notepad.exe.
+The path isconverted to Unicode string.
+The full path is converted from to a device path e.g. \DEVICE\HARDDISKVOLUME1\WINDOWS\NOTEPAD.EXE.
+Now, the hashing function is applied to the buffer.
+Then the Prefetch file name is determined as a filename-hash e.g. CALC.EXE-02CD573A.pf.
+
+The hashing function is implemented by a function CcPfHashValue and its original code has been already provided (for XP) on the blog I mentioned earlier. Newer versions of Windows store hashing functions code either inline or inside PfCalculateProcessHash/PfSnScanCommandLine functions.
+Looking at CcPfHashValue in windbg we can see the following:
+
+The assembly code converted to perl looks as follows:
+sub hash_xp
+{
+my $devpath_u = shift;
+my $hash = 0;
+for (my $i=0; $i<length($devpath_u); $i++)
+{
+my $char = ord(substr($devpath_u,$i,1));
+$hash = ( ($hash * 37) + $char ) % 4294967296;
+#print STDERR sprintf("%08lX",$hash).' '.substr($devpath_u,$i,1)."\n";
+}
+$hash = ($hash * 314159269) % 4294967296;
+
+$hash = 0x100000000-$hash if ($hash>0x80000000);
+$hash = (abs($hash) % 1000000007) % 4294967296;
+return $hash;
+}
+Now, knowing the hashing algorithm, it is tempting to assume that you could do this:
+for each .exe file on the system
+find its full path
+apply the algorithm
+build a lookup table of all possible 'full path to .exe' & 'hash' pairs
+use it as a reference while analyzing the content
+of the actual Prefetch folder.
+Well, indeed you can do it and the script provided as an attachment to this article is doing exactly this. It generates hashes for known .exe files extracted from various Windows systems + also for known rundll32.exe calls (If you find any missing entry, please let me know).
+The script also accepts file names as a command line argument which can be used to instantly calculate the hash for a file of your choice and it can calculates the hash for XP (32-bit), Vista (32-bit) and Windows 7 (32- and 64-bit) as well as for 32-bit versions of Windows Server 2003 and 2008.
+So far so good. We can now build a lookup table that we can then use to associate known Prefetch hashes with the actual full paths.
+But hold on, what about the hashes for programs that are executed with a command line arguments?
+Turns out that for a typical application without a command line argument hashing function is applied only once and only to the the path; the command line arguments are simply ignored. And using command line when launching the applications doesn’t change a thing. One can run e.g. Notepad as notepad.exe and also with a command line argument e.g. notepad.exe 1.txt. The hash will remain the same.
+Prefetch file naming algorithm – analysis 2/2
+I mentioned ‘typical’. This is where the things get  a bit ugly. There are two exceptions when hash calculation becomes a bit more complex. It has to do with the two following cases:
+
+the application ran is a so-called hosting application e.g. rundll32.exe, mmc.exe, and newer versions of Windows systems also include dllhost.exe and svchost.exe
+
+there is a command line /Prefetch used (I skip this bit in this post)
+
+In these cases, the Prefetch file name no longer relies on a device .exe path only. It does take it into account of course, but it also includes a command line used to launch an application itself and/or /Prefetch command line argument if it exists.
+For example, running a command:
+rundll32.exe shell32.dll,Control_RunDLL main.cpl @0
+gives us a Mouse Properties dialog box:
+
+The following happen when you run it:
+
+The full path for the file is determined e.g. c:\windows\system32\rundll32.exe
+The Path is stored/converted to Unicode string
+The full path is converted from to a device path e.g. \DEVICE\HARDDISKVOLUME1\WINDOWS\RUNDLL32.EXE
+Now, the hashing function is applied for the first time (I refer to it below as hash1) and is calculated on the path like this:
+
+Then comes the second part: the command line
+The second hash (I refer to it below as hash2) is calculated on a case-sensitive path+command line combo and it includes quotation marks (XP) e.g.:
+
+Once the 2 hashes are calculated, they are added together.
+So, the actual hash string used in a Prefetch file name is a sum of hash1+hash2; this is why I made the distinction between the Prefetch file naming algorithm and hashing function at the very beginning of the article – they are 2 different things; one relies on another to build a final file name string
+In this particular case, the Prefetch file name is RUNDLL32.EXE-40E8EB31.pf (XP-32bit only).
+
+Okay, so the problem with anything that runs via rundll32.exe (or other hosting application) is that the path is case sensitive and any change to it generates a new Prefetch file name 🙁
+Indeed, as an experiment, you can try running the following commands (run on XP-32bit):
+
+rundll32.exe shell32.dll,Control_RunDLL main.cpl @0
+
+produces RUNDLL32.EXE-40E8EB31.pf
+
+rundll32.exe Shell32.dll,Control_RunDLL main.cpl @0
+
+produces RUNDLL32.EXE-3EEC4634.pf
+
+rundll32.exe sHell32.dll,Control_RunDLL main.cpl @0
+
+produces RUNDLL32.EXE-48FA8C58.pf
+
+The second problem comes from the path of the actual rundll32.exe. The hashing function is applied twice and it walks through a buffer storing device path to rundll32.exe + command line, and this one is case-sensitive. So, any change to the path generates a different hash1; that is,
+
+c:\WINDOWS
+c:\wINDOWS
+c:\windows
+
+will produce different hashes 🙁
+Last, but not least, even a number of spaces between the rundll32.exe path and its command line makes a difference as well e.g.
+
+rundll32.exe shell32.dll,Control_RunDLL main.cpl @0
+rundll32.exe  shell32.dll,Control_RunDLL main.cpl @0
+rundll32.exe   shell32.dll,Control_RunDLL main.cpl @0
+
+will also produce different hashes (hash2)!
+While it is possible to build some sort of rainbow tables for all such possible Prefetch path&command line combinations, it’s time consuming and most of the time not worth it.
+There are still good news though. And I already mentioned it earlier.  Instead of building large lookup tables, it is easier to find all .exe file names + all references to rundll32.exe 9and othe rhosting applications listed earlier) within the evidence (e.g. extract strings from a full image+from memory+malware samples+registry), and calculate the hashes of the exact path name or path+command line as present in evidence. We will end up with a small list of pairs:
+
+Prefetch file name
+full path
+
+that can be used for lookups for each particular forensic case.
+The Prefetching file naming algorithms on various systems
+As you now know, a simple change in a path, an extra space, or a case-sensitivity of a letter changes the final name of a Prefetch file. Sadly, this is partially the reason why hash calculated for one system doesn’t work for another.
+Each version of the Windows OS uses a different prefetching file naming algorithm
+
+Windows XP 32-bit
+
+sum of hash_xp (on devicename and c: = volume1)+ hash_xp(quoted path+command line)
+
+Windows Vista 32-bit
+
+sum of hash_vista (on devicename and c: = volume1)+ hash_vista(quoted path+command line)
+
+Windows 7 32-bit
+
+sum of hash_w7 (on devicename and c: = volume2 )+ hash_w7(quoted path+command line)
+
+Windows 7 64-bit
+
+sum of hash_w7 (on devicename and c: = volume2 )+ hash_w7(unquoted path+command line prefixed with extra blank character
+
+Windows 8 32-bit
+
+sum of hash_w7 (on devicename and c: = volume2 )+ hash_w7(unquoted path+command line prefixed with extra blank character
+
+Windows Server 2003 32-bit
+
+sum of hash_xp (on devicename and c: = volume1 )+ hash_xp(unquoted path+command line)
+
+Windows Server 2008 32-bit
+
+sum of hash_w7 (on devicename and c: = volume1 )+ hash_w7(unquoted path+command line prefixed with extra blank character)
+Example for
+C:\WINDOWS\system32\rundll32.exe ” shell32.dll,Control_RunDLL hdwwiz.cpl”
+looks as follows:
+
+XP    (32-bit)  RUNDLL32.EXE-213BB9F5.pf
+
+Vista (32-bit)  RUNDLL32.EXE-9E75AB16.pf
+
+W7    (32-bit)  RUNDLL32.EXE-CD32988B.pf
+
+2003  (32-bit)  RUNDLL32.EXE-36767DBD.pf
+
+2008  (32-bit)  RUNDLL32.EXE-06E5B2CA.pf
+
+W7    (64-bit)  RUNDLL32.EXE-35A2A03F.pf
+
+W8 CP (32-bit)  RUNDLL32.EXE-35A2A03F.pf
+
+The script and a simple hash lookup table
+It is a very simple algorithm, yet the differences and subtleties make it very confusing.
+As mentioned before, the script attached to this post will calculate all the known hashes based on command line arguments. And if there are no command line arguments, it will generate a lookup table for a lot of known  file names + known rundll32.exe combinations (e.g. these launching various system properties applets) that may be immediately used against evidence. At any time, you can also provide your own file list.
+To run:
+
+prefhashcalc.pl <path> ” <command line>”
+
+OR
+
+prefhashcalc.pl -f <filelist>
+
+OR
+
+prefhashcalc.pl > <prefetch_lookup_table file>
+
+Examples:
+
+prefhashcalc.pl c:\windows\notepad.exe
+prefhashcalc.pl c:\windows\system32\notepad.exe
+prefhashcalc.pl C:\WINDOWS\system32\rundll32.exe ” shell32.dll,Control_RunDLL main.cpl @0″
+prefhashcalc.pl C:\WINDOWS\system32\rundll32.exe ”  shell32.dll,Control_RunDLL main.cpl @0″
+prefhashcalc.pl > lookup_table_of_all_known.txt
+prefhashcalc.pl -f myfilelist.txt > my_lookup_tablet.txt
+
+Note:
+for hosting applications e.g. rundll32.exe you need to prefix the actual command line  argument for a hosting application  with a blank character or more of them as they are directly concatenated before passed to hashing function, using arguments like this:
+
+C:\WINDOWS\system32\rundll32.exe “shell32.dll,Control_RunDLL main.cpl @0″
+
+would make the function calculate hash for
+
+C:\WINDOWS\system32\rundll32.exeshell32.dll,Control_RunDLL main.cpl @0
+
+which is incorrect.
+Script detects this situation and prints the error message. You can see an example use below:
+
+Running:
+
+prefhashcalc.pl > lookup_table_of_all_known.txt
+
+produces a lookup table that you can grep or import to Excel and use VLOOKUP function to search for the known Prefetch file name.
+The lookup is generated using the following algorithm:
+for each entry on a list attached to the script
+for each letter from c: to f:
+for each supported operating system
+calculate hash and print lookup entries to the output
+(including lower/upper case)
+
+Download
+You can download the script here.
+And the pregenerated lookup table for Prefetch hashes file is here.
+Final words
+Few things come to mind that I have not looked at but may be worth checking:
+
+hash collisions – there must be paths that produce the same Prefetch file names.
+/Prefetch command line argument.
+Prefetch settings under the following key allow for Prefetch setting manipulation (even the location of Prefetch files – this could be an interesting anti-forensics technique)
+
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\
+Control\Session Manager\Memory Management\
+PrefetchParameters
+Thanks for reading and testing the script; note that it is a first version and may contain bugs. If you spot anything wrong, please let me know. Thanks in advance.
+
+Comments Off on Prefetch Hash Calculator + a hash lookup table xp/vista/w7/w2k3/w2k8
+
+Comments are closed.

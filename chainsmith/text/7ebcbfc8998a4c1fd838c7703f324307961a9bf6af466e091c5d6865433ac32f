@@ -1,0 +1,42 @@
+Today, we’ll look at yet another variant in the massive crop of malware that takes users’ files hostage: Nemucod ransomware.
+Nemucod is a ransomware which changes file names to *.crypted. While it’s not a brand new variant, a lot has changed in the last few months, and different methods have been used, but one constant has remained the same – it is deployed via bogus shipping invoice spam email. The Javascript initially received in a spam email downloads malware and encryption components stored on compromised websites. Because this ransomware is written in a scripting language, it’s easily to modify and re-deploy. This has, for a majority, bypassed antivirus protection and spam email protection. However, a flaw was found in the encryption routine,which allows victims to recover their files.
+
+January 2016: Nemucod changes file names to “.crypted” but does not actually encrypt them
+March 2016: Adds XOR encryption using a 255 byte key contained in a downloaded executable. This downloaded executable encrypts the first 2048 bytes of a file
+April 2016: 7-Zip used instead which created an archive to password protect files
+April 2016: Instead of a hardcoded key, the Javascript generates a key and passes it as an argument to the downloaded executable and performs the encryption of the first 1024 bytes of each targeted file
+May 2016: A small change is added to the previous build, which encrypts 2048 bytes instead of 1024 bytes
+June – August 2016: A PHP script is used along with a PHP interpreter to encrypt the first 1024 bytes of a file
+
+Email Example:
+
+After opening the spam email attachment, you can see that the file located inside is a Javascript file cleverly disguised as a “.doc”. The file appears to be a .doc for users with the folder option setting “hide extensions for known file types” enabled.
+
+Javascript Analysis:
+Upon first opening the sample, it is heavily obfuscated; this is by design to thwart AV analysis and static detection
+
+After de-obfuscating the script, I found that several compromised domains are used to store multiple files to be used later on in the execution routine. Of the downloaded files, we can see that two (a1.exe and a2.exe) are designed as a backdoor on the system. a1.exe is usually W32.Kovter and a2.exe is usually W32.Boaxxe. Since PHP is not installed natively on the Windows OS, the 3rd and 4th files downloaded (a.exe and php4ts.dll) are part of a portable PHP interpreter which allows the ransomware (a.php – 5th file downloaded) the ability to run.
+
+Analysis of a.php:
+We at first saw several samples of a.php written in plain text without obfuscation, but the developers changed this quickly to thwart static detection techniques. The obfuscation techniques below use chr() to encode each as a number specified in ASCII, while also using array() to store the php script in a list of array values.
+Examples of Obfuscated ransomware variants:
+chr()
+
+To de-obfuscate, I converted all of the chr values to ascii characters and finally decoded base 64 stored to get the original script.
+Array()
+
+To de-obfuscate, I echoed the output of implode for all of the arrays (and removed eval) using the following at the end of the script:
+;echo implode($f,”); ?>
+De-obfuscated:
+
+The PHP script first uses “set_time_limit(0);” to keep the interpreter running.
+A recursive Tree function is used with preg_match to match folders:
+winnt|boot|system|windows|tmp|temp|program|appdata|application|roaming|msoffice|temporary|cache
+If a match is found, the script opens the directory and checks for more directories using is_dir; if a directory is found, it runs TREE again, which continues the loop to check if the object is a folder or a file.
+Once a file is found, it uses preg_match again to match its file extension:
+zip|rar|r00|r01|r02|r03|7z|tar|gz|gzip|arc|arj|bz|bz2|bza|bzip|bzip2|ice|xls|xlsx|doc|docx|pdf|djvu|fb2|rtf|ppt|pptx|pps|sxi|odm|odt|mpp|ssh|pub|gpg|pgp|kdb|kdbx|als|aup|cpr|npr|cpp|bas|asm|cs|php|pas|class|py|pl|h|vb|vcproj|vbproj|java|bak|backup|mdb|accdb|mdf|odb|wdb|csv|tsv|sql|psd|eps|cdr|cpt|indd|dwg|ai|svg|max|skp|scad|cad|3ds|blend|lwo|lws|mb|slddrw|sldasm|sldprt|u3d|jpg|jpeg|tiff|tif|raw|avi|mpg|mp4|m4v|mpeg|mpe|wmf|wmv|veg|mov|3gp|flv|mkv|vob|rm|mp3|wav|asf|wma|m3u|midi|ogg|mid|vdi|vmdk|vhd|dsk|img|iso
+Once a file matching the file extensions above is found, it stores that file name and path as the variable “$fp” and a new variable is made “$x” which uses the function fread.
+fread() reads up to length bytes from the file pointer referenced by handle.
+After reading the first 1024 bytes of a file, a for loop is used with strlen and the variable $k (a base 64 string) to encrypt the files.
+
+If you have found yourself a victim of this ransomware, please submit a support ticket.

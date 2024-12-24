@@ -1,0 +1,77 @@
+Lemon_Duck cryptominer targets cloud apps & Linux
+
+An aggressive cryptojacker tests new exploits as it rapidly adopts upgraded features
+
+Written by
+Rajesh Nataraj
+
+August 25, 2020
+
+SophosLabs Uncut 65529/TCP 8088/tcp CVE-2017-8570 EternalBlue Exploits Hadoop Lemon_Duck maldoc mimikatz SMBGhost YARN
+
+Enterprises have always been a preferred target for the gangs that spread malicious cryptominers. Not only do they often operate hefty computing resources (which helps the cryptojackers mine cryptocurrency more quickly), but the networks enterprises operate are attractive to subsequent attacks: Criminals may use the initial infected machine as a foothold from which they’ll attempt to move laterally within the network and infect more machines, constantly fine-tuning the attacks with new vulnerabilities and social engineering techniques
+The Lemon Duck cryptominer is one of the more advanced types of cryptojacker payloads we’ve seen. Its creators continuously update the code with new threat vectors and obfuscation techniques to evade detection, and the miner itself is “fileless,” meaning it remains memory resident and leaves no trace of itself on the victim’s filesystem.
+In this post, I’ve shared information on the new attack vectors employed by this campaign, and some follow-ups to the rest vectors I discussed in my previous post on this subject.
+
+Covid-19-themed email & attachments
+Some attackers who rely on social engineering via spam usually take advantage of major events, such as the end-of-year holiday season, tax-filing deadlines for various countries, and current events to customize their attacks. Accordingly, the threat actors behind Lemon_Duck, like many other threat actors, have leveraged global anxiety about the COVID-19 pandemic in a series of coronavirus-themed emails in a mass spam campaign where the recipients receive malicious attachments.
+Computers infected with this miner may also become unwitting superspreaders of this cryptojacker, as the malware retrieves the Outlook contacts from the compromised machine and tries to send spam emails with the malicious attachment to your friends and coworkers. It’s hard to overstate the risk of harm here, since people are more likely to trust messages from people they know than from random internet accounts.
+Lemon_Duck does this all, on the fly, with code that generates the email messages and attachments dynamically, pulling from a list of subject lines, message body text, and other content that include phrases like “The Truth of COVID-19,” “COVID-19 nCov Special info WHO,” or “HALTH ADVISORY: CORONA VIRUS” (sic).
+
+“$mail_pools@((“EmailSubject”, “Inline Message”))” is a multi-dimensional array where the subject and inline message are randomly chosen while composing the email message. The malicious attachment used in this attack is an office document that contains exploits and malicious Jscript.
+The RTF exploit they’re using is CVE-2017-8570 (aka, the “Composite Moniker” vulnerability); the attacker constructs a document containing this exploit using a builder module, and adds it as an attachment to the spam email, using code shown below.
+The builder tool embeds the exploit into the office document payload
+JS Scriptlet Builder [readme.js]The final result is a message that looks like this.
+
+Lemon_Duck, SMBGhost (CVE-2020-0796), and other vulnerabilities
+Lemon_Duck exploits the SMBGhost flaw by sending a specially-crafted packet to a targeted SMBv3 server. This vulnerability exists on Windows 10 version 1903 and 1909, but Microsoft issued a patch in March 2020 that eliminates its effectiveness on patched machines. Achieving remote code execution has been hard in the real world.
+This miner treats its SMBGhost module as though it were in an evaluation phase: The attacker logs information about the vulnerable machine, as well as any information about the successfully exploited machine.
+The attack code used by the Lemon_Duck threat actors also contains exploit code for EternalBlue and an implementation of Mimikatz. For a period of time this summer, between early June and August, the attackers changed this, commenting out the module code for those two attack vectors, preventing them from running.
+It’s impossible to know their motivations, but one hypothesis is that they did this to evaluate the effectiveness of the SMBGhost remote code execution exploit. Maybe the results didn’t turn out too well for them, because since the first week of August, they’ve reverted the changes by re-enabling the Mimikatz and EternalBlue code.
+Mimikatz And SMB exploitation disabled in mid-June, then re-enabled in August
+
+After exploitation, when they’ve executed the malicious code on the compromised machine, the Lemon_Duck attackers attempt to disable SMBv3 compression through the registry and block the standard SMB network ports of 445 & 135. They do this in order to prevent other threat actors from taking advantage of the same vulnerability they exploited. Machines with [65529/TCP] active port indicate that the machine is been compromised with any one of the attack vectors.
+netsh.exe interface portproxy add v4tov4 listenport=65529 connectaddress=1.1.1.1 connectport=53
+netsh advfirewall firewall add rule name="deny445" dir=in protocol=tcp localport=445 action=block
+netsh advfirewall firewall add rule name="deny135" dir=in protocol=tcp localport=135 action=block
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" DisableCompression -Type DWORD -Value 1 ???Force
+Binary brute force using EternalBlue
+The miner campaign also downloads a malicious executable to the temp directory. This python-compiled binary loads the Mimikatz component through reflective injection to harvest the NTLM hash & credentials. The executable also tries to generate a random list of IP addresses to scan for vulnerability to (and attempt to leverage) the EternalBlue exploit.
+Lemon_Duck’s randomly-generated list of target IP address ranges in CIDR notation
+SSH brute force attack
+This aspect of the campaign expands the mining operation to support computers running Linux. The brute-force module performs port scanning to find machines listening on port 22/tcp (SSH Remote Login). When it finds them, it launches an SSH brute force attack on these machines, with the username root and a hardcoded list of passwords. If the attack is successful, the attackers download and execute malicious shellcode.
+
+The downloaded shell script tries to create persistence in the machine through a cron job.
+In order to spread across the network, it tries to look for the targets in /.ssh/known_hosts. With the gathered user account and authentication information, it could download the malicious shell script into the new target and execute it through SSH, which (because of its end-to-end encryption) would not be detectable by typical network attack detection tools.
+To use system resources efficiently (and to make sure that Lemon_Duck is the only beneficiary of the machine), the malicious script cleverly tries to identify and remove any other miners (maliciously installed or not) from the machine by enumerating the filesystem, the list of active processes, and active network ports.
+
+Redis Compromise
+Redis (REmote DIctionary Server) is an in-memory, distributed database, which can serve millions of requests per second. Redis is designed to be used within a trusted network and to be accessed by trusted clients. If the Redis instance is not properly configured and left exposed to external networks, then the attacker can easily find them through a port scan (6379/tcp) on a generated list of IPs.
+On default the instance will not have any authentication, so an attacker could write a malicious code to the DB and create persistence in the instance through cron job so that malicious code can be executed periodically.
+Unauthenticated Hadoop cluster
+YARN (Yet Another Resource Negotiator) is one of the core components introduced in Hadoop 2.0 to improve resource allocation and task scheduling for various applications running in a Hadoop cluster. A default installation will have security settings that are disabled and would allow an unauthenticated user to execute arbitrary commands in the cluster.
+The Lemon_Duck attacker identifies Hadoop servers through a port scan on 8088/tcp to identify the clusters managed by YARN. The attacker then tries to create a new application instance in the cluster by means of a POST request to /ws/v1/cluster/apps/new-application.
+If the server doesn’t have any authentication requirements, it may process the request and return the application ID.  Using the application ID, the attacker could submit a malicious command to execute in the Hadoop instance.
+$postdata="{""application-id"":""$keyid"",
+""application-name"":""$keyname"",
+""application-type"":""YARN"",
+""am-container-spec"":{""commands"":{""command"":""$cmd""}}}"
+
+urlpost $ip "/ws/v1/cluster/apps" $postdata
+
+Attack Vector Stats
+We’ve compiled a series of statistics that describe the frequency with which Lemon_Duck uses these attack vectors in attacks we’ve observed targeting networks we monitor for malicious activity.
+
+Detection Coverage
+These multiple threat attack vectors are blocked by Sophos endpoint security products as AMSI/PSobfus-B, Exec_21a, C2_10a, Exp/20178570-B, Mal/DrodZp-A, Mal/MineJob-C, Troj/LDMiner-A, HPmal/mPShl-B and Linux/Miner-RK.
+Updated indicators of compromise can be found on the SophosLabs Github.
+Acknowledgements
+I would like to thank Andrew Brandt and Gábor Szappanos for their contribution to this post.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+2

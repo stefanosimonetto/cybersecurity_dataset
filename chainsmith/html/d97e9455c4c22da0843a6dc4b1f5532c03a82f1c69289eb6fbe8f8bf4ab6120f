@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: Unpacking x64 PE+ binaries: introduction part 1</title>
+<meta name="description" content="Aleksander Czarnowski describes some of the main differences between the PE and PE+ file formats from the perspective of the binary unpacking process." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 1953;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/remo_expand/blocks/remo_expand/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.color.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/remo.expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<div class="titlepage" xmlns=""><div><div><h1 class="title" xmlns="http://www.w3.org/1999/xhtml"><a id="vb201207-unpacking-x64"></a>Unpacking x64 PE+ binaries: introduction part 1</h1></div><div><p class="pubdate" xmlns="http://www.w3.org/1999/xhtml">2012-07-01</p></div><div><div class="authorgroup" xmlns="http://www.w3.org/1999/xhtml"><div class="author titlepage"><h3 class="author"><span class="surname">Aleksander P. Czarnowski</span></h3><span class="orgname">AVET INS</span>, <span class="orgdiv">Poland</span></div><b class="editedby">Editor: </b><span class="editor"><span class="firstname">Helen</span> <span class="surname">Martin</span></span></div></div><div><div class="abstract" xmlns="http://www.w3.org/1999/xhtml"><p class="title"><b>Abstract</b></p><p>Aleksander Czarnowski describes some of the main differences between the PE and PE+ file formats from the perspective of the binary unpacking process.</p></div></div><div><p class="copyright" xmlns="http://www.w3.org/1999/xhtml"><i>Copyright &copy; 2012 Virus Bulletin</i></p></div></div><hr /></div>
+<div class="ccm-remo-expand">
+<div id="ccm-remo-expand-title-3227" class="ccm-remo-expand-title ccm-remo-expand-closed" data-expander-speed="200">Table of contents</div><div id="ccm-remo-expand-content-3227" class="ccm-remo-expand-content"><div class="toc"><dl><dt><span class="sect1"><a href="#id3459948"></a></span></dt><dt><span class="sect1"><a href="#id3635129">PE+ differences</a></span></dt><dt><span class="sect1"><a href="#id4342865">Registers</a></span></dt><dt><span class="sect1"><a href="#id3980518">Calling convention</a></span></dt><dt><span class="sect1"><a href="#id3540380">Unavailable instructions in long mode</a></span></dt><dt><span class="sect1"><a href="#id3975068">WOW64</a></span></dt><dt><span class="sect1"><a href="#id2083008">The test files</a></span></dt><dt><span class="sect1"><a href="#id3631922">IDA Pro native debugger vs IDA Pro Bochs plug-in</a></span></dt><dt><span class="sect1"><a href="#id2697417">Uunp plug-in</a></span></dt><dt><span class="sect1"><a href="#id3299110">Unpacking PE+ with IDA, Bochs and uunp</a></span></dt><dt><span class="sect1"><a href="#id4276832">IDA Pro alternative strategies</a></span></dt><dt><span class="sect1"><a href="#id2338525">Final notes and challenges</a></span></dt></dl></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3459948"></a></h2></div></div></div><p>The x86-64 architecture is taking over from IA32 CPUs &ndash; but this should not come as a surprise, especially since major operating system players have been supporting it for years already. Of course, malware authors are aware of this revolution and thus they target executable files running natively on AMD64-compatible architectures and operating platforms. One of the most complex (and flexible) executable formats in the 64-bit world is <span class="emphasis"><em>Microsoft Windows</em></span> PE32+ (since the name is a bit misleading, we will refer to it as &lsquo;PE+&rsquo; in the rest of this article). Due to the closed-source nature of <span class="emphasis"><em>Windows</em></span>, the best and most advanced debuggers and anti-debugging techniques have been developed for the Win32/64 world. <span class="emphasis"><em>Linux</em></span> and <span class="emphasis"><em>BSD</em></span> systems lag behind, while embedded systems for the mobile market such as <span class="emphasis"><em>Android</em></span> and <span class="emphasis"><em>iOS</em></span> are catching up in this area.</p><p>While not all packers/obfuscators have been upgraded to handle 64-bit executable formats, there are a lot of tools that can handle both <span class="emphasis"><em>Windows</em></span> PE+ files and ELF 64-bit files. In this tutorial I will describe some of the main differences between the PE and PE+ file formats from the perspective of the binary unpacking process.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3635129"></a>PE+ differences</h2></div></div></div><p>The PE+ file format is a bit like the good old 32-bit <span class="emphasis"><em>Windows</em></span> PE format on steroids. If you thought you would only be able to execute a PE(+) file after successfully booting into <span class="emphasis"><em>Windows</em></span> (you don&rsquo;t have to log in successfully since <span class="emphasis"><em>Windows</em></span> service files are also PE(+) executables internally), you would be wrong. The PE(+) file format is supported by the UEFI specification, so it is possible to execute UEFI PE files even before the target operating system or hypervisor starts. There is one important note: UEFI expects the PE+ file format even on 32-bit architecture, and furthermore it uses just a subset of PE+ features. In turn, the PE+ file format contains a special flag to mark it as UEFI executable.</p><p>Other cases for loading Win32 PE or plain PE files are limited today mostly to some DOS-based embedded solutions. But wait a minute &ndash; isn&rsquo;t DOS a 16-bit real-mode operating system, whose process loader is limited to handling 64KB COM files and MZ EXEs? How can it execute <span class="emphasis"><em>Windows</em></span> 32-bit protected mode binaries? The answer is simple: DOS extenders.</p><p>There are a couple of DOS extenders that offer Win32 PE support out of the box. If you thought that DOS and DOS extenders were part of the past, you would be wrong. Some DOS extenders are still actively being developed and supported: HX DOS Extender [<span class="citation"><a href="#citation.1">1</a></span>] is a great example. HX provides a Win32 emulation layer to DOS and enables DOS to load 32-bit PE files.</p><p>Returning to our 64-bit version of PE: if you know the PE file format well, you won&rsquo;t be surprised by changes introduced in PE+. The table below summarizes most of the basic ones:</p><div class="table"><a id="table.1"></a><table border="1" summary="Comparison between PE and PE+ formats."><colgroup><col align="center" /><col /><col /></colgroup><tbody><tr><td align="left"><span class="bold"><strong>Field</strong></span></td><td><span class="bold"><strong>PE</strong></span></td><td><span class="bold"><strong>PE</strong></span>+</td></tr><tr><td align="left">BaseOfData</td><td>ULONG (4 bytes)</td><td>Removed from the Optional Header</td></tr><tr><td align="left">ImageBase</td><td>ULONG (4 bytes)</td><td>ULONGLONG (8 bytes)</td></tr><tr><td align="left">SizeOfHeapCommit</td><td>ULONG (4 bytes)</td><td>ULONGLONG (8 bytes)</td></tr><tr><td align="left">SizeOfHeapReserve</td><td>ULONG (4 bytes)</td><td>ULONGLONG (8 bytes)</td></tr><tr><td align="left">SizeOfStackReserve</td><td>ULONG (4 bytes)</td><td>ULONGLONG (8 bytes)</td></tr><tr><td align="left">StackOfSizeCommit</td><td>ULONG (4 bytes)</td><td>ULONGLONG (8 bytes)</td></tr></tbody></table><p class="title"><b>Table&nbsp;1.&nbsp;Comparison between PE and PE+ formats.</b></p></div><p>The AddressOfEntryPoint field has the same size (ULONG) in both PE and PE+ files. How one can recognize a PE+ file? The magic number field in Optional Headers is different:</p><div class="informaltable"><table border="1"><colgroup><col align="center" /><col /><col /></colgroup><tbody><tr><td align="left"><span class="bold"><strong>Field</strong></span></td><td><span class="bold"><strong>PE</strong></span></td><td><span class="bold"><strong>PE</strong></span>+</td></tr><tr><td align="left">Magic Number</td><td>0x10b</td><td>0x20b</td></tr></tbody></table></div><p>PE+ executable images are restricted to a maximum size of two gigabytes, so relative addressing with a 32-bit displacement can be used to address static image data. This data includes the import address table, string constants, static global data, and so on.</p><p>The rest of the PE+ file looks like a PE file &ndash; and what&rsquo;s more important is that all compression/obfuscation tools that handle PE+ files work in exactly the same way as in the case of 32-bit executable images. Therefore, the unpacking process is also similar. The following sections describe some of the other important differences that the 64-bit architecture brings in.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4342865"></a>Registers</h2></div></div></div><p>All general purpose registers are extended to 64-bit width in long mode, providing us with RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP and RIP, which serves like its 32-bit brother EIP as an instruction pointer. New general purpose registers have also been introduced (it seems as if the <span class="emphasis"><em>AMD</em></span> and <span class="emphasis"><em>Intel</em></span> engineers finally decided that they envied some of the good old <span class="emphasis"><em>Motorola</em></span> 68K features): from R8 to R15. New XMM registers are also available: from XMM8 to XMM15. All XMM registers are of 128-bit width. 64-bit MMX0&ndash;MMX7 registers are available as well.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3980518"></a>Calling convention</h2></div></div></div><p>x64 <span class="emphasis"><em>Windows</em></span> systems no longer use the STDCALL calling convention by default. Instead, the FASTCALL convention is used, which means that the first four parameters are passed in RCX, RDX, R8 and R9 registers. Further parameters are passed using the stack. There are no attempts to spread a single argument across many registers. Additionally, the caller is responsible for allocating parameter space to the callee, and must always allocate sufficient space for the four register parameters, even if the callee doesn&rsquo;t have that many parameters [<span class="citation"><a href="#citation.2">2</a></span>].</p><p>Following [<span class="citation"><a href="#citation.3">3</a></span>], here is a typical function prolog:</p><pre class="programlisting">mov   [RSP + 8], RCX
+push  R15
+push  R14
+push  R13
+sub   RSP, fixed-allocation-size
+lea   R13, 128[RSP]
+</pre><p>And here is a typical function epilog:</p><pre class="programlisting">add  RSP, fixed-allocation-size
+pop  R13
+pop  R14
+pop  R15
+ret</pre></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3540380"></a>Unavailable instructions in long mode</h2></div></div></div><p>It is worth mentioning that while in long mode some of the 16/32-bit instructions are unavailable and can generate an undefined opcode exception (#UD).</p><p>Furthermore, opcodes from 40h to 4fh (inc register/dec register) have a different mapping in long mode. The REX prefix uses those while in long mode.</p><p>String operation instructions like LODSB, STOSB etc. have been extended to handle 64-bit addressing. In turn, a few new string instructions have been introduced: LODSQ, CMPSQ, MOVSQ, SCASQ and STOSQ. As a consequence, REPx prefixes handle 64-bit registers as well as LOOP, LOOPZ and LOOPNZ. All those string instructions can be found in decompression/decryption loops.</p><p>Furthermore, both SYSENTER and SYSEXIT instructions are available from legacy mode. In long mode, the SYSCALL/SYSRET pair is used.</p><p>If, during unpacking, you see some of these unavailable instructions in your disassembly, you can be assured that either the unpacking process has gone wrong, or it has not yet finished.</p><div class="table"><a id="table.2"></a><table border="1" summary="Unavailable instructions in long mode."><colgroup><col /><col /></colgroup><tbody><tr><td>AAA</td><td>POPAD</td></tr><tr><td>AAD</td><td>POP DS</td></tr><tr><td>AAM</td><td>POP ES</td></tr><tr><td>AAS</td><td>POP SS</td></tr><tr><td>BOUND</td><td>PUSH CS</td></tr><tr><td>DAA</td><td>PUSH DS</td></tr><tr><td>DAS</td><td>PUSH ES</td></tr><tr><td>INTO</td><td>PUSH SS</td></tr><tr><td>LDS</td><td>PUSHA</td></tr><tr><td>LES</td><td>PUSHAD</td></tr><tr><td>POPA</td><td class="auto-generated">&nbsp;</td></tr></tbody></table><p class="title"><b>Table&nbsp;2.&nbsp;Unavailable instructions in long mode.</b></p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3975068"></a>WOW64</h2></div></div></div><p>WOW64 is an emulation layer that enables AMD64 and <span class="emphasis"><em>Itanium</em></span>-based <span class="emphasis"><em>Windows</em></span> systems to execute Win32 applications to maintain backwards compatibility. <a href="#figure.1">Figure 1</a> describes the high-level WOW64 architecture. It is worth mentioning that WoW64.dll loads a 32-bit version of ntdll.dll, which loads other 32-bit DLLs that are needed to support Win32 application execution. Most of these DLLs are exact binary copies from the 32-bit system, however some have been modified in order to be able to share resources with 64-bit system components.</p><div class="figure"><a id="figure.1"></a><div class="mediaobject"><img alt="WOW64 architecture." src="/uploads/images/figures/2012/07/AlexCz-Fig1.jpg" /></div><p class="title"><b>Figure&nbsp;1.&nbsp;WOW64 architecture.</b></p></div><p>Note that in the case of <span class="emphasis"><em>Itanium</em></span>-based systems there are two more libraries involved in running 32-bit software:</p><div class="itemizedlist"><ul type="disc"><li><p>IA32Exec.bin &ndash; contains an x86 software emulator.</p></li><li><p>Wowia32x.dll &ndash; provides an interface between WOW64 and IA32Exec.bin.</p></li></ul></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2083008"></a>The test files</h2></div></div></div><p>Since this is a tutorial, I&rsquo;ve decided not to use a specific malware sample. Instead, I have created a sample PE+ file written in assembly language. This file can be compiled with flat assembler (fasm), which is available at [<span class="citation"><a href="#citation.4">4</a></span>]. Do not try to compile this example with different assemblers such as MASM or NASM as you will not succeed without editing the source code. The presented examples use specific fasm syntax. I&rsquo;ve chosen fasm since it provides a lot of control over output executable files within the source code level and no external linker is needed in our case. For example, you can manually control the layout of PE+ sections, their order and attributes:</p><pre class="programlisting">; Example of 64-bit PE program
+format PE64 GUI 
+entry start      ;Entry point definition
+
+;DATA SECTION
+section &lsquo;.data&rsquo; data readable writeable
+  _caption db &lsquo;Win64 assembly program&rsquo;,0 
+  _message db &lsquo;Hello World!&rsquo;,0
+
+;CODE SECTION
+section &lsquo;.text&rsquo; code readable executable 
+  start: 
+     sub   rsp,8*5     ; reserve stack for API use and make stack dqword aligned 
+     mov   r9d,0 
+     mov r8,_caption
+     mov rdx,_message
+     xor rcx,rcx
+     call  [MessageBoxA] 
+     mov   ecx,eax 
+     call  [ExitProcess] 
+
+; IMPORT SECTION
+section &lsquo;.idata&rsquo; import data readable writeable 
+  dd 0,0,0,RVA krnl_name,RVA krnl_tbl
+  dd 0,0,0,RVA user_name,RVA user_tbl
+  dd 0,0,0,0,0 
+  krnl_tbl:
+   ExitProcess dq RVA _ExitProcess 
+   dq 0 
+  user_tbl:
+   MessageBoxA dq RVA _MessageBoxA 
+   dq 0 
+  krnl_name db &lsquo;KERNEL32.DLL&rsquo;,0
+  user_name db &lsquo;USER32.DLL&rsquo;,0 
+  _ExitProcess dw 0 
+   db &lsquo;ExitProcess&rsquo;,0 
+  _MessageBoxA dw 0 
+   db &lsquo;MessageBoxA&rsquo;,0
+</pre><p>To compile the file just enter: fasm.exe testwin64.asm. Assuming that the compilation succeeded you can now load the binary file into <span class="emphasis"><em>IDA Pro</em></span> using the standard Open File option. This will be our template file that we will use for all further operations. The file sections and attributes are shown in <a href="#figure.2">Figure 2</a>.</p><div class="figure"><a id="figure.2"></a><div class="mediaobject"><img alt="Section list of test file before compression." src="/uploads/images/figures/2012/07/AlexCz-Fig2.jpg" /></div><p class="title"><b>Figure&nbsp;2.&nbsp;Section list of test file before compression.</b></p></div><p>Next, disassemble the entry point using the Ctrl+E shortcut to jump directly to the start label, as shown in <a href="#figure.3">Figure 3</a>. You can see that the data closely resembles our fasm source &ndash; now you know why I have chosen fasm for this job: the source code is quite similar to the resulting EXE file.</p><div class="figure"><a id="figure.3"></a><div class="mediaobject"><img alt="Entry point and main code of the test file." src="/uploads/images/figures/2012/07/AlexCz-Fig3.jpg" /></div><p class="title"><b>Figure&nbsp;3.&nbsp;Entry point and main code of the test file.</b></p></div><p>Take a note of the instruction bytecodes forming the entry point and entry point address: 0x0402000. This address will later be our original entry point address (OEP).</p><p>Next, let&rsquo;s inspect the import section and list imports using the &lsquo;Imports&rsquo; subview from <span class="emphasis"><em>IDA Pro</em></span> (<a href="#figure.4">Figure 4</a>). Since we have used only two functions, MessageBoxA and ExitProcess, only those two are listed.</p><div class="figure"><a id="figure.4"></a><div class="mediaobject"><img alt="Test file imports." src="/uploads/images/figures/2012/07/AlexCz-Fig4.jpg" /></div><p class="title"><b>Figure&nbsp;4.&nbsp;Test file imports.</b></p></div><p>The next step is to generate the target file. In order to do that we will compress our test file so that we will be able to make a comparison with the original during the unpacking process.</p><div class="figure"><a id="figure.5"></a><div class="mediaobject"><img alt="Generating a compressed file using mpress." src="/uploads/images/figures/2012/07/AlexCz-Fig5.jpg" /></div><p class="title"><b>Figure&nbsp;5.&nbsp;Generating a compressed file using mpress.</b></p></div><p>I&rsquo;ve chosen the mpress [<span class="citation"><a href="#citation.5">5</a></span>] file packer since it is freely available and handles both PE and PE+ files. In order to create a new, compressed executable file, follow the commands shown in <a href="#figure.5">Figure 5</a>. We use &ndash;i options since the resulting compressed file will be larger than the original one. By default, mpress refuses the compression and creation of a new executable if the resulting output file is bigger than the input. Observant readers might notice that our test file can also be used as a base for measuring the efficiency of compression algorithms. Additionally, the test file is a perfect target for reversing the compression stub since the original EXE file has such a simple construction.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3631922"></a>IDA Pro native debugger vs IDA Pro Bochs plug-in</h2></div></div></div><p>Obviously, any native 64-bit debugger supported by<span class="emphasis"><em> IDA Pro</em></span> requires <span class="emphasis"><em>Windows</em></span> on the x64 platform. Fortunately, the <span class="emphasis"><em>Bochs</em></span> plug-in allows you to debug both PE and PE+ binaries inside <span class="emphasis"><em>Bochs</em></span>, even on 32-bit platforms. The speed impact due to code emulation can be ignored in most cases during malware analysis and unpacking files. The next advantage of the <span class="emphasis"><em>Bochs</em></span> plug-in, when analysing hostile code, is that the code is &lsquo;executed&rsquo; in a virtual, controlled environment. The recently disclosed SYSRET privilege escalation vulnerability (CVE-2012-0217) demonstrates the risk associated with running hostile code inside hypervisors. The disadvantage of emulation is obvious &ndash; there are no 100% perfect emulators of bare metal hardware and the real operating system. There is a set of methods that can be used to detect if code is being executed under <span class="emphasis"><em>Bochs</em></span> emulation. For some of the most basic methods see [<span class="citation"><a href="#citation.7">7</a></span>].</p><p>When using <span class="emphasis"><em>Bochs</em></span> in PE operation mode, keep in mind that in the current version there are some important limitations:</p><div class="itemizedlist"><ul type="disc"><li><p>PE+ support is limited.</p></li><li><p><span class="emphasis"><em>Windows</em></span> environment emulation is limited and this can lead to its easy detection by the process.</p></li><li><p>Thread and process manipulations are not supported &ndash; this could render the <span class="emphasis"><em>Bochs</em></span> plug-in useless against more advanced compression/obfuscation methods combined with anti-debugging tricks.</p></li><li><p>Only a handful of API calls are implemented.</p></li><li><p>LoadLibrary() works only on DLLs defined in the startup.idc file before running the debugger.</p></li></ul></div><p>Fortunately, some important <span class="emphasis"><em>Windows</em></span> features such as TLS callbacks, SEH and crucial <span class="emphasis"><em>Windows</em></span> structures are available. Furthermore, bochsys.dll exports the BxUndefinedApiCall() function, which catches unimplemented API calls. Setting a breakpoint on it allows such a situation to be trapped or for the end of the unpacking process to be detected. Bochsys.dll exports another useful function: BxIDACall(). Setting a breakpoint on this function allows all API calls that are handled internally by <span class="emphasis"><em>IDA Pro</em></span> to be monitored.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2697417"></a>Uunp plug-in</h2></div></div></div><p>The uunp plug-in is a demonstration plug-in bundled with <span class="emphasis"><em>IDA Pro</em></span>. It is available from the &lsquo;Edit-&gt;Plugins-&gt; Universal unpacker manual reconstruct&rsquo; menu option. As a side note: <span class="emphasis"><em>Windows</em></span> 32-bit plug-ins use the *.plw file extension, while 64-bit ones use *.p64. They all reside in the plug-ins directory of the<span class="emphasis"><em> IDA Pro</em></span> installation folder. Looking at the limitations of the <span class="emphasis"><em>Bochs</em></span> plug-in and some additional information required by the uunp plug-in (<a href="#figure.6">Figure 6</a>), you might be wondering why we are not using another plug-in distributed with <span class="emphasis"><em>IDA Pro</em></span>: Universal PE Unpacker. We will discuss the Universal PE Unpacker internals in the second part of this tutorial.</p><p>The uunp plug-in does the following:</p><div class="orderedlist"><ol type="1"><li><p>Locates the Import Address Table (IAT).</p></li><li><p>Creates an XTRN segment to represent imports.</p></li><li><p>Generates a new entry point (OEP) in the IDA database while deleting the old one used by the packer.</p></li><li><p>Forces reanalysis of new code sections.</p></li></ol></div><div class="figure"><a id="figure.6"></a><div class="mediaobject"><img alt="uunp plug-in main window &ndash; you need to enter the correct information manually in order to get the desired results." src="/uploads/images/figures/2012/07/AlexCz-Fig6.jpg" /></div><p class="title"><b>Figure&nbsp;6.&nbsp;uunp plug-in main window &ndash; you need to enter the correct information manually in order to get the desired results.</b></p></div><p>However, in order to get a reasonable output from the uunp plug-in we need to feed it manually with the proper addresses of the original file. The only way we can find out the requested information is to execute or emulate decompression code. The most important pieces of information we need to gather are: the original entry point (OEP) address and the Import Address Table (IAT) start and end address. The value for the &lsquo;Code end address&rsquo; field could theoretically be guessed, however this is not recommended when analysing malware.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3299110"></a>Unpacking PE+ with IDA, Bochs and uunp</h2></div></div></div><p>Let&rsquo;s start with the default PE+ file loader from <span class="emphasis"><em>IDA Pro</em></span> &ndash; in order to do that, just open the compressed test file. The default PE+ file loader (<a href="#figure.7">Figure 7</a>) will warn us about the Import Table section (<a href="#figure.8">Figure 8</a>).</p><div class="figure"><a id="figure.7"></a><div class="mediaobject"><img alt="Loading the compressed file &ndash; note that the &lsquo;Make imports segment&rsquo; option is enabled by default." src="/uploads/images/figures/2012/07/AlexCz-Fig7.jpg" /></div><p class="title"><b>Figure&nbsp;7.&nbsp;Loading the compressed file &ndash; note that the &lsquo;Make imports segment&rsquo; option is enabled by default.</b></p></div><div class="figure"><a id="figure.8"></a><div class="mediaobject"><img alt="IDA Pro-generated warning during the loading of a PE+ file with a strange Import Table." src="/uploads/images/figures/2012/07/AlexCz-Fig8.jpg" /></div><p class="title"><b>Figure&nbsp;8.&nbsp;IDA Pro-generated warning during the loading of a PE+ file with a strange Import Table.</b></p></div><p>Next we should examine our PE+ file layout in memory using the option &lsquo;View-&gt;Open subviews-&gt;Segments&rsquo; (shift+F7 is the default shortcut). <a href="#figure.9">Figure 9</a> shows that there are three segments, named .MPRESS1, .MPRESS2, .MPRESS2 and .idata (this is not a mistake: the .MPRESS2 name is used twice, but the two segments have different start addresses). Note that segments in <span class="emphasis"><em>IDA Pro</em></span> are not directly equal to executable file sections. In our case, segments have been created automatically by <span class="emphasis"><em>IDA Pro</em></span>. A different list of segments will be created if we load our PE+ file with the &lsquo;Make imports segment&rsquo; option disabled.</p><div class="figure"><a id="figure.9"></a><div class="mediaobject"><img alt="IDA Pro automatically generates segments of the compressed file with the &lsquo;make imports segment&rsquo; options enabled." src="/uploads/images/figures/2012/07/AlexCz-Fig9.jpg" /></div><p class="title"><b>Figure&nbsp;9.&nbsp;IDA Pro automatically generates segments of the compressed file with the &lsquo;make imports segment&rsquo; options enabled.</b></p></div><p>Since the name &lsquo;.idata&rsquo; suggests that <span class="emphasis"><em>IDA Pro</em></span> has somehow created an Import Address Table section (marked as XTRN), we can inspect it, but first let&rsquo;s check which imports <span class="emphasis"><em>IDA</em></span> detected. Use the &lsquo;View-&gt;Open subviews-&gt;Imports&rsquo; option to list all imports (<a href="#figure.10">Figure 10</a>). Only three <span class="emphasis"><em>Windows</em></span> functions are imported: GetModuleHandleA, GetProcAddress and MessageBoxA. Inspection of the &lsquo;.idata&rsquo; segment confirms our findings (<a href="#figure.11">Figure 11</a>). At least one obvious function import is missing from this picture: LoadLibrary and VirtualProtect come to mind.</p><div class="figure"><a id="figure.10"></a><div class="mediaobject"><img alt="Compressed file imported functions &ndash; LoadLibrary is missing, for example." src="/uploads/images/figures/2012/07/AlexCz-Fig10.jpg" /></div><p class="title"><b>Figure&nbsp;10.&nbsp;Compressed file imported functions &ndash; LoadLibrary is missing, for example.</b></p></div><div class="figure"><a id="figure.11"></a><div class="mediaobject"><img alt="Inspection of the .idata segment." src="/uploads/images/figures/2012/07/AlexCz-Fig11.jpg" /></div><p class="title"><b>Figure&nbsp;11.&nbsp;Inspection of the .idata segment.</b></p></div><p>Since it was detected in the imports, we can assume that GetProcAddress is being used by the decompression loop. Therefore, we can either manually analyse and trace code under the debugger in order to find its invocation or we can set up a breakpoint at GetProcAddress. Since this is a tutorial, setting up a breakpoint at GetProcAddress is not a bad idea. It will not only allow us to verify our hypothesis that functions found in the import table are used to recreate the original IAT, but also to inspect how <span class="emphasis"><em>IDA Pro</em></span> cooperates with <span class="emphasis"><em>Bochs</em></span> at a low level. This knowledge may be helpful in the future in case of more advanced assignments.</p><p>Before running the <span class="emphasis"><em>Bochs</em></span> debugger plug-in we need to configure it. From the &lsquo;Debugger&rsquo; menu choose &lsquo;Select debugger option&rsquo;. From this window select &lsquo;Local Bochs debugger&rsquo; (see <a href="#figure.12">Figure 12</a>).</p><div class="figure"><a id="figure.12"></a><div class="mediaobject"><img alt="Selecting Bochs local debugger as default for this session." src="/uploads/images/figures/2012/07/AlexCz-Fig12.jpg" /></div><p class="title"><b>Figure&nbsp;12.&nbsp;Selecting Bochs local debugger as default for this session.</b></p></div><p>Next, again from the &lsquo;Debugger&rsquo; menu, select &lsquo;Debugger options&hellip;&rsquo; &ndash; a new configuration window will open (<a href="#figure.13">Figure 13</a>). From this window click the &lsquo;Set specific options&rsquo; button to display another window, as shown in <a href="#figure.14">Figure 14</a>. Be sure to enable 64-bit support and PE file support in this window.</p><div class="figure"><a id="figure.13"></a><div class="mediaobject"><img alt="Configuring basic debugger options." src="/uploads/images/figures/2012/07/AlexCz-Fig13.jpg" /></div><p class="title"><b>Figure&nbsp;13.&nbsp;Configuring basic debugger options.</b></p></div><div class="figure"><a id="figure.14"></a><div class="mediaobject"><img alt="Bochs specific options." src="/uploads/images/figures/2012/07/AlexCz-Fig14.jpg" /></div><p class="title"><b>Figure&nbsp;14.&nbsp;Bochs specific options.</b></p></div><p>Now we are ready to start unpacking our target file. First go to the PE+ entry point &ndash; this can be done by pressing Ctrl+E and selecting one of the possible addresses (<a href="#figure.15">Figure 15</a>). In our case, IDA Pro detected only one entry point and labelled it &lsquo;start&rsquo;. This is obviously not our Original Entry Point. Let&rsquo;s add a breakpoint at the entry point. Press F2 at the entry point (0x04040C2 address in our case) and start a debugger. This can be done either by pressing the green &lsquo;play&rsquo; icon on the toolbar or by pressing the F9 key. Take a second to look at the navigation bar &ndash; the current entry point is located near the end of the file: many compression/obfuscation tools just add their code after the original file end. This could be a hint that the OEP may be located below the current entry point, however at this point this is only a hypothesis.</p><div class="figure"><a id="figure.15"></a><div class="mediaobject"><img alt="Selecting the entry point." src="/uploads/images/figures/2012/07/AlexCz-Fig15.jpg" /></div><p class="title"><b>Figure&nbsp;15.&nbsp;Selecting the entry point.</b></p></div><div class="figure"><a id="figure.16"></a><div class="mediaobject"><img alt="Breakpoint hit at the entry point." src="/uploads/images/figures/2012/07/AlexCz-Fig16.jpg" /></div><p class="title"><b>Figure&nbsp;16.&nbsp;Breakpoint hit at the entry point.</b></p></div><p>After pressing the F9 key (Run), the debugger should stop at the first instruction. Now we can finally add a breakpoint at the GetProcAddress function. In order to do so, open the &lsquo;Breakpoints&rsquo; list from the &lsquo;Debugger-&gt;Breakpoints-&gt;Breakpoint list&rsquo; menu. Now press the &lsquo;insert&rsquo; key to add a new breakpoint. At the &lsquo;location&rsquo; field enter &lsquo;kernel32_GetProcAddress&rsquo; (remember that the kernel32 name is misleading since we are dealing with the 64-bit version despite the &lsquo;32&rsquo; in the name) and click &lsquo;OK&rsquo;. Now, run the debugger again (F9) and wait until the GetProcAddress function breakpoint has been hit. Our function should look like this:</p><pre class="programlisting">KERNEL32.dll:0000000078D26455 kernel32_GetProcAddress:
+KERNEL32.dll:0000000078D26455 push cs:off_78D2645C
+KERNEL32.dll:0000000078D2645B retn
+</pre><p>Use &lsquo;step into&rsquo; (F7) options to execute the retn instruction. The next function should be within the bochsys module:</p><pre class="programlisting">bochsys:FFFFC00000001467 bochsys64_BxGetProcAddress: ; DATA XREF: KERNEL32.dll:off_78D2645Co
+bochsys:FFFFC00000001467 mov rax, 0FFFFC00000001467h
+bochsys:FFFFC00000001471 call      near ptr bochsys64_BxIDACall
+bochsys:FFFFC00000001476 retn
+</pre><p>We can &lsquo;step over&rsquo; this code until we reach the retn instruction. This is a stub code used by the Bochs plug-in to communicate with <span class="emphasis"><em>IDA</em></span>, as mentioned earlier. After executing the retn instruction we return to our module inside the .MPRESS1 section:</p><pre class="programlisting">.MPRESS1:00000000004010D4 test     eax, eax
+.MPRESS1:00000000004010D6 jz short loc_401103
+.MPRESS1:00000000004010D8 push     rax
+.MPRESS1:00000000004010D9 push     rsp
+.MPRESS1:00000000004010DA pop      r9</pre><p>This is obviously the code that checks the success of GetProcAddress (test eax,eax). Now let&rsquo;s open the Imports window and jump to GetProcAddress import (<a href="#figure.17">Figure 17</a>):</p><div class="figure"><a id="figure.17"></a><div class="mediaobject"><img alt="GetProcAddress import." src="/uploads/images/figures/2012/07/AlexCz-Fig17.jpg" /></div><p class="title"><b>Figure&nbsp;17.&nbsp;GetProcAddress import.</b></p></div><p>Now you see there is a cross reference j_GetProcAddress &ndash; jump to it (<a href="#figure.18">Figure 18</a>).</p><div class="figure"><a id="figure.18"></a><div class="mediaobject"><img alt="GetProcAddress jump." src="/uploads/images/figures/2012/07/AlexCz-Fig18.jpg" /></div><p class="title"><b>Figure&nbsp;18.&nbsp;GetProcAddress jump.</b></p></div><p>There is another cross reference at .MPRESS1:0x0401152. Once again, jump to that cross reference to find the following code:</p><pre class="programlisting">MPRESS1:000000000040114F loc_40114F:                       ; CODE XREF: .MPRESS1:0000000000401141j
+.MPRESS1:000000000040114F mov      rcx, rbx                ; hModule
+.MPRESS1:0000000000401152 call     j_GetProcAddress
+.MPRESS1:0000000000401157 stosq
+.MPRESS1:0000000000401159
+.MPRESS1:0000000000401159 loc_401159:                      ; CODE XREF: .MPRESS1:0000000000401161j
+.MPRESS1:0000000000401159 xor      al, al
+.MPRESS1:000000000040115B mov      [rsi-1], al
+.MPRESS1:000000000040115E lodsb
+.MPRESS1:000000000040115F or al, al
+.MPRESS1:0000000000401161 jnz      short loc_401159
+.MPRESS1:0000000000401163 jmp      short loc_401132</pre><p>The stosq instruction should store the address returned by the GetProcAddress() function at the location pointed to by the RDI register. The RDI register value during the first iteration of this loop will point to the original IAT. Consequently, at this address the RDI register during the last iteration will point to the end of the IAT. Note both values, since these are required by the uunp plug-in.</p><p>Stepping over this loop we can see how the IAT is being reconstructed and finally, when we reach the following code, we have found the jump to the original entry point:</p><pre class="programlisting">MPRESS1:0000000000401165 exit_to_oep:                      ; CODE XREF: .MPRESS1:0000000000401118j
+.MPRESS1:0000000000401165 lea      rdi, loc_40106F
+.MPRESS1:000000000040116C mov      al, 0E9h
+.MPRESS1:000000000040116E stosb
+.MPRESS1:000000000040116F mov      eax, 10Ch
+.MPRESS1:0000000000401174 stosd
+.MPRESS1:0000000000401175 add      rsp, 28h
+.MPRESS1:0000000000401179 pop      r8
+.MPRESS1:000000000040117B pop      rdx
+.MPRESS1:000000000040117C pop      rcx
+.MPRESS1:000000000040117D pop      rbx
+.MPRESS1:000000000040117E pop      rsi
+.MPRESS1:000000000040117F pop      rdi
+.MPRESS1:0000000000401180 jmp      OEP_at_0x402000
+</pre><p>A few important observations should be made at this point:</p><div class="itemizedlist"><ul type="disc"><li><p>The packer does not use the popa instruction before jumping to the original entry point (some 32-bit compressors use it). Therefore, any universal unpacking methods based on detecting the popa instruction before jumping to OEP will fail. Popa/popad is not valid in long mode, as mentioned earlier (however POPFQ is).</p></li><li><p>We can use the long list of pop instructions ending with the jmp as a signature to look for the original entry point address. Note that our OEP is actually at a higher address than the decompression exit code. This means that any plug-in trying to automatically detect the OEP based on a jump below the decompression loop in memory will also fail.</p></li></ul></div><p>At this point we can feed the uunp plug-in with the data we have gathered during our debugging session.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4276832"></a>IDA Pro alternative strategies</h2></div></div></div><p>Manual unpacking obviously does not scale well in production environments. Therefore, plug-ins like uunp can be treated only as a simple demonstration of <span class="emphasis"><em>IDA Pro</em></span>&rsquo;s scripting abilities and plug-ins/modules architecture. If you are willing to automate the unpacking process with <span class="emphasis"><em>IDA Pro</em></span>, or the case you are working on requires some special treatment/tricks, you have a couple of options that might help you:</p><div class="itemizedlist"><ul type="disc"><li><p>Write a custom loader module &ndash; all examples here were based on <span class="emphasis"><em>IDA Pro</em></span> default PE+ loader. However, you can either load a file manually, bypassing the loader (this option is quite handy when some uncommon PE+ format tricks are used), or implement your own loader. This could be handy if you are able to automatically decompress original code and data plus reconstruct the import table. Obviously this requires either some knowledge about how a certain packer works, or use of a more generic approach based on execution/emulation of code.</p></li><li><p>Write a custom processor module &ndash; this option is especially handy when, besides the compression/encryption algorithm, some kind of virtual machine/bytecode scheme has been used in order to further obfuscate the original executable code.</p></li></ul></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2338525"></a>Final notes and challenges</h2></div></div></div><p>It turns out that unpacking 64-bit PE files doesn&rsquo;t really differ much from unpacking 32-bit EXEs or DLLs. The only difference is the limited number of tools that can handle the PE+ format correctly.</p><p>Furthermore, both 32- and 64-bit architectures allow complex compression, encryption and obfuscation techniques, and since PE(+) structures add some complexity to the equation, we are yet to see new techniques. Of course, the complexity of PE+ will increase as natural <span class="emphasis"><em>Windows</em></span> platform evolution introduces new bugs and vulnerabilities into the process loader. I&rsquo;m afraid that those vulnerabilities are likely to be exploited sooner rather than later.</p><p>In the second part of this tutorial (which will appear in the August issue of <span class="emphasis"><em>VB</em></span>) I will dig a bit more deeply into <span class="emphasis"><em>Windows</em></span> x64 internals, use some of <span class="emphasis"><em>IDA Pro</em></span>&rsquo;s scripting functionality and use <span class="emphasis"><em>WinDbg</em></span> to unpack our example file. In the meantime, if you would like to see another example of unpacking an mpress binary with<span class="emphasis"><em> IDA Pro</em></span> take a look at the blog post at [<span class="citation"><a href="#citation.9">9</a></span>].</p><div class="bibliography"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3493468"></a>Bibliography</h3></div></div></div><div class="bibliomixed"><a id="citation.1"></a><p class="bibliomixed">[1] HX DOS Extender. <span class="bibliosource"><a href="http://www.japheth.de/HX.html" target="_blank">http://www.japheth.de/HX.html</a></span>.</p></div><div class="bibliomixed"><a id="citation.2"></a><p class="bibliomixed">[2] MSDN: Overview of x64 Calling Conventions. <span class="bibliosource"><a href="https://msdn.microsoft.com/en-us/library/ms235286(v=vs.80).aspx" target="_blank">http://msdn.microsoft.com/en-us/library/ms235286(v=vs.80).aspx</a></span>.</p></div><div class="bibliomixed"><a id="citation.3"></a><p class="bibliomixed">[3] MSDN: Prolog and Epilog. <span class="bibliosource"><a href="https://msdn.microsoft.com/en-us/library/tawsa7cb(v=vs.80).aspx" target="_blank">http://msdn.microsoft.com/en-us/library/tawsa7cb(v=vs.80).aspx</a></span>.</p></div><div class="bibliomixed"><a id="citation.4"></a><p class="bibliomixed">[4] flat assembler. <span class="bibliosource"><a href="http://flatassembler.net/" target="_blank">http://flatassembler.net/</a></span>.</p></div><div class="bibliomixed"><a id="citation.5"></a><p class="bibliomixed">[5] mpress. <span class="bibliosource"><a href="http://www.matcode.com/mpress.htm" target="_blank">http://www.matcode.com/mpress.htm</a></span>.</p></div><div class="bibliomixed"><a id="citation.6"></a><p class="bibliomixed">[6] UPX. <span class="bibliosource"><a href="http://upx.sourceforge.net/" target="_blank">http://upx.sourceforge.net/</a></span>.</p></div><div class="bibliomixed"><a id="citation.7"></a><p class="bibliomixed">[7] Ferrie, P. Attacks on Virtual Machine Emulators. <span class="bibliosource"><a href="https://www.symantec.com/avcenter/reference/Virtual_Machine_Threats.pdf" target="_blank">https://www.symantec.com/avcenter/reference/Virtual_Machine_Threats.pdf</a></span>.</p></div><div class="bibliomixed"><a id="citation.8"></a><p class="bibliomixed">[8] WinDbg. <span class="bibliosource"><a href="https://msdn.microsoft.com/en-us/windows/hardware/gg463009.aspx" target="_blank">http://msdn.microsoft.com/en-us/windows/hardware/gg463009.aspx</a></span>.</p></div><div class="bibliomixed"><a id="citation.9"></a><p class="bibliomixed">[9] Unpacking mpress&rsquo;ed PE+ DLLs with the Bochs plugin. <span class="bibliosource"><a href="http://www.hexblog.com/?p=403" target="_blank">http://www.hexblog.com/?p=403</a></span>.</p></div></div></div> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=Unpacking x64 PE+ binaries: introduction part 1&url=https://www.virusbulletin.com/virusbulletin/2012/07/unpacking-x64-pe-binaries-introduction-part-1"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2012/07/unpacking-x64-pe-binaries-introduction-part-1'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2012/07/unpacking-x64-pe-binaries-introduction-part-1&title=Unpacking x64 PE+ binaries: introduction part 1"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2012/07/unpacking-x64-pe-binaries-introduction-part-1&t=Unpacking x64 PE+ binaries: introduction part 1"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2012/07/unpacking-x64-pe-binaries-introduction-part-1"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

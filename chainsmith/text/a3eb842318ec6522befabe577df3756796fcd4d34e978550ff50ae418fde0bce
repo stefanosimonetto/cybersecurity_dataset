@@ -1,0 +1,68 @@
+UCEPROTECT: When RBLs Go Bad
+
+Realtime Blackhole Lists (RBLs) can be a great tool in your security arsenal. You may not know you’re using them, but all email providers and company email servers leverage these services to verify whether servers and IP addresses are sending spam or other abusive content against a known list of offenders.
+These services use a number of methods to compile lists of IP addresses reputed to send spam, mostly populating them using honeypots drawing them in with “poison” email addresses to act as victims. They leverage the DNS service normally known for routing traffic by converting Domain names into IP addresses. In this context, RBLs serve as a useful database of known abusive IP addresses that you in turn can “blackhole” as a bad response is given a loopback address by the RBL. https://www.dnsbl.info/ has a good short explanation and history of the technology.
+Usually, we don’t deal with Realtime Blackhole Lists while managing the WAF — they are more related to email, and only occasionally will our malware removal team may need to make removal requests for a clients’ hosting servers IP addresses as part of the remediation process.
+That being said, a large number of our clients have recently reported seeing DNS warnings from MXToolbox while using our product.
+
+After a thorough investigation, we discovered that the RBL provider uceprotect[.]net has listed a wide range of IPs (including our own) as notable reputed spammers, despite the fact that many servers are not even set up or capable of sending email content.
+To help shed light on the issue and provide insights for anyone receiving warnings from UCEPROTECT, here’s a deep dive into the situation with a bit of background context on using and troubleshooting RBLs thrown in for good measure.
+Using RBLs to Block Spam
+RBLs have been around for about 25 years.
+There are a large number of RBLs currently in existence which all leverage a wide array of criteria for listing and delisting addresses. Normally, you’ll want to use 3 or more respected RBLs to identify and block spam.
+Most likely, however, you’ll have no choice if you are using an anti spam product in either your email client or on the email server itself, since preset RBLs are often designated as part of their filtering process.
+Checking RBLs for Listings
+A large number of tools are readily available to automate checking if your own server or even home ISP connection has been listed by one of these RBLs.
+The most commonly used solution is MXToolbox, which is also available as an API and tests a mail server IP address against 86 DNS based RBLs.
+If you are checking a large number of servers or IP addresses for RBL listing, you may want to subscribe to MXToolbox, RBLmon (rblmon.com), or some other similar service. You could also script something to check a list of domains against a list of preferred RBLs.
+I have found https://github.com/polera/rblwatch very adaptable, and personally use the bash script here, which allows me to check a full Class C IP range (256 addresses) in less than 5 minutes against 5 reputable RBLs.
+UCEPROTECT: A Blocklist Scam
+As discussed briefly in the introduction, I recently witnessed some bad behaviour from the RBL provider uceprotect[.]net.
+Over the weekend, I received 2 warnings from RBL monitoring services.
+
+Notice this statement:
+“It means abusive activity was seen from IP 192.124.249.6 directly within the last 7 days.”
+And:
+Concrete allegation:
+Portscans or hacking attempts were seen against an UCEPROTECT-System from IP 192.124.249.6.”
+This is in fact impossible. 192.124.249.6 is the public IP address of our Sucuri WAF, which forwards requests via a back end IP address to our clients hosting server. Our public IPs are never seen to make requests — they only ever accept requests, it’s the way our AnyCast network works.
+In this context, I really don’t think these guys understand what concrete means.
+Payment in Return for “Express Delisting”
+Here’s their advice on removing the blocklisting:
+“Mostly infected PC’s but also possible an hacker that has broken into their system are the reason in this case.
+They should check all systems behind their IP with an actual Ant-ivirus/Anti-Trojan/Anti-Rootkit tool.”
+We are certain there is no malware on our servers, we have a world class reputation for preventing and identifying malware. It would be great at this point if they had given us some clue as to why they think this and publicly claiming that a hacker has broken into our server.
+And although they have given us no evidence on the allegation or provided additional information on the malware detected, they do have another option:
+
+An “Express delisting” option button is available, which takes us to the following message:
+How can the IP be removed from UCEPROTECT-Level 1?
+Every IP temporary listed at Level 1 will be removed automatically (and free of charge) as soon as it is no longer a source of abuse for 7 days.
+Automatic expiration is free of charge, because it does not require manual work.
+If you don’t want to wait for expiration, expedited express delisting of this IP from Level 1 can be optionally available at a  charge by using one of the payservicebuttons above.
+Orders for expedited express delisting are processed by external service providers, therfore it cannot be offered for free.
+Please also note that express delisting only makes sense after the problem which caused the Level 1 listing is fixed.
+If the problem is not fixed, it is mostly just a question of time until the IP might end up listed in UCEPROTECT Level 1 again.
+Basically what this means is if you don’t want to wait 7 days to be taken off their list, you can pay 89 CHF (about $100) and to cover their cost of them pressing a delete button. By their own admission there is no due diligence involved in this removal, as you may be relisted if you are later found to be still abusing their systems.
+They justify using an external service provider as an explanation for why the service cannot be offered for free — because you know they’d really like to offer this express service for free, you can just feel it.
+Further down the page, we have another warning that is applied to the whole subnet, giving an RBL listing to 255 neighbouring IP addresses:
+
+The first paragraph continues justifying the listing, although they now claim it’s due to excessive spamming.
+“According to the table above allocations get listed at Level 2 if there are too many Level 1 listings (spam sending IP’s) in that ranges and too many Impacts were counted.
+In other words: One or several networks which your IP belongs to have send too much spam within the last week.”
+Remember, none of these IP addresses are capable of sending email. Here in the next paragraph, they contradict themselves, saying it was your IP that was spamming:
+“Who is responsible for this listing?
+You and the other Level 1 listees within that range. Your IP was also seen in a spamming, so you can’t claim to be innocent.”
+Threats & Security Issues
+There are plenty of other unconventional and eyebrow-raising claims on their website. For example, on the Removal Policy tab, the subpages include the following the warning:
+
+Their banner informs site visitors that if you complain about their behaviour and notify them of any impending legal action, they will both dox you and feed your email address to spammers email scrapers, as well as list the IP address that you contacted them from. Not very GDPR compliant.
+And while we are on the subject of GDPR compliance and security in general, the owner of this company has a number of related sites, none of which have SSL enabled. While that is not an issue if there is no login portal, the site is described to be intended for “Executive members” and does have a cleartext login that requires a username and password. And all running on a 20-year-old operating system and 17 year old version of PHP, which offer a good indication of their security practices — or lack thereof.
+
+You might think that this is some isolated incident, but unfortunately it’s not.
+I have had a server for over 6 years on the same IP address with a well-known hosting company that I use for personal projects and testing, and it’s worth noting that this server is also incapable of sending email — I have port 25 (the service which servers use to relay emails) fully blocked, as it draws attention and fills up my logs with failed login attempts. That doesn’t prevent UCEPROTECT from listing that IP as malicious on their RBL as well.
+To date, UCEPROTECT has blocked a total of 2404096 of one well known hosts’ IP addresses due to a claim that 937 spam emails have been sent in over a week period.
+Our IPs aren’t the only ones impacted by this malicious RBL, however. They have also blocked Barracuda’s email servers, a highly respected security company. Warnings about UCEPROTECT can also be found from reputable sources including KonTech, Linode, TitanHQ, spiceworks, and Word to the Wise, along with discussions about their most recent campaign on Twitter.
+Conclusion
+Monitoring your own servers and IPs is good practice. It can be an early warning that you have some bad behaviour going on in an office, an infected workstation sending out spam, and can explain emails you sent going missing.
+That being said, I strongly encourage website owners to ignore realtime blackhole listings where payment for removal is required. Many companies have already blocked the UCEPROTECT server globally, as they are renowned for their shady tactics and false positives.
+Don’t be put off using good RBLs for their correct purpose, even the good ones will sometimes make a mistake — a real false positive — but they correct it without fuss and don’t hold your reputation for ransom.

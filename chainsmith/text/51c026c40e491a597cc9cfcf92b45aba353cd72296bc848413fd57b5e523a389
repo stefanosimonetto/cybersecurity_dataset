@@ -1,0 +1,51 @@
+Security Vulnerability in MySQL
+
+A serious security vulnerability discovered in MySQL was disclosed this weekend. It basically allows anyone to bypass authentication and log in directly into the database. We tried on a few 64bit Ubuntu systems and were able to replicate the issue (it seems that only 64 bit platforms are affected).
+Crazy theory: Could this be related to the LinkedIn, last.fm, eHarmony and other recent breaches? Did any of them have MySQL exposed? Even worse, was this really a bug or a very clever backdoor? What you guys think?
+Anyway, back to topic. Sergei Golubchik explained the issue in detail:
+
+We have recently found a serious security bug in MariaDB and MySQL.
+So, here, we’d like to let you know about what the issue and its impact
+is. At the end you can find a patch, in case you need to patch an older
+unsuported MySQL version.
+
+All MariaDB and MySQL versions up to 5.1.61, 5.2.11, 5.3.5, 5.5.22 are
+vulnerable.
+
+MariaDB versions from 5.1.62, 5.2.12, 5.3.6, 5.5.23 are not.
+
+MySQL versions from 5.1.63, 5.5.24, 5.6.6 are not.
+
+This issue got assigned an id CVE-2012-2122.
+
+Here’s the issue. When a user connects to MariaDB/MySQL, a token (SHA
+over a password and a random scramble string) is calculated and compared
+with the expected value. Because of incorrect casting, it might’ve
+happened that the token and the expected value were considered equal,
+even if the memcmp() returned a non-zero value. In this case
+MySQL/MariaDB would think that the password is correct, even while it is
+not.  Because the protocol uses random strings, the probability of
+hitting this bug is about 1/256.
+
+Which means, if one knows a user name to connect (and “root” almost
+always exists), she can connect using *any* password by repeating
+connection attempts. ~300 attempts takes only a fraction of second, so
+basically account password protection is as good as nonexistent.
+Any client will do, there’s no need for a special libmysqlclient library.
+
+Recommendations
+If you are running MySQL, make sure to patch it now! Even better, make sure that MySQL is not wide open to the internet and only listening locally. The following iptables rule helps to block remote access to it:
+
+/sbin/iptables -A INPUT -p tcp –dport 3306 -j DROP
+
+You can also change your my.cnf to only bind to local address, minimizing the effect of the vulnerability:
+
+bind-address=127.0.0.1
+
+If you also have PHPMyAdmin open, it could be used to leverage this vulnerability (even though we were not able to confirm).
+Testing
+HD Moore, posted a quick one-liner to check if you are vulnerable:
+
+for i in `seq 1 512`; do echo ‘select @@version;’ | mysql -h 127.0.0.1 -u root mysql –password=X 2>/dev/null && break; done
+
+We will post more details if anything new comes up.

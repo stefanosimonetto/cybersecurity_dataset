@@ -1,0 +1,92 @@
+IDA, hotpatched functions and signatures that don’t work…
+April 7, 2017 in IDA/Hex-Rays, Malware Analysis, Reversing
+
+In my recent post, I described issues related to signatures of functions prefixed with 0xCC (int 3).
+It turns out that there is one more issue that causes sigs to fail, including both the built-in ones and also these I build myself. I was recently seeing more and more files where sigs failed and eventually decided to investigate the reason.
+The problem is caused by the hotpatch prefix for the functions. For 32-bit it is the instruction mov edi,edi (8B FF). If your signatures were built from standard libraries that were compiled with a hotpatch prefix, the sigs will include the prefix as well.
+What happens now when you see a piece of software that is using the very same version of the static library, but that uses the functions without the hotpatch? You end up with signature mismatch, and functions will not be recognized!
+Let’s look at the example:
+8BFF558BEC837D0800742D8B511483FA0872048B01EB028BC1394508721A83FA
+1E 2DB8 003E :0000 ?_Inside@?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@QAE_NPB_W@Z
+This is a pattern generated from the libcpmt.lib included in SDK 10.0.
+Now, consider the code that looks like this:
+fun1:
+push    ebp
+mov     ebp, esp
+cmp     DWORD PTR [ebp+8], 0
+jz      short loc_10001297
+mov     edx, [ecx+14h]
+cmp     edx, 8
+jb      short loc_10001276
+mov     eax, [ecx]
+jmp     short loc_10001278
+loc_10001276:
+mov     eax, ecx
+loc_10001278:
+cmp     [ebp+8], eax
+jb      short loc_10001297
+cmp     edx, 8
+jb      short loc_10001286
+mov     eax, [ecx]
+jmp     short loc_10001288
+loc_10001286:
+mov     eax, ecx
+loc_10001288:
+mov     ecx, [ecx+10h]
+lea     eax, [eax+ecx*2]
+cmp     eax, [ebp+8]
+jbe     short loc_10001297
+mov     al, 1
+jmp     short loc_10001299
+loc_10001297:
+xor     al, al
+loc_10001299:
+pop     ebp
+retn    4
+
+fun2:
+mov     edi,edi
+push    ebp
+mov     ebp, esp
+cmp     DWORD PTR [ebp+8], 0
+jz      short loc_2_10001297
+mov     edx, [ecx+14h]
+cmp     edx, 8
+jb      short loc_2_10001276
+mov     eax, [ecx]
+jmp     short loc_2_10001278
+loc_2_10001276:
+mov     eax, ecx
+loc_2_10001278:
+cmp     [ebp+8], eax
+jb      short loc_2_10001297
+cmp     edx, 8
+jb      short loc_2_10001286
+mov     eax, [ecx]
+jmp     short loc_2_10001288
+loc_2_10001286:
+mov     eax, ecx
+loc_2_10001288:
+mov     ecx, [ecx+10h]
+lea     eax, [eax+ecx*2]
+cmp     eax, [ebp+8]
+jbe     short loc_2_10001297
+mov     al, 1
+jmp     short loc_2_10001299
+loc_2_10001297:
+xor     al, al
+loc_2_10001299:
+pop     ebp
+retn    4
+
+Start:
+call fun1
+call fun2
+invoke ExitProcess,0
+If you now apply the signature built using the pattern above, you will get the following result:
+The function with the hotpatch prefix (fun2) is recognized, and the one without (fun1) – is not!
+After discovering this bit I contacted the Hexrays guys and they fixed it with a simple, yet clever patch (Thx Igor&Ramiro). I can’t talk about the details, but I hope this will find its way into the new release of IDA.
+
+Comments Off on IDA, hotpatched functions and signatures that don’t work…
+
+Comments are closed.

@@ -1,0 +1,116 @@
+AISK – a different approach
+2006-10-01
+
+Mariusz Kozlowski
+Independent researcher
+,
+Poland
+Editor:
+Helen
+
+Martin
+Abstract
+Mariusz Kozlowski describes the use of his anti-spam filter which is based on pattern recognition and artificial intelligence techniques.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+One might wonder if there is anything more we can do to fight spam. And even if the answer is yes, one might then ask: 'Is there any point in starting a new anti-spam filter project?'.
+During the years I spent as an administrator I had to deal with reams of spam and different filters in different configurations depending on the owner of a given server. I followed the spamassassin, bogofilter and other mailing lists and newsletters to keep up to date with things. What struck me straight away was how many people spend so much of their time (and other resources) on maintaining the filters and trying to keep up with new spam trends.
+The body of the message is the place where the 'war' goes on and it is common to have header checks, regular expressions, different parsers, HTML engines, or tools such as FuzzyOCR employed. There are plenty of other weapons one can use to defeat spam – whitelists, blacklists, ACLs, DNSBLs, SURBLs, greylisting, transaction delays, etc.
+But what if in couple of years we start to see spam containing short movies? I really don't know, but we may need take a look at the spam problem from a different perspective.
+
+Human accuracy
+I'm quite sure that pretty much anyone who knows their own mail box traffic well enough is able to filter their mail box content with very high accuracy. But what one may not realize is that after a sufficient period of training of your brain, you don't need to look at the body of the message to tell if a message is spam or not.
+So, why not replace the human brain connected to the body that clicks mouse or presses the delete button with an artificial brain implemented on the computer? That would be an artificial neural network (ANN) – for which the human brain is the biological inspiration. Besides, computers don't get tired and can complete some tasks much faster than humans do.
+This is how a small piece of code called AISK (Artificial Intelligence Spam Killer) was conceived in the late summer of 2005.
+
+AISK
+I left the body of the message alone and focused instead on the headers. Some way of presenting the email header to the ANN was needed. The most intuitive way of doing this is to split the header into words, where each word is a so-called 'token'. The ANN needs a preclassified training set from which it can learn. But, in order to learn from the entire set of messages, it is necessary to have uniform representation for every message in the set. This is called a vector of message attributes.
+To get such a vector we need to parse the training set and split it into tokens. Then the best tokens – that is the tokens that best separate spam from ham – are used to form a vector of attributes. There is a great article by Gary Robinson [1] on tokens and statistics. The 'degree of belief' Gary introduces in his article (called f(t)) is used to determine which tokens might be useful. The 'degree of belief' for each token may vary from 0 (ham tokens) to 1 (spam tokens).
+The best tokens are those whose f(t) is close to 0 or 1. To define what 'close' actually means we need to define two thresholds, T1 and T2. The tokens that we are interested in are those with f(t) in the range of 0 to T1, and T2 to 1.
+Research has shown that, to produce the best results, the distribution of f(t) for a typical training set would require T1 and T2 to be 0.05 ~ 0.15 and 0.85 ~ 0.95, respectively. The values of these thresholds have great impact on the filter's accuracy. The length of the vector of attributes depends directly on these values. Having such a vector of attributes matched against a message from the training set results in the so-called 'image' of the message.
+Research has shown that the most efficient ANN structure for this kind of classifier is a multilayered, fully connected perceptron. Spam classification is believed to be a non-linear problem, so a hidden layer is needed. However, adding more layers slowed the system down, leaving the filter accuracy at the same level.
+The spam classification problem is also often presented as binary, which means there are only two classes: 'ham' and 'spam'. Therefore we need only one network output such that a value of 0 would represent ham and a value of 1 would represent spam. Here, supervised learning requires both an input vector (the image) and a desired output value. These two together create a single training instance for the ANN.
+As one might expect, the size of the input layer of the ANN depends on the length of the attributes vector found for the given training set. When the attributes vector, together with the desired output, are matched against all messages in the training set, the result is a set of training instances which is actually a matrix of data used directly to train the ANN. The attributes are binary, so either the message has a certain attribute or it does not.
+Now let's think again. The first thing is to realize that the mail header has a structure. Spammers respect this structure at least to a minimal level so that mail clients can display an email correctly. A word found in the subject area of a message might mean something different from the same word found in some other part of header. For now, AISK can recognize four types of token found in mail headers: tokens found in the 'From:', 'To:' and 'Subject:' fields, and elsewhere in the header.
+
+AI, Headers, tokens – does it work at all?
+To answer this question let's look at some numbers. A test was done with the TREC 2005 public corpus. The training set consisted of 6,269 randomly chosen ham messages and 8,431 spam messages. As stated previously, only four types of token were used. Data from other sources are simply not available in the TREC corpus. Threshold T1 was set to 0.05 and T2 to 0.95. The length of the vector of attributes was 5401. The following are the results obtained against a test set consisting of randomly chosen messages (not present in the training set) from the TREC corpus:
+Total of 4,490 messages (2,584 spam and 1,906 ham)
+
+False positives:
+21 (0.81%)
+False negatives:
+77 (4.04%)
+Spam recall
+99.19%
+Spam precision:
+97.08%
+Acc:
+0.978174
+Err:
+0.021826
+This is quite good, but we can do better. This leads us to the next topic – data sources.
+
+Data sources
+The second thing to realize is that, for most filters, words found in the message are tokens. Tokens are words. There is a good quote that says 'A filter is only as good as its training set'. So why not apply token logic to something more than just words? There are some data sources that are more reliable and much harder to forge than the message content which, as you realize, is generated by client (spammer) software.
+In fact, a token can be any piece of data carrying information connected in some way to the message that will help us classify it, and for which we can compute the 'degree of belief'. Being an administrator and having a close look directly at the SMTP traffic flow I can think of at least a couple of important data sources. For example, the day of the week and the hour of the day the message arrived. Many companies keep office hours from 8am to 4pm and the traffic at night and over weekends is mostly spam.
+The SMTP session chat prior to the DATA command is another data source. This may vary a lot depending on the peer software that talks to us and sometimes it is possible to distinguish real MTA from worms simply by looking at the SMTP session. The presence of RSET right after HELO/EHLO and before MAIL FROM is also a very good spam indicator.
+IP, PORT and DNS PTR records provide a lot of useful information. IP might help us to catch a permanent spammer, ports below 1024 (privileged range) might indicate a worm, and PTR might tell us the country, the ISP and the line type (ADSL/dialup) of the SMTP peer. But probably the most interesting part is the 'operating system fingerprint'. Using a technique called passive OS fingerprinting, tools such as p0f [2] can tell us by analysing the TCP/IP flow what the remote operating system is. Moreover, it can provide us with OS genre, details such as the kernel version used or service pack installed, the distance between us and the remote peer, the link type, real OS detection, uptime of the remote machine, some TCP/IP flags or even masquerade detection.
+All this is very useful. Research has shown [3] that most spam comes from hacked Windows boxes connected to miscellaneous kinds of botnets. They are often connected to some ADSL or dialup lines from well known ISPs and have short uptime. Meanwhile, clients detected as *BSD or Linux boxes were found to be reliable ham sources.
+
+Playing with AISK
+The following are some tokens extracted from the sample training set:
+Head  0.982759    charset=”Windows-1252"
+RSET  0.979167    RSET
+GENR  0.977856    Windows
+DETA  0.977856    2000
+DETA  0.977338    XP
+DETA  0.972222    SP3
+PTR   0.968750    adsl
+PTR   0.967426    tpnet
+Head  0.961457    7bit
+IP    0.958333    83.19.255.242
+PTR   0.958333    dvr242
+Head  0.954056    V6.00.2800.1106
+LINK  0.944444    DSL
+The first column represents the origin of the token (Head -> mail headers, RSET -> SMTP session reset prior to DATA command, GENR -> OS genre, DETA -> OS details, PTR -> DNS PTR record, LINK -> link type). The second column is the 'degree of belief'. The third column is the textual representation of the data described by the token. The 'degree of belief’ is close to 1, which means that these tokens are very good spam indicators. As can you see, the common denominators are the operating system, RSET and some words such as 'V6.00.2800.1106' found in email headers.
+This is just an example of what one might find when playing with AISK. After a year of work I am nearing the conclusion that something like a 'spam fingerprint' might actually exist. This is much like an OS fingerprint, but a little more fuzzy. It can fingerprint some common spam sources, software used, exploitable boxes, whole botnets, etc. Spammers' software is often rather 'stupid' and leaks a lot of useful information either in the headers or SMTP session or somewhere where (almost) nobody expects to find anything. An experienced administrator provided with such information after some analysis can say with reasonable accuracy whether the SMTP session carries a spam message or not.
+
+Doing just fine
+Human resources are limited though, and we are simply unable to parse all the data sources mentioned earlier, find interesting factors and combine them to produce an accurate conclusion in 'real time' – not to mention that the patterns we are able to see are just the tip of the iceberg. But hopefully that's where the ANN is doing just fine. Quoting the wikipedia:
+'In more practical terms, neural networks are non-linear statistical data modelling tools. They can be used to model complex relationships between inputs and outputs or to find patterns in data. There is no precise agreed definition among researchers as to what a neural network is, but most would agree that it involves a network of simple processing elements (neurons) which can exhibit complex global behaviour, determined by the connections between the processing elements and element parameters.'
+This might sound somewhat crazy, but let’s look at the numbers. The test was done with the data from my personal server using an earlier version of AISK that used all the data sources described above but an OS fingerprint wasn't supported yet. A total of 2,820 messages were split into 2/3 of the training set and 1/3 of the testing set. 16.8% was spam. The attributes vector length was 3009 and the T1 and T2 thresholds were set to 0.10 and 0.90 respectively. The training set was of a very good quality – which means that I knew exactly what was spam and what wasn't.
+The following are the results on the testing set:
+Total of 904 (136 spam and 804 ham)
+
+False positives:
+1 (0.12%)
+False negatives:
+1 (0.74%)
+Spam recall:
+99.26%
+Spam precision
+99.26%
+Acc:
+0.997872
+Err:
+0.002128
+That's good enough for everyday use I believe. Since then, much more research has been done with small and large training sets from different servers with different traffic characteristics. Accuracy on a good training set can quite easily reach close to or more than 99%. But, as one might expect, a perfect anti-spam filter does not exist. It is simply impossible to reach the magic 100% accuracy level due to a number of different factors. The passive OS fingerprinting helps a lot, though, in places where other data sources are unreliable or of no use for some reason.
+Resource consumption is at an acceptable level for server use. Finding interesting tokens and training the ANN takes some time (typically a couple of minutes) depending on the machine we have and the size of the training set, but the length of time AISK needs to handle a single incoming message (which is 20 ~ 30 ms) is a reward here. For now, AISK is a fairly simple filter which was implemented with an idea of acting like an experienced administrator.
+
+Problems to solve
+There are still many problems to solve though. Some of the best tokens selected using the 'degree of belief' are probably highly correlated with each other, which leads to an unnecessary increase in ANN size and thus slows the system down. This is seen after ANN training when some inputs are left with a weight equal to zero, which basically means that they carry no new information.
+Using LDA or PCA would probably help here. In fact, many pattern recognition techniques may be applied here. FANN library implementing ANN can be optimised for AISK use, which will result in system speedup and reduced memory consumption.
+Threshold T1 and T2 levels have a great impact on system accuracy. For now they are set manually to some (probably not often optimal) levels, but choosing the right levels in some automated way would result in system speedup, better accuracy and limited consumption of resources. The more users per ANN the worse results are seen, as when the users prepare the training sets themselves the definition of spam and ham differs from user to user, resulting in conflicting instances in the training set. Using one ANN per user or domain would solve the problem and result in increased accuracy.
+One might expect AISK to fail to work correctly when it receives relayed mail traffic, as some of its data sources are of no use. Research has proved that even with mixed traffic where one box receives both relayed and regular mails, AISK behaves very well. AISK simply adapts to this situation and some of its data sources will be less important than the others. (It behaves best without relayed traffic though.)
+The last thing is that the spam classification problem is believed to be binary – a message is either spam or ham. I believe this to be wrong. Some uncertainty class needs to be introduced, which would be perfectly natural here. The world is not black and white and when the filter says that the message is 'grey' the filter might be right. It might just indicate that its knowledge is insufficient. What we should do is to provide the filter with the required knowledge and try to make this class as small as possible.
+
+Conclusion
+I believe the answer to both questions at the beginning of this article is 'yes'. Working on AISK was, and is, fun and has given me the freedom of choice of what my anti-spam filter should look like.
+If you would like to use or experiment with AISK you are free to do so. It is available under the GPL licence. You will find more information on the project homepage http://aisk.sourceforge.net. If you have any comments or questions please email me at [email protected]
+
+Bibliography
+[1] Robinson, G. A statistical approach to the spam problem. http://www.linuxjournal.com/article/6467.
+[2] p0f: http://lcamtuf.coredump.cx/p0f.shtml.
+[3] http://aisk.tuxland.pl/os-fp-vs-spam-src.html.

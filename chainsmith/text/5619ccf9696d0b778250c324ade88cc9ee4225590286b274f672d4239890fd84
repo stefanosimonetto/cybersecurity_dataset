@@ -1,0 +1,57 @@
+Java: setting security manager to null
+2013-06-03
+
+Abhishek Singh
+FireEye
+,
+USA
+
+Shray Kapoor
+FireEye
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Thanks to its widespread use in legitimate applications, Java has seen a lot of use in malware and exploit kits recently, with one of the most common exploit techniques being to disable the Java security manager. Abhishek Singh and Shray Kapoor present the logic used by malware authors to set the security manager to null.
+Copyright © 2013 Virus Bulletin
+
+Thanks to its widespread use in legitimate applications, Java has seen a lot of use in malware recently – Java exploits are being incorporated into the most popular exploit kits, such as Blackhole and Redkit, and the number of Java exploit samples in existence has never been greater.
+One very common technique used by malware authors to exploit Java is to disable the security manager. Once the security manager has been disabled, the next steps may involve loading a malicious executable or connecting to a malicious website.
+As per the Java tutorial [1]:
+‘A security manager is an object that defines a security policy for an application. This policy specifies actions that are unsafe or sensitive. Any actions not allowed by the security policy cause a SecurityException to be thrown. An application can also query its security manager to discover which actions are allowed.’
+Once an application has a reference to the security manager object, it can request permission to do specific things. For example, System.exit, which terminates the Java virtual machine with an exit status, invokes SecurityManager.checkExit to ensure that the current thread has permission to shut down the application.
+
+Setting security manager = null
+Based upon analysis of malicious jar files, this article presents the logic used by malware authors to set the security manager to null. Presence of the logic in a jar file indicates that the file is malicious.
+
+Direct calls
+A commonly used technique is to make a direct call to setSecurityManager(null). The direct call will remove security from all the processes, providing direct access to them. The presence of setSecurityManager(null) in a jar file indicates that the file is suspicious and there is a high probability that the code is malicious.
+
+Setting the address to null
+As per the pseudo code shown in Figure 1, first the address of the java/lang/system is located. The address is in the variable ‘a1’. Once the address has been located, the memory is traversed until the address of getSecurityManager() is located. The address of getSecurityManager () is in variable ‘a2’. Once the address of getSecurityManager() has been located, the wrmMem() function is called and null is written directly to the address of getSecurityManager(), thus disabling the security manager.
+Figure 1. Setting getSecurityManager to null.
+
+Using Access Control
+The first part of the pseudo code shown in Figure 2 creates a statement instance called ‘s’, which will call setSecurityManager(). Later, AccessControlContext ac is created. AccessControlContext takes in the parameter ProtectionDomain pd, which has full access. The SetField API sets the value of the Statement.acc private field to AccessControlContext ac, giving it a full set of permissions. Finally, statement.execute() is called, which is executed with full permissions and can be used to disable the security manager.
+Figure 2. Using access control to disable the security manager.
+
+Using a trusted method chain
+This method involves calling Statement.invoke() to disable the security manager indirectly using reflection. The malicious applet executes the following steps:
+The code creates a subclass of java.beans.Expression. We will refer to this class as ‘PseudoClass1’. The constructor of this class calls its superclass – the constructor of Expression.
+Next, it creates another class, ‘PseudoClass2’, which extends the ‘PseudoClass1’ and implements the Map.Entry interface, as shown in Figure 3. The constructor of this class calls the constructor of its superclass, which in turn invokes the java.beans.Expression constructor. The getKey() method of Map.Entry is implemented to return null.
+Figure 3. PseudoClass1 and PseudoClass2.
+‘PseudoClass2’ is instantiated by passing System.class, setSecurityManager and an Object array whose length is 1, to its constructor.
+A HashSet instance is created and the PseudoClass instance is added to it.
+An instance of an anonymous subclass of HashMap is created to return the HashSet object created in step 4, using the entrySet() method.
+The instance of the anonymous subclass of HashMap created in step 5 is then added to a JList instance. Later in the code, the JList instance is rendered on a visible component.
+While rendering, the JList instance calls the toString() method on all its content including the HashMap object that was added to the JList. The toString() on the HashMap instance calls the inherited toString() from java.util.AbstractMap, iterating over the list returned by the entrySet() method that was overridden to return the HashSet object containing the PseudoClass2 instance. The getKey() and getValue() methods are then called on the PseudoClass2 instance, which in turn calls the implemented getKey() method, returning null, and the Expression.getValue() method, which was inherited from java.beans.Expression. The Expression getValue() calls the Statement invoke() method, which then calls the setSecurityManager method that was passed as the second argument while initializing PseudoClass2, with an Object array argument containing a single uninitialized object that acts as ‘null’ while calling setSecurityManager via reflection, thus disabling the security manager.
+
+Conclusion
+Java is very widely used and as a result is very popular among malware authors and exploit developers. One of the most commonly used techniques to compromise a machine running Java is to disable the Java security manager. In this article we have presented the code segment and logic for exploitation of a vulnerability to disable the security manager.
+At the VB2013 conference in October, Xinran Wang, of Palo Alto Networks, will detail the Java security model and demonstrate several recent zero-day exploits before presenting a dynamic analysis and detection tool for Java exploits. See http://www.virusbtn.com/conference/vb2013/programme for details. Ed.
+
+Bibliography
+[1] The Security Manager. The Java Tutorials. http://docs.oracle.com/javase/tutorial/essential/environment/security.html.

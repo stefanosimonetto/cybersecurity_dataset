@@ -1,0 +1,60 @@
+Misuse of WordPress update_option() function Leads to Website Infections
+
+In the past four months, Sucuri has seen an increase in the number of plugins affected by the misuse of  WordPress’ update_option() function. This function is used to update a named option/value in the options database table. If developers do not implement the permission flow correctly, attackers can gain admin access or inject arbitrary data into any website.
+Note: The WordPress update_option() function cannot be used maliciously if the developer correctly implements it in their code.
+Automated Vulnerabilities Using the update_option Function
+When it comes to website hacks, bad actors are always looking for low-hanging fruit. Easily automated vulnerabilities are usually the first choice for attackers – they don’t require authentication on the site and are quicker to get results from.
+The following snippet is a good example of the misuse of this function update_option. It highlights why attackers choose these kind of bugs to automate and infect multiple sites.
+function hc_ajax_save_option() {
+echo update_option($_POST['option_name'], $_POST['content']);
+die();
+}
+
+add_action('wp_ajax_nopriv_hc_ajax_save_option', 'hc_ajax_save_option');
+The function “hc_ajax_save_option” uses the WordPress update_option(), along with two parameters that come directly from user input.
+Unauthenticated bad actors can obtain full access to the website because the developers define “hc_ajax_save_option” as a non-private hook action.
+The WPTF – Hybrid Composer Plugin Vulnerability
+WPTF – Hybrid Composer is a page builder framework plugin with approximately 300 installations. The plugins objective is to help WordPress users easily create custom themes.
+We noticed an increase in suspicious requests coming from websites using WPTF – Hybrid Composer, revealing an attack against this plugin. Using the update_option() function, an attacker can gain admin access or inject arbitrary data into any WordPress website using vulnerable versions of the WPTF – Hybrid Composer framework – 1.4.6 and lower.
+The plugin developer is aware of this vulnerability and patched it in a recent update. We strongly encourage users to update their plugin if they haven’t done it already.
+The Login Logout Menu Item Plugin Vulnerability
+The popular Login or Logout Menu Item plugin helps WordPress users add a dynamic login/logout menu item to any menu on a WordPress site. The plugin currently has over 10,000 installations, and version 1.1.1 is vulnerable if the permissions flow in the update_option() function is not set up correctly.
+The vulnerability allows unauthenticated attackers to arbitrarily update some plugin options and redirect any user to an external malicious URL.
+function lolmi_save_settings() {
+if(isset($_POST['lolmi_settings_submit'])) {
+
+$login_page_url = (isset($_POST['lolmi_login_page_url']) && !empty($_POST['lolmi_login_page_url'])) ? $_POST['lolmi_login_page_url'] : wp_login_url(); $login_redirect_url = (isset($_POST['lolmi_login_redirect_url']) && !empty($_POST['lolmi_login_redirect_url'])) ? $_POST['lolmi_login_redirect_url'] : home_url(); $logout_redirect_url = (isset($_POST['lolmi_logout_redirect_url']) && !empty($_POST['lolmi_logout_redirect_url'])) ? $_POST['lolmi_logout_redirect_url'] : home_url();
+
+update_option('lolmi_login_page_url', esc_url_raw($login_page_url));
+update_option('lolmi_login_redirect_url', esc_url_raw($login_redirect_url));
+update_option('lolmi_logout_redirect_url', esc_url_raw($logout_redirect_url));
+
+[...]
+}
+}
+So, what’s the problem with the function above? It contains some important security flaws:
+It updates the key “_lolmi_login_pageurl” with any value provided by the user.It does not check for capability.It does not check nonce.
+Here’s how attackers are exploiting this particular bug in old versions of the plugin Login or Logout Menu Item:
+192.169.157.142 - lolmi_settings_submit=1&lolmi_login_page_url=http[:]//gabriellalovecats[.]com/wp-login.php [0/Aug/2019] "POST /wp-admin/admin-post.php?action=lolmi_save_settings HTTP/1.1"
+The Login Logout Menu Item plugin developers released a patch on August 5th, 2019 to address this vulnerability:
+--Version: 1.1.1
+++Version: 1.2.0
+Plugin URI: https://caseproof.com
+
+[…]
+++
+
+[…]
+function lolmi_save_settings() {
+if(isset($_POST['lolmi_settings_submit'])) {
+++if(!current_user_can('manage_options')) { die("Cheating eh?"); }
+++check_admin_referer('lolmi_nonce');
+[...]
+Other Plugins and Themes Under Attack
+These are only two of the many plugins we have seen under attack in the last months. You can read our Labs Notes to find out which other WordPress plugins and themes have been exploited recently:
+Vulnerable Plugins and Themes Exploited in MarchVulnerable Plugins Exploited in MayVulnerable Plugins Exploited in JuneVulnerable Plugins Exploited in July
+We will keep writing about this campaign as it evolves. You can subscribe to receive email updates on website vulnerabilities.
+Protect your Website
+With just a few lines of code in the right place, developers can avoid security issues related to the misuse of the update_option() function in WordPress and keep their users safe.
+If you are using the plugin WPTF – Hybrid Composer Plugin, the Login Logout Menu Item, or any other plugin or theme mentioned in our Labs Notes, update them as soon as possible to prevent a compromise.
+Sucuri can offer you piece of mind with our website security firewall which patches your website against all vulnerabilities.

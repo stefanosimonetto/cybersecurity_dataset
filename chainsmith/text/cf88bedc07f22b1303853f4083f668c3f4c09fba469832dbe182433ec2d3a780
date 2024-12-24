@@ -1,0 +1,59 @@
+Chinese PUPs and backdoor drivers: making systems less secure since 2013
+PUPs affect systems all across the world and are developed in many countries. A few weeks ago I came across an installer for a China-developed WiFi hotspot application, targeting English speakers, and being dropped by one of the major PUP bundler networks (it has since started to be dropped by another). The SHA-256 hash for the installer is B89017C2627CA80C68292453440CFCAE07A12798422737915F80F0720879C3D4.
+The PUP bundler runs the installer with the /silent command line argument. The installer drops a bunch of files; there’s a .7z file in its resources, with the first two bytes swapped (probably to prevent easy detection as .7z SFX by decompression tools).
+Among these files are two drivers with the same functionality (one for 32-bit Windows and the other for 64-bit Windows). The SHA-256 hash of the 32-bit driver is: E6427DF5D439EE854485C1C1BC8747487B5F0848D5EBA98838BD8F377F9E8DBE, and the SHA-256 hash of the 64-bit driver is: E5BC7CC800866C749FC588F5FC2F31D8B3202DD9EE3F40D450528AC08B08F311. When obtained, these two drivers had very low detection rates (the 64-bit driver was fully undetected).
+Analysis
+Drivers in a PUP always make me suspicious, so these files naturally warranted a further look. Analysis below will be performed on the 32-bit driver.
+At the entry point of the driver, one of the first things done is to check the OS version. If the OS version is not one of the following, the driver will not load:
+
+Kernel major version 5
+
+Windows 2000
+Windows XP
+Windows Server 2003
+Windows XP x64
+
+Kernel major version 6
+
+Windows Vista / Server 2008
+Windows 7 / Server 2008 R2
+Windows 8 / Server 2012
+Windows 8.1 / Server 2012 R2
+Early Windows 10 builds (up to build 988x)
+
+Kernel major version 10, minor version 0, build number less than or equal to 14393
+
+Windows 10 (build 10240 / v1507)
+Windows 10 v1511
+Windows 10 v1607 / Server 2016
+
+Most notable is the build number check that means that on any version of Windows later than Windows 10 v1607, the driver will not load.
+
+If this check passes, the driver continues to set itself up, setting the DriverObject MajorFunctions, creating the device, etc. This overt functionality may or may not be malicious.
+However, soon before returning from the driver entry point, another function is called.
+This function repeats the version check done previously and then creates another device, HelpDetectWz, and hooks the MajorFunctions that were set up previously:
+
+Afterwards, a couple of lists are created, a function is called that resolves some kernel APIs (manually, by getting the kernel filename, loading the kernel again into memory, and then parsing its exports — resolved API name strings are also obfuscated, by ROT-1), and creates a new thread.
+The main API for drivers like this are IOCTLs. The HelpDetectWz device has code for two of them: 0x8000C004 and 0x800C00C.
+Three exports that got resolved on driver load are nt!KdDisableDebugger, nt!KdEnableDebugger, and nt!KdDebuggerEnabled.
+These are used by the IOCTL code as anti-debug: each IOCTL wraps its real code around calls to KdDisableDebugger() and KdEnableDebugger() to try and prevent the use of a kernel debugger to step through the code. In addition, one of the IOCTLs checks KdDebuggerEnabled to see if the debugger really was disabled, and doesn’t perform the real functionality (after setting up inputs) if it wasn’t disabled.
+(If you have a kernel debugger setup and you’re working with the drivers above, you could easily patch out those calls/jump in memory using the kernel debugger before calling the IOCTL!)
+In addition, both IOCTLs’ input buffers have to be obfuscated. The obfuscation is XOR with a static 1024-byte key:
+
+Now that this background information has been given, let’s move on to the relevant IOCTL code.
+The first IOCTL copies deobfuscated data from the passed IOCTL buffer into a structure and if the kernel debugger really is disabled, adds that structure to a list. It then waits for some operation to complete before returning a value from that structure. This value is copied into the IOCTL buffer to then be returned to the caller.
+Upon further investigation, that operation to be completed happens in the thread that was started at driver load.
+This thread waits to be triggered, then while the driver is loaded it gets the last value added to that list, calls a function on it, then waits to be triggered again. If the driver gets unloaded, the driver unload function flips a global variable, which causes this thread to clean up (so no callers get stuck waiting for an operation that will never complete).
+The function that gets called? It resolves some APIs (in the already loaded kernel), deobfuscates part of the buffer that was copied into the structure (again, so this part of the buffer is doubly-encrypted, using the same XOR key), loads it as a PE, gets its entry point, and calls it using IoCreateDriver, with no signature checks whatsoever.
+
+So, this driver contains a backdoor enabling the defeat of Driver Signature Enforcement. If the driver has already been installed on a system, it doubles as a local privilege escalation, as non-administrators can also call the IOCTLs.
+Further investigation
+After finding this backdoor, I searched online for the device name `HelpDetectWz`, and found a post on a Chinese forum from 2013 describing a very similar driver inside a calendar application.
+Searching on VirusTotal enabled me to find several Chinese applications with similar drivers including the very same backdoor.
+Even more interesting, some of these similar drivers have some obfuscated code, up to and including being packed with VMProtect:
+
+Clearly, some Chinese developer really didn’t want their backdoor to be discovered.
+Some of the applications including these drivers include a Chinese Android rooting toolkit, a Chinese driver updater (there’s an English version available, which doesn’t include the drivers for some reason), a Chinese WiFi hotspot application (Chinese version of the PUP that the driver was initially discovered in, perhaps), and a Chinese USB drive helper utility. The latest version of the mentioned Chinese calendar application no longer contains the driver.
+Addendum
+A PoC to use the HelpDetectWz functionality to load an unsigned driver is available here — included are source and binaries to two test drivers (x86 and x64, coded in pure assembler), which will bug check the system when loaded. Many thanks to slipstream of Ring of Lightning for the PoC!
+Malwarebytes 3.0 detects the drivers and related applications and installers as PUP.Optional.WifiHotspot, Rootkit.HelpDetectWz.PUA and Rootkit.DriveTheLife.PUA.

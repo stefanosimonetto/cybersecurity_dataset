@@ -1,0 +1,47 @@
+[update] Shopperz alters dnsapi.dll
+Recently, we found a lot of people on forums, including our own, struggling with an issue they described as “Ads by Jabuticaba” or “Shopperz12082015”. Shopperz is a known entity that uses all kinds of malware methods to stay undetected and make removal as hard as possible. Another variant is known as Groover and labels the advertisements as “Ads by LaSuperba”.
+Components
+Shopperz uses browser extensions for Internet Explorer and Firefox.
+
+It also sets a Run key and creates Scheduled Tasks in order to get started at boot and at a preset time. And it uses multiple services, one of which also runs in Safe Mode. All this to make sure that Shopperz can deliver advertisements to you whenever they like.
+
+As if that is not enough they also act as a LSP hijacker so they can directly inject the ads into your internet traffic even if you are not using one of the browsers they hijacked.
+
+So what’s new?
+It never was a problem for Malwarebytes Anti-Malware to remove this adware. It usually requires a reboot to restore the internet connection to remedy the removal of the LSP hijack, but that was really the only thing that was special about Shopperz. This one is different though. It kept showing the ads even after all of the known components of the malware had been removed.
+To hinder analysis the installer is VM-aware and will not do anything when it notices it is being run on a Virtual Machine, but our researchers can’t be stopped that easy. The new twist to this adware was found in a separate file that the installer downloads. It is a Trojan called orion.exe that gets downloaded into the victims Temp folder as “oprun*****.exe” where every * stands for a number.
+What this Trojan does is ingenious. First of all it adds a RunOnce key:
+O4 - HKLM\..\RunOnce: [cmdrun] cmd.exe /C ipconfig /flushdns
+
+This will effectively flush and reset the DNS resolver cache as soon as the computer reboots. DNS stands for Domain Name System and it is the system that “translates” domain names like “Malwarebytes.org” that are easy for humans to remember, into IP addresses like 52.2.231.30 that are easy for computers to find.
+To understand how this part of the hijack works it is good to know the following order in which DNS works on an everyday computer.
+After checking if the queried name is not that of the computer itself, Windows looks in the hosts file to see if the domain name is specified there. If you compare DNS resolving to the look up of a phone number for a certain person, then following that analogy the hosts file contains your speed-dial numbers. In the same manner the cache could then be compared to hold the numbers that you know by heart and that don’t require looking up.
+The next step is that your computer queries the DNS servers that are specified in your connection properties or provided by your ISP, but this step is of no consequence here.
+The next thing the Trojan does is copy the users’ hosts file and add a couple of lines at the top.
+
+It then stores this altered copy in a different location, making sure that the length of the string showing the location inside the system32 folder is 18, exactly the same as the length of “\drivers\etc\hosts”. In my removal guide it was “\idhk\jec\ivot.dat” but “\spp\store\hst.dat” was another one we found often, which seemed convenient as that is placed in an existing folder.
+Why is the length of the string important? Well, that is to facilitate the next part of this scheme. The Trojan then replaces your dnsapi.dll files (all of them) with a patched copy. The size of that copy will be the same as the original because of the identical length of the string.
+
+This patched copy points to the altered hosts file, making the hijack complete. Going back to the phone book analogy:
+
+The Trojan wipes your phone book memory, so you can’t remember any phone numbers.
+It copies your speed-dial entries and adds a few of its own.
+It forces you to use the new set of speed-dial numbers.
+
+Remediation (look at update before you proceed)
+In my removal guide I advised to do a full system scan followed by System File Checker. Running System File checker by using sfc /scannow in an elevated Command Prompt checks all your system files and repairs missing or corrupted files. It is important to run the Command Prompt as Administrator and you should see a response similar to the one below.
+
+Checking the CBS.log mentioned in the screenshot above after removing the Shopperz infection showed this:
+
+Which verified that my dnsapi.dll’s were back to standard issue.
+If you think the full sfc /scannow procedure takes too long and you are sure of the issue you have you could focus on replacing dnsapi.dll only in the relevant locations by using these commands:
+
+sfc /scanfile=C:\Windows\system32\dnsapi.dll
+and (if present) sfc /scanfile=C:\Windows\syswow64\dnsapi.dll
+
+But I would recommend doing the full procedure since the Trojan does not limit itself to those locations either.
+Malwarebytes Anti-Malware detects and protects against this and former variants of the “Shopperz” variants. Detection name of the “patching trojan” is Trojan.Agent, the full installer will be recognized as PUP.Optional.Shopperz.BrwsrFlsh.
+Many thanks to our research team and the malware removal support team for their help in figuring this one out. Especially Bob Guryan, Tammy Stewart and Ade Gill.
+Update
+A new fix has been devised to deal with newer variants of this infection. It sets the proper permissions on the restored dnsapi.dll files on all Windows versions from Windows 7 and up (Yes, Windows 10 as well).
+To apply this fix make sure that in Malwarebytes Anti-Malware the option to “Scan for rootkits” is checked under “Settings” > “Detection and Protection” before you start the “Scan”.

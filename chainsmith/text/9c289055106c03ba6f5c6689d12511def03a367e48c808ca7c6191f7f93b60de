@@ -1,0 +1,164 @@
+The evolution of Zortob
+2013-03-04
+
+Dong Xie
+Fortinet
+,
+China
+Editor:
+Helen
+
+Martin
+Abstract
+Zortob didn't make big headlines when it first appeared a little over a year ago, but a new generation of the malware hitting the lab's honeypots prompted Dong Xie to take a closer look.
+Copyright © 2013 Virus Bulletin
+
+It’s about a year since Zortob made its debut, but you’ve probably rarely heard mention of it. One possible reason is that the first generation of Zortob was classified by the AV industry as a common trojan downloader (although it utilized a command and control server to download malware, rather than the more common direct downloading method) – after all, the appearance of yet another trojan downloader is not big news.
+In recent months, however, a new generation of Zortob has been hitting our honeypots. While I was attempting to trace its origins, I came across a batch of fake UPS/FedEx emails, each of which contained a malicious link or an attachment that dropped the new generation of Zortob. I decided to take a closer look.
+
+General view
+The new version of Zortob uses dynamic updated servers instead of hard‑coded ones: it chooses a server randomly for HTTP requests and its affiliate downloading commands. The RC4 and LZ (RtlCompressBuffer/RtlDecompressBuffer) algorithms are used and, at the time of writing this article, an MD5 algorithm is used to verify the integrity of the downloaded data. Recruiting a spam bot as a means of propagation is another highlight. The table in Figure 1 shows the differences between the two generations of Zortob; we will discuss each part in the following sections.
+Figure 1. Differences between the two generations of Zortob.
+(Click here to view a larger version of Figure 1.)
+
+Injection stub
+Zortob installers make use of a very fashionable injection mechanism, which I refer to as MVIP (Mapping View Into Process). Usually, MVIP creates a suspended process and maps one or more shared memory views, which contain malicious code, into the virtual address space of a zombie process. It also uses classic ‘PUSH/RET’ assembly code to hijack the entry point of the target process (Figure 2). After that, it wakes up the suspended process. In this sample (MD5: 2544e0e8bb0047146a41272fba5c4c29), Zortob uses svchost.exe as a puppet.
+Figure 2. Patched entry point of target process.
+
+Communication route
+Zortob obtains the current user’s SID (security identifier) in order to generate an MD5 digest. The digest is converted separately into a 32-byte PostMd5 string and an eight-byte PostKey string (Figure 3). It copies the original to %AppData%\{random string}.exe then creates a text file with the original file name in the current directory and opens it.
+Figure 3. PostMd5 and PostKey strings are generated.
+The following information is sent to the C&C server using HTTP protocol at each request:
+http://IP:Port/%.8x/index.php?r=gate&id=%32s&group=%.4drcm
+IP:Port: IP and port are chosen from the hard-coded hex string (Figure 4) or registry (Figure 7)
+Figure 4. IPPool hex string.
+The following pseudo formulation is used:
+(IP, Port) =RC4(IPPool +(GetTickCount ()% (Len(IPPool) /6)) *6, Key)
+%.8x: PostKey (e.g. DA9B2560)
+%32s: PostMd5 (e.g. DA9B25600FDEE33DAEB89DC7EC1210B3)
+%.4d: The variant’s creation date and month (e.g. 1311).
+Before sending the information, the sub link of index.php?r=gate&id=%32s&group=%.4drcm is encrypted using the RC4 algorithm with the PostKey.
+The commands from the C&C server and the respective actions taken by Zortob are as follows:
+Idle: Sleeps a while before sending the next request to the server.
+Run EXE: Downloads malware and executes it.
+Update: Downloads an updated version to substitute for %AppData%\{random string}.exe.
+Registry Delete: Finds an entry under HKCU\Software whose value string has a format of ‘For base!!!!!{Name 1}={random 1};...{Name N}={random N};’ and deletes the matched pattern ‘n={random X};’, where X ranges from 1 to N. (See Figure 1: Registry Delete, n=%1024s or n=%1024[^&].)
+Remove: Removes pertinent entries under the registry, files them under %AppData%\ directory, and exits the process.
+Run DLL: Downloads an RC4 and LZ double‑encrypted DLL. The decrypted DLL is injected into svchost.exe. If the flag a is true (see Figure 1: Run DLL, a=%x) and name n is non-NULL (see Figure 1: Run DLL, n=%1024s or n=%1024[^&]), the decrypted DLL is encrypted again and saved as %AppData%\{random N+1}, ‘n={random N+1};’ is appended to the entry described at the Registry Delete command.
+Figure 5. Some commands from the C&C server.
+Zortob backs up an IP pool in the registry, updating the pool approximately every hour. It sends a message to the C&C server with the following format:
+http://IP:Port/%.8x/index.php?r=gate&id=PostKey
+Figure 6 shows the decrypted IP and port list downloaded from the remote server. The list will be converted to an IPPool hex string and stored in the registry, as shown in Figure 7.
+Figure 6. Decrypted IP and port list.
+Figure 7. IPPool hex string in the registry.
+
+Spam component
+Like other malware, the spam component (MD5: 7112a2be119c50f2764c505efbce8447) does some initialization work and then prepares to send messages. It gathers local information and stores it with the following structure:
+typedef struct _GATHERED_INFO {
+CHAR InfoType[0x32];
+CHAR Reserved[0x32];
+ULONG SizeOfInfo;
+LPCSTR pInfo;
+}GATHERED_INFO,*PGATHERED_INFO;
+The InfoTypes are listed as follows:
+sid: a unique identifier created by a random function
+up: tick count value
+wbfl: flag to point out if mail address list is needed
+v: the version of the component itself
+ping: total number of times to retrieve given domain’s information
+guid: a GUID created by the CoCreateGuid API
+wv: Windows version information
+ms: total results of sent emails
+smtx: total flags of sent emails
+SFT: content of F32.txt
+sr: set as 0
+ar: set as 0
+Figure 8. Gathered information is posted to the C&C server.
+(Click here to view a larger version of Figure 8.)
+Next, it receives feedback from the C&C server and then locates a boundary string from the feedback. Using the boundary string it finds a name to describe the subsequent feedback data (see Figure 9). Table 1 explains the purpose of the data described by each name.
+Figure 9. An example of feedback from the C&C server.
+Name
+Comment
+CMDEXE
+Saves data to %temp%\~ie{random 1}.exe and executes. No data observed.
+UPDATE
+Saves data to %temp%\~ie{random 2}.exe and executes. No data observed.
+COMMON
+Encrypted data, includes spam template.
+Table 1. Description of the data.
+The data described by ‘COMMON’ can be structured using the following tags:
+<v>: feedback version
+<s>: updated server list
+<selfip>: current server’s address or local IP address
+<rDnsPTR>: backup domains for SMTP HELO command
+<ml>: list of mail addresses
+<smtprules>: resending rules when prior sending failed
+<bcc>: number of addresses in BCC field
+<mbody>: spam template
+<from>: sender’s email address
+<subject>: mail subject
+<name>: sender’s name
+<surname>: sender’s surname
+<login>: login names list
+<domain>: domain names list
+<wid>: identifies compromised machine by server
+Figure 10. Part of the decrypted COMMON data.
+It further structures each address included in the <ml> tag and groups the mail addresses by the given number of the <bcc> tag. That is, if the BCC number is N, and the total number of mail addresses is M, the number of groups is M/(N+1), and the structure is as follows:
+typedef struct _BCC {
+struct _BCC* Next;
+struct _SPAM_RECORD* pBccRecord;
+}BCC, *PBCC;
+typedef struct _SPAM_RECORD{
+struct _SPAM_RECORD* Next;
+struct _SPAM_RECORD* pBcc2Main;
+PBCC pBccChain;
+ULONG Index;
+ULONG Flag;
+CHAR ReceiverAddr[0x78];
+CHAR SenderAddr[0x78];
+CHAR* pTemplate;
+ULONG SizeOfTemplate;
+}SPAM_RECORD, *PSPAM_RECORD;
+
+Figure 11. Mail addresses grouped by BCC number.
+It walks through the SPAM_RECORD chain. If the record’s flag is zero and pBcc2Main is NULL, the record will be used to send spam. It chooses random values from tags or the ARGUES structure to fill the following variables in the template:
+%%DATE%%
+%%MSGID%%
+%%RCPT%%
+%%HPLOGIN%%
+%%N%%
+%%S%%
+%%US%%
+%%LS%%
+%%MIXS%%
+%%HEX%%
+%%FROM%%
+%%BND%%
+%%CID%%
+%%NAME%%
+%%SURNAME%%
+%%LOGIN%%
+%%DOMAIN%%
+%%FROMDOMAIN%%
+%%SUBJ%%
+typedef struct _ARGUES {//size 0x60
+ULONG CID;
+ULONG BND;
+CHAR* pDATE;  //"ddd, dd MMM yyyy gg HH:mm:ss %c%02d%02d"
+CHAR* pMSGID; //"%04x%08x$%08x$%
+[email protected]
+%s"
+CHAR* pBND_1; //0x10
+...           //----=_NextPart_%03u_%04X_%08X.%08X
+CHAR* pBND_N; //N ==BND
+CHAR* pCID_1; //0x38
+...           //%04x%08x$%08x$%
+[email protected]
+%s
+CHAR* pCID_M; //M ==CID
+}ARGUES, *PARGUES;
+Finally, it obtains BCC addresses using the pBccChain member and inserts them into the template. The spam template is now ready, and it is sent via SMTP. It checks the failed feedback from the mail server using smtprules to decide whether or not the spam needs to be re-sent.
+Figure 12. Part of the spam template.
+
+Conclusion
+During the process of tracking Zortob and its spam bot component, we developed scripts to automatically monitor their changes. We observed that, as with several other malware families, Zortob’s arsenal is its diversity – the spam bot updates a new Zortob variant each day, the domain of the malicious link in the spam template changes in less than an hour. Apparently, this is not the end of its evolution – so let’s pay more attention to its future.

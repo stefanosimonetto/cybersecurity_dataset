@@ -1,0 +1,88 @@
+GitHub Hosts Infostealers Part 2: Cryptominers and Credit Card Stealers
+
+Update – March 28th, 2018:
+The fake Flash update files referenced in this post have been moved from GitHub to port.so[.]tl, and the bit.wo[.]tc script to byte.wo[.]tc.
+Fake Flash update in the byte.wo[.]tc script
+
+A few days ago, we reported that hacked Magento sites had been pushing infostealing malware under the disguise of Flash player updates.
+In this post, we’ll reveal how this recent attack is related to an extremely hot topic – cryptocurrencies and cryptomining.
+Infostealer Analysis
+The malware binary files we found were packed with Themida, so the file analyses didn’t provide much useful information (which explains all of the generic detections on VirusTotal we saw previously). A quick activity analysis showed behavior typical to infostealers. The initial guess was that it had been a Lokibot.
+After reading our post last week, malware researcher Paul Burbage recognized the malicious software to be a different infostealer with similar features called Azorult v2.9
+
+Np 😉The malware is Azorult v2.9 to be exact. This family is a commodity infostealer malware sold in underground Russian hacker forums. C2 gate: hxxp://port.so[.]tl/log.phpC2 admin: hxxp://port.so[.]tl/index.php pic.twitter.com/yDZwWRSWhI
+— Paul Burbage (@hexlax) March 15, 2018
+
+Paul mentioned that the malware was also responsible for delivering cryptominers on infected computers. Here at Sucuri, we focus on websites and don’t analyze client-side malware, however, we have also found connections of this attack to cryptominers.
+Website Analysis Begins
+When colleagues from MalwareBytes shared a PCAP file for that malware, I analyzed the connections it made to which websites.
+Among other things, I noticed a request to download this file: hxxp://frogloud[.]com/TOP/wp-content/uploads/2016/cmd.bin
+VirusTotal quickly recognized the malware with a detection rate of 21/66.
+After that, I immediately noticed that the frogloud[.]com site itself was a legitimate but hacked site. In addition to the malicious cmd.bin file, the site had two suspicious scripts from siteverification[.]online.
+HTML code of frogloud[.]comBoth hxxp://siteverification[.]online/lib/status.js and hxxp://siteverification[.]online/lib/lib.js possess the same content and load the main page of the site in a hidden iframe:
+Scripts inject a hidden iframe
+Let’s check that page. It appears to be the default welcome page of an Apache server that didn’t have a configured real site yet.
+Apache2 Debian “Default” Page in the iframe
+Nothing suspicious. If there were any malware, it would have probably been removed already since those scripts and iframes now load a benign page. Not so fast! Let’s check the source code of the page first.
+CoinHive script at the bottom of the HTML code
+Here we go! There is a CoinHive cryptominer with the site key “f63LSXxFY7jdZhns0PTiz67v8tU03If8” at the bottom of the HTML code.
+So, what these scripts actually do is inject an iframe which mines Monero cryptocoins in the browsers of site visitors.
+Related Infections
+Let’s check for other sites infected with the same malware. PublicWWW quickly found 1787 infected sites that were serving malicious content from siteverification[.]online.
+In addition to the “status.js” and “lib.js” files that we had discovered on the frogloud[.]com site, there were also some other variations with “info.js”, “stat.js”, and even some direct iframe injections.
+Just like we saw in our last post, the sites that were impacted were mostly Magento. When scanning them, I quite often locate both infections on the same sites – fake Flash updates from bit.wo[.]tc and cryptominers from siteverification[.]online.
+External references in Unmask Parasites report for a hacked site
+This isn’t the strongest link between the two infections, however, vulnerable sites may have been infected by different hacker groups at the same time.
+We also found some other common infections coexisting with the bit.wo[.]tc fake Flash updates – for example, old Magento redirect scripts, or credit cards stealers from hxxps://onlinestatus[.]site/js/status.js (PublicWWW)
+Common Features in Magento Malware
+On the other hand, there are a number of signs that these recent infections may be related, as they share many common features and coexist on the same sites.
+Path Pattern in Malicious Links
+
+Fake Flash update: bit.wo[.]tc/js/lib/js.js
+Credit card stealer: onlinestatus[.]site/js/status.js.
+Cryptominer: siteverification[.]online/lib/status.js
+Cryptominer back from September 2017: hxxps://camillesanz[.]com/lib/status.js
+
+Default Apache2 Debian Pages
+If we check the home page for onlinestatus[.]site, we’ll see the same default Apache2 page that was on siteverification[.]online – this time without the presence of a cryptominer. But there is one more domain on the same server (185.202.103.37) – onlinestatus[.]stream – whose “default Apache2 welcome page” did contain an injected cryptominer with the site key “ZjAbjZvbYgw68hyYGhrl7xgDEqUK9FiZ”, as well as an obfuscated CoinHive JavaScript saved in the file with a familiar path pattern: onlinestatus[.]stream/lib/status.js.
+api2.checkingsite.site
+Let’s return to the PCAP file of the traffic generated by the fake Flash update, where we see a series of POST requests to api2.checkingsite[.]site (e.g. POST /2.0/method/checkConnection, POST /2.0/method/error, POST /4.0/method/installSuccess).
+I won’t speculate about the purpose of these requests here. What’s more important for my investigation is that checkingsite[.]site’s IP is 37.1.206.48. The siteverification[.]online site that is being used in the cryptomining attack has the same IP.
+This is a direct connection between the fake Flash update malware and injected CoinHive cryptominers on Magento sites. Given the information above, we can also link these attacks to Magento credit card stealers too.
+Cryptojacking 360º
+There is one more direct link between the siteverification[.]online site and the fake Flash updates from GitHub that I initially overlooked. It turns out that the majority of infected sites have two injected siteverification[.]online scripts (e.g. lib/info.js and lib/lib.js) for a reason.
+These files are not static. When you load a script for the first time, you get the same fake Flash update script as we saw in the previous article being served by the bit.wo[.]tc/js/lib/js.js script. However, all subsequent requests to it return either a hidden iframe with a CoinHive cryptominer or an empty file.
+Siteverification[.]online script loading fake Flash update trojanTo summarize the workflow for new victims of this attack, the first script loads a fake Flash player update banner for an infostealing trojan, which in turn installs cryptominers on victims’ computers. Almost simultaneously, a second script opens a browser-based cryptominer in a hidden iframe.
+And by the way, this attack doesn’t solely rely on mining to obtain cryptocurrency. One of the most popular features of the Azorult infostealer is its ability to steal private keys from popular Bitcoin (and some other coin) wallets (e.g. from files like wallet.dat and electrum.dat).
+The same is true to the credit card stealing vector. In addition to the scripts that hijack Magento checkout pages, the trojan will also try to steal payments details from browsers when victims pay online.
+Not a New Campaign
+When I finished investigating the Magento side of this attack, I decided to check the GitHub part for further insights. If the Magento malware from these hackers had existed since the middle of 2017, then the flashplayer31 repository created on March 8th, 2018 was probably not their first attempt to use GitHub in their attacks.
+I quickly found more evidence for this hypothesis. Many security researchers have discovered these fake Flash updates.
+
+Jan 2, 2018: Fake Flash Updater is Actually Coinminer Malware with github[.]com/hoyttgio/Download/raw/master/log/flashupdate.exe
+Jan 18, 2018: Fake Flash update leads to Bitcoin Miner with github[.]com/vediwide/cpp/raw/master/bin/flashupdate.exe
+Feb 2, 2018: Fake Flash update leads to Bitcoin Miner. Part 2 with github[.]com/cilmenupse/downtime/raw/master/test/file/flashUpdate.exe
+
+The malware hasn’t always been disguised as a Flash Player update. Last October, the same tricks were used in fake “Roboto Condensed font” downloads with github[.]com/Melicano01/wiwi/raw/master/upd.exe.
+The Hibryd-Analysis site helped me identify a GoogleUpdater variation of this malware which came from github[.]com/vaio666999/2/blob/master/GoogleUpdater.exe?raw=true. This same repository also contained files with names xmrig32.exe (Monero miner) and 64.exe (most likely a 64-bit version of the same miner).
+A quick search on UrlQuery revealed a few more similar fake updaters in various GitHub repositories.
+
+Feb 5, 2018: github[.]com/dizovoz/rui2/raw/master/flashUpdate.exe
+Jan 23, 2018: github[.]com/ikpt/Ex/raw/master/redis/flashupdate.exe
+Jan 19, 2018: github[.]com/zopihafo/SMPPClient/raw/master/SMPP/SmppClient/flashupdate.exe
+Jan 14, 2018: github[.]com/lqzo7/dragandrop/raw/master/flashupdate.exe
+Dec 28, 2017: github[.]com/lumaf/django-registration-templates/raw/master/registration/flashupdate.exe
+Aug 22, 2017: github[.]com/kul1337/3.0.43.124/raw/master/upd.exe
+
+As you can see, GitHub has been used by this attack since at least August 2017. New accounts and repositories are being regularly created as soon as the old ones get disabled.
+As we speculated in the previous blog post, it doesn’t take long to create a new repo and begin using it in a live attack. After our blog post, by the end of March 15, 2018, the flashplayer31 account was disabled by GitHub, but on the next day, the attack began using a new johnplayer32 account.
+
+Fake Flash Player from compromised sites is back on new @github account. cc @unmaskparasites @hexlax @MarceloRivero GitHub: https://t.co/LR6uotjNtxPayload: https://t.co/14IXNhbjFuSucuri blog on this: https://t.co/gmUH99yePA pic.twitter.com/0Ao8DqCP8p
+— Jérôme Segura (@jeromesegura) March 16, 2018
+
+Finding Malware in Magento
+This post demonstrates that this hacker group has a long history of targeting vulnerable Magento sites.
+While their attacks have a wide scope ranging from credit card stealers, in-browser (and Windows) cryptominers to infostealing trojans, the server-side part of the infection remains more or less the same.
+The scripts are typically injected into the core_config_data table. For example, in the design/head/includes or design/footer/absolute_footer sections.
+If you believe your website has been compromised, we’d be happy to help. If you’re a do-it-yourself website owner, you can find more information about cleaning infected Magento sites in our online guide.
+Update: We have just released a Magento security guide. Check it out!

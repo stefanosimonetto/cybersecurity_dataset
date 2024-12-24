@@ -1,0 +1,57 @@
+Ask Sucuri: Can Your cPanel Page Be Maliciously Redirected?
+
+Many webmasters may not be aware that hackers are able to maliciously redirect cPanel pages. The specific tactic we describe in this article is unique. Included are recommendations to prevent it, along with other suspicious issues, through logs kept on cPanel servers.
+A lot of websites owners already know about the .htaccess file (short for HyperText access) and how it can be used to redirect visitors to a malicious URL. However, did you know it could be used to easily redirect users that logged into their cPanel?
+cPanel Security Incidents
+Recently I worked with a client that operates a small hosting business. They had just suffered a widespread security incident on their cPanel hosting server.
+What is cPanel?
+If you aren’t familiar with cPanel, it is among the most popular website hosting management software and has been in use on hosting servers dating back to 1997. When you buy hosting from a web host that uses cPanel, they provide you with a cPanel login. You can then use your own personal cPanel to manage your website.
+Shared hosting servers allow multiple customers (it’s not uncommon to see thousands of websites on a single shared server). Each customer needs their own cPanel so they can access their website independently.
+The web host needs to be able to manage the individual cPanel users so that they can set limitations on disk space, bandwidth, email accounts, FTP, or virtually anything that shows in your standard x3-themed cPanel. They do this management through a powerful tool in cPanel called WHM, or Web Host Manager.
+Cleaning Malicious cPanel Redirects
+Our client had discovered that every single website on the server was redirecting to a malicious website. Unfortunately this is common when a WHM password is compromised, since it gives the hacker access to every website through the individual cPanel users.
+I was given root access to the server and quickly got to work on cleaning the malicious content. The website redirects were just modified .htaccess rewrites, so they were quickly cleaned to stop the websites from redirecting. Since I had root SSH access to the server, I was also able to confirm that the malicious activity occurred through compromised cPanel users (existing under the WHM user) by examining the HTTP logs for the cPanel backend.
+This type of activity is not unusual for a WHM password compromise and so I cleaned the websites, reset their WHM password, then advised the web host owner to have their clients reset their cPanel passwords as a standard security precaution. It wasn’t long until I heard back from the client. Right after they authenticated, the cPanel interface would suddenly redirect to the same malicious website as before. This was very strange news. I had never encountered this issue and couldn’t find any other reports of this occurring. I reconnected to the server via SSH and replicated the problem.
+Deep Investigation of cPanel Logs
+I wanted to show an example of the myriad of information that is within /usr/local/cpanel/logs/access_log, so here’s a glimpse of what you can find:
+[127.0.0.1]  - xxx [10/19/2016:23:58:42 -0000]
+"POST /login/?login_only=1 HTTP/1.1" 301 0 "http://redacted.com:2082/"
+"Mozilla/5.0 (X11; Linux x86_64; rv:45.0) Gecko/20100101 Firefox/45.0" "-" "-" 2082
+
+[127.0.0.1] - xxx [10/19/2016:23:59:25 -0000]
+"POST /cpsess9793471576/scripts2/savenews HTTP/1.1" 200 0
+"http://redacted.com:2086/cpsess9793471576/scripts2/editnews"
+"Mozilla/5.0 (X11; Linux x86_64; rv:45.0) Gecko/20100101 Firefox/45.0" "s" "-" 2086
+
+[127.0.0.1] - xxx [10/20/2016:00:51:22 -0000]
+"POST /cpsess9793471576/backend/passwordstrength.cgi HTTP/1.1"
+200 0 "http://redacted.com:2086/cpsess9793471576/scripts5/wwwacctform"
+"Mozilla/5.0 (X11; Linux x86_64; rv:45.0) Gecko/20100101 Firefox/45.0" "s" "-" 2086
+The above log details shows someone logging in using the WHM reseller username xxx (redacted). The attacker then modifies the cPanel news from within WHM and finally changes the password through the WHM – List Accounts page. For privacy reasons, I changed the user’s IP address to 127.0.0.1 (localhost) and edited the domain name to redacted.com.
+cPanel News Hack
+Ultimately I ended up finding that the hacker was using an interesting technique; one I had never seen before. The hacker utilized the cPanel News feature to execute an HTML http-equiv and refreshed the page.
+This allows the attacker to execute a redirect pointing to whatever URL they input to be refreshed. In the client’s case, it was a malicious website that had defacements:
+
+Preventing Malicious Use of cPanel News
+In the image above, I was logged in as the root user; however  any user with WHM access can modify the cPanel News. This means that if you use a shared hosting environment without WHM access, then you have to depend on your web host for cPanel security.
+If you are a reseller with WHM access (or a web host), then this is a little more worrisome. This issue allows someone to easily redirect all of your cPanel interfaces to any URL they desire.
+By far, the best protection to prevent this type of malicious activity through WHM is to apply two-factor authentication from within WHM.
+Two-factor authentication for WHM/cPanel was rolled out in version 54, according to their website. If your web host is not using version 54 or later, then you can ask them to update it.
+If 2FA (two-factor authentication) is not available, then you should make sure to leverage general security guidelines. These are the usual guidelines that you hear, but please never disregard them thinking they are outdated or too generic:
+
+Strong passwords that are at least 10 characters long, using a combination of letters, numbers, and special characters.
+Regular scans of any device used to access cPanel/WHM or FTP. Many users access FTP via the cPanel user and password – the credentials can be stolen by keylogger malware.
+Use an IDS (intrusion detection systems). It just so happens that Daniel Cid, the co-founder of Sucuri, is also the creator of a great open source IDS under the name OSSEC HIDS. It requires some configuration, but it is well worth it!
+
+One last option that I have used before is to apply immutable attributes to the following files:
+
+/var/cpanel/news/global-news
+/var/cpanel/news/global-resold
+/var/cpanel/news/root/news
+
+This can be done through the following command:
+# chattr +ia -V /var/cpanel/news/global-news /var/cpanel/news/global-resold /var/cpanel/news/root/news
+I strongly advise not using this method unless you are unable to apply the other guidelines suggested above. I personally have not run into any issues using the immutable attributes method, but it will likely prevent any cPanel updates as nobody can modify the file when immutable attributes are applied (not even the root user).
+Just as a side note, if you need to remove the immutable attributes then just use chattr -iaV /path/to/file.
+Hopefully this post has informed you about this uncommon method of redirecting cPanel users via the cPanel News section, including how to investigate suspicious activity in cPanel. This isn’t a widely acknowledged issue so we encourage you to share this post to help other webmasters keep their servers as secure as possible.
+As always, Sucuri is here to help you with your website security needs.

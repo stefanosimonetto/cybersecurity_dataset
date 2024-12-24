@@ -1,0 +1,78 @@
+Nulled WordPress Themes: Malvertising and Black Hat SEO
+
+If you have been following our blog for some time, you know that we regularly warn about risks associated with the use of third-party software on your site. A benign plugin may sneakingly inject ads into your site which cause malvertising problems for the site visitors (e.g. SweetCaptcha). Other plugins may be hijacked by hackers or black hat freelancers too (remember the epic story of Wooranker?). Another common issue is the use of so-called “nulled” premium themes and plugins that usually come with backdoors, hidden links, unwanted ads and even pure malware (e.g CryptoPHP or fake jquery scripts).
+This time I’ll tell you one more story that combines all the above mentioned problems: nulled plugins, black hat SEO, malvertising, and a software development company that turned to the dark side.
+
+Suspicious gma_footer Code
+Recently the lead of our remediation team, Bruno Zanelato, cleaned a site and found this piece of code in one premium WordPress plugin:
+Suspicious gma_footer code
+The encrypted part decodes to hxxp://cdn .gomafia[.]com. As you might expect, he investigated what’s going on there.
+That gma_footer function was hooked to the wp_footer action. As a result, the code fetched from cdn.gomafia[.]com was injected into the footer of every site page. So what exactly is being injected?
+Injected cdn.gomafia code
+The injected code vary by using different keywords or sets of ad script, but you can always see these three main parts:
+
+Ad scripts from eclkmpsa[.]com/adServe/banners?tid=131711_225710_0&tagid=2, www .tradeadexchange[.]com/a/display.php?r=1219598 and cdn.popcash[.]net/pop.js
+Invisible spammy links that at the moment point to gomafia[.]com and some other Indian sites (including one porn site)
+
+Google Analytics code with the UA-5133396-16 id
+Malvertising
+Running someone else’s ads on your site is probably not what you expect when you install a plugin. The thing is, you might not even see them when you browse your own site. These particular scripts are configured to show popups only when visitors spend some time on a site and perform some action there. For example, scroll the page or click something.
+The ads they show in popups are of quite questionable quality – gambling, scams, and even malicious downloads like this:
+Fake HD Video Player
+The downloaded HDVideoPlayer_2403439173.exe was detected as malicious by 13 antivirus products.
+Hidden Links
+Following the ad scripts, you can see a block of spammy links that point to gomafia[.]com and three more sites. The links are not visible on infected web pages because of this tag:
+<span class="GMA">
+The GMA style is not defined in the injected HTML part, so how does it work? Let’s get back to the PHP code we found in the plugin. In addition to the gma_footer, it also defines this gma_styles function (used in the wp_enqueue_scripts hook):
+function gma_styles () {
+wp_enqueue_style( 'gomafia', plugin_dir_url(__FILE__) .'gma.css');
+}
+We can see how this code makes WordPress include the gma.css stylesheet file from the plugin’s directory on every page. And here’s the content of that file:
+
+.GMA { display: none; }
+Now it’s clear what makes the links invisible.
+Google Analytics
+In addition to ads and spammy links, the malware injects a Google Analytics code with the UA-5133396-16 user ID to every infected web page (it is possible to use multiple tracking codes on the same web page). It allows the spammers to track their campaign. This may help see the overall page views with their injected ads across all the infected sites.
+Google Analytics tracking code may also help verify themselves as the owners of the infected sites in Google Search Console. We have no information whether the attackers actually tried to do it but we can’t discard this possibility since some other black hat SEO attacks did verify themselves as owners of the infected sites in the Search Console.
+What GoMafia Anyway?
+When we found the malicious code in the plugin, the first question was whether it was a part of the real plugin or injected by hackers. Since it was a premium plugin, it was hard to obtain its original source code. Moreover, premium plugins rarely (if ever) resort to such tricks — their developers monetize their work directly by selling their plugins.
+The answer to the question about the origin of the malicious code became obvious when we opened the GoMafia[.]com site. This site is a collection of “nulled” premium themes and plugins, mainly from CodeCanyon.
+To verify our hypothesis, we downloaded a few themes and plugins from that site. All of them contained the gma_footer code that injected the content of the hxxp://cdn.gomafia[.]com page into web pages of sites that install them.
+It’s worth adding that the GoMafia[.]com site also uses the same ad scripts that create annoying (and usually malicious) popups and popunders. Moreover, their download links use adf[.]ly interstitial pages that show ads before redirecting to the actual download page. This service shares ad revenue with users who send traffic to their interstitial pages. Not only are such pages annoying, but a significant share of their ads consist of pure scams and malware downloads. For example, the first time I clicked on the adf[.]ly link my browser began downloading the fasttorrent.exe file  (Detection ratio: 20 / 56 on Virustotal).
+Digging Deeper
+If we dig a bit deeper, we can reveal some other interesting details about the people behind this GoMafia black hat campaign.
+WHOIS records show that the gomafia[.]com domain was registered just a couple of months ago on March 8, 2016 by Viji Sathish from Tamil Nadu state in India. If we check WHOIS data for the other three domains that we see in the block of spammy links, we’ll notice that they all have absolutely the same registration address, but registered by “Sathishkumar M“.
+The oldest one (metaskapes[.]com) was registered back in 2009 and the newest one (coupontwit[.]com) was registered just two months ago. So despite the fact that the four sites in the spammy link block look different at first glance (nulled software, interior design, coupons and porn) they all belong to the same people and GoMafia injects that block of links to third-party websites to promote their own resources, not third-party sites.
+Let’s see what else is common between these four sites.
+They all use the same ID for Google Analytics: UA-5133396-x (where x changes from site to site), which also proves that they are all controlled by the same people.
+One more piece of the puzzle can be found if you check the email addresses specified in the WHOIS data. All the emails are different (sathish.5566(at)gmail .com, sathish(at)kenzest .com, viji(at)kenzest .com), but they show us that:
+
+Sathishkumar M and Viji Sathish is probably the same person.
+He has something to do with kenzest[.]com site, since he has two different accounts on that private domain.
+
+Moreover, kenzest[.]com and coupontwit[.]com (one of the spammy links) are hosted on the same server 192 .185 .21 .192. The rest of the sites (including gomafia[.]com) are behind the CloudFlare firewall so it’s hard to tell their real IPs. But if we change the IP address of gomafia[.]com to 192 .185 .21 .192 in our /etc/hosts file, we’ll see that the GoMafia site is also hosted on the same server as kenzest[.]com.
+Kenzest .Com
+Kenzest[.]com is a site of an Indian company that describes itself as a “group of Computer Engineers who have learned to provide solutions that work, to our customers“.
+On the contact page we find the same address and phone number as in the gomafia[.]com whois record. Moreover, it says that the phone number belongs to Sathish! With a bit of Googling we can even find that Sathish Kumar M of Kenzest. Here’s his article and photo back from 2010. Apparently back then, Sathish still tried to find good application to his software development skills.
+Most likely their white hat business wasn’t that successful and they eventually began to explore the dark side of the Internet Marketing: porn, intrusive ads, black hat SEO, software piracy and abuse of third-party sites.
+
+In addition to software development, Kenzest Technologies also provides SEO services. This is a quote from their site:
+Our keyword research team at Kenzest specializes in SEO. Our SEO services makes the site highly superior to all other 24,930,000,000 .coms found on the internet.
+I gather, GoMafia[.]com is just a part of their SEO strategy:
+
+Have as many sites as possible install their nulled plugins.
+As a proof-of-concept, inject links to their own sites and track their progress in search results.
+Once they reach a certain level on infected sites and find paying clients interested in their SEO services, they can replaces their own links with their client links. It’s easy – all they need to do is change the contents of their own cdn.gomafia[.]com page.
+
+Meanwhile, they are trying to monetize their GoMafia project with ads (intrusive and usually malicious): on their sites, in download links, and on the sites they infect.
+Given the decisions they have made so far, they can easily replace the hidden links and ads on cdn.gomafia[.]com with more dangerous types of malware if they figure out how to monetize it. Or, they will put backdoors and malware directly in the nulled plugins like many other similar sites do.
+“Free” vs Free
+This story once again demonstrates to us why it’s always a bad idea to install “free” premium software on your website and what makes people offer such “nulled” themes and plugins for “free”. It’s just a criminal business model where instead of paying directly to the software developers, you are paying to criminals by giving them a chance to abuse your site and your site visitors.
+Actually, every third-party component that you install on your site can potentially cause security issues such as backdoors, malware, spam, or just vulnerabilities that can be exploited by hackers. Whenever you install something, you should ask yourself these questions:
+Does my site really need this software?
+
+Can I trust the developer?
+Can I trust the source where I obtained this software from?
+Will I be able to get timely security updates in case of found vulnerabilities?
+
+To minimize risks, use popular free software from official repositories like Plugin Directory or Theme Directory. Every day, many people download and test software there. Any security problems are being revealed quite fast. Another option is to purchase premium software directly from their developers, or official distributors. This way you support the developers and ensure that you get the original software that wasn’t tampered with.

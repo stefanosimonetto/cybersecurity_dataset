@@ -1,0 +1,66 @@
+Range technique permits Ursnif to jump onto your machine
+
+On January 5th we noticed an interesting e-mail sample from a recent and ongoing e-mail campaign which contained a malicious document attachment and downloaded malware in a unique way. The Microsoft Office Word document downloaded the malicious payload from a JPG file but, where a normal browsing user would see an image of Kangaroo, the malicious document saw a different file - the Ursnif credential stealer.
+
+fig 1. Actual image hosted on command-and-control server
+
+Executive summary
+There are several interesting aspects to this threat as summarized below:
+
+The malware is downloaded from a JPG file but where a normal user would see an image when browsing to the site, the malicious document pulls down an octet-stream.
+The malware payload is a credential stealer known as Ursnif and is signed with a valid certificate.
+The Ursnif malware uses HTTPS for its communication.
+The e-mail campaign containing the malicious DOC file was targeted towards Australian users.
+
+Protection statement
+Our customers are protected against this campaign via Advanced Classification Engine (ACE), at multiple stages of attack:
+
+Stage 2 (Lure) - ACE identifies and blocks the malicious e-mail.
+Stage 5 (Dropper) - ACE identifies and prevents the malicious payload from being downloaded to the target machine.
+Stage 6 (Call Home) - ACE identifies and prevents the command-and-control (C&C) traffic.
+
+E-mail lure
+The e-mail lures used in this attack had a consistent tax payment theme:
+
+The content of the DOC file attachment is a typical attempt to trick a user into enabling macros:
+
+Malicious DOC macro
+Once the malicious DOC has been opened in Microsoft Word and a user has enabled macros, a malicious macro will execute in the background and attempt to download and execute malware. However, this is done in a unique way to what we have typically seen in the past, and we have been seeing this new technique since the end of December which has normally been used to distribute the Dridex malware family. Didier Stevens wrote an analysis of the same technique recently on his blog.
+Firstly, the macro will decrypt a secondary embedded and obfuscated Visual Basic Script (VBS) and write it to disk. This VBS is then executed and will send an HTTP request to a malicious site hosting a JPG but will only download part of the content by using the "Range" HTTP header. The "Range" header works by allowing the HTTP client to request the range of bytes that they want to download from the target URL's content, instead of receiving the entire content.
+In this particular instance, we saw a malicious DOC file using a macro to download part of a JPG file. Here is how the request and response looks like from the malicious DOC's point of view:
+
+And here is how the request and response looks like for a normal browser:
+
+As shown, when the malicious DOC file downloads the JPG it only requests byte 49507 onwards and this is where the encoded malware is located within the JPG file. When a browser requests the JPG it will naturally request the entire content, and so the entire legitimate JPG file will be downloaded and shown to the browsing user. The encoded malware appended to the end of the file is invisible to a browsing user who will only see a benign image of a kangaroo.
+The image below shows the encoded malware appended to the JPG at byte 49507 onwards:
+
+This technique makes it more difficult for analysis tools to detect the existence of the malware, and also makes the JPG seem benign to somebody who browses to it. This method is not something that we would strictly class as a form of steganography, as the malware is only crudely appended to the end of the JPG.
+
+Ursnif malware payload
+The Ursnif credential stealer was the payload in this particular attack This malware is known for its ability to steal passwords and other credentials from a system, as well as hooking into browsers in order to change and intercept the content on banking websites in order to capture a user's banking credentials and personal information.
+The sample we analysed was aa6a79a66b66c9b48f4cf00574a5368eaa2af99f and relied upon the following C&Cs over HTTPS:
+clinothingjclientallow.me (46.105.208.22)
+nothingjclientallow.me
+aswallowclijscagent.me
+allowjuserjofficer.me
+allowdisallowjscoffuser.me
+jclientjclient.me
+clientalallow.me
+nothingallowalallow.me
+allowagentdisallow.me
+cliofficerjscallow.me
+clibarbradyjscallowcli.me
+It also obtained a payload from the following location:
+hxxp://212.47.195.235/10007u
+
+Summary
+Malware actors are always looking for new ways to fool an unsuspecting victim into running their malicious code, as well as new ways to bypass analysis tools and trick researchers and investigators. Financially motivated crime remains popular among these sorts of actors, who will use any means necessary to obtain various user credentials and banking information without much care as to who they infect. It is important to be aware of suspicious e-mails that you receive and to never open anything that you are unsure about.
+
+UPDATE (01/11/2016)
+We decided to do a bit more analysis on the VBS file that downloads the partial JPG with the malware payload. The VBS is obfuscated and difficult to understand in its raw format:
+
+However, when we de-obfuscated the macro we noticed what seems to be an error in their XOR based encoding/decoding algorithm:
+
+The author of this code has used the rounded division operator '\' where he or she probably meant to use the modulo operator 'Mod'. As a result, only the first character 'R' of the encoding key "RopeCut6" is ever used rather than the full key. This means that the encoding scheme is a lot weaker and very obvious to any analysts who look at the payload. In addition, automated analysis tools will often look for single byte xor-encodings and automatically decode them. Ultimately the end result is that the malware author's payload may be discovered and detected a lot quicker than it would have otherwise been if they had used the full, intended encoding key.
+Interestingly, the way they encode the payload must have the same error because the payload decodes and executes without any problems. However, even if the malware author was to change or fix this algorithm then Raytheon|Websense products would still protect against this threat because we do not rely on the payload encoding.
+Encoding and encryption mistakes are commonplace among cybercriminals who do not typically have the kind of code quality reviews that a professional, commercial organisation would have.

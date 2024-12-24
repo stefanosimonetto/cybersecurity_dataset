@@ -1,0 +1,98 @@
+Passive Asset Detection System Catalogs Hosts Offering Services
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+August 17, 2004
+
+I'm happy to report successful use of Matt Shelton's Passive Asset Detection System (PADS).  PADS watchs network traffic and tries to recognize and record services it sees.  I was able to compile and run PADS on Red Hat 9.0 and FreeBSD 5.2.1.  Here is a sample run with PADS in the foreground.  Because I do not specify the network to watch (with the "-n" switch), PADS reports every host offering a service:
+
+drury:/$ sudo pads -i fxp0
+pads - Passive Asset Detection System
+v1.1 - 08/14/04
+Matt Shelton
+
+[-] Processing Existing assets.csv
+[-] Listening on interface fxp0
+
+[*] Asset Found:  IP Address - 10.2.2.99 / MAC Address
+- XX:30:48:XX:f9:56
+[*] Asset Found:  Port - 0 / Host - 10.2.2.98 / Service
+- ICMP / Application - ICMP
+[*] Asset Found:  Port - 80 / Host - 66.35.250.209 / Service
+- www / Application - Apache 1.3.26 (Unix)
+[*] Asset Found:  Port - 80 / Host - 66.35.250.203 / Service
+- www / Application - Apache 1.3.27 (Unix)
+^C
+[*] 1587 Packets Received
+[*] 0 Packets Dropped by Software
+[*] 10 Packets Dropped by Interface
+
+[-] Closing PCAP Connection
+
+You can run PADS as a daemon by activating the "-d" switch.  To view the results in an analyst-friendly manner, use pads-report:
+
+drury:/$ pads-report -r assets.csv
+pads-report - PADS Text Reporting Module
+1.1 - $Date: 2004/08/14 23:58:49 $
+Matt Shelton
+
+1 ------------------------------------------------------
+IP:       10.2.2.98
+DNS:      mydns.mysite.com
+ICMP:     Enabled
+
+2 ------------------------------------------------------
+IP:       10.2.2.99
+DNS:      drury.mysite.com.
+MAC(s):   XX:30:48:XX:f9:56  (2004/08/17 15:50:38)
+
+3 ------------------------------------------------------
+IP:       66.35.250.203
+DNS:      sourceforge.net
+
+Port  Service    Application
+80    www        Apache 1.3.27 (Unix)
+
+4 ------------------------------------------------------
+IP:       66.35.250.209
+DNS:      projects.sourceforge.net
+
+Port  Service    Application
+80    www        Apache 1.3.26 (Unix)
+
+If you prefer to parse the results yourself, they are stored in a CSV file:
+
+drury:/$ cat assets.csv
+10.2.2.99,0,0,ARP,XX:30:48:XX:f9:56,1092772238
+10.2.2.98,0,1,ICMP,ICMP,1092772238
+66.35.250.209,80,6,www,Apache 1.3.26 (Unix),1092772238
+66.35.250.203,80,6,www,Apache 1.3.27 (Unix),1092772391
+
+I believe this is a useful tool to run on sensors to quickly catalog the systems and services they see.  Note that if a system in the watched network does not offer any services, and does not reply to ICMP echo packets with ICMP echo replies, PADS will not see them.
+
+PADS makes it decisions using a pads-signature-list file which has entries like the following:
+
+# WWW Signatures
+www,v/Apache/$1//,Server: Apache\/([\S]+)[\r\n]
+www,v/Apache/$1/$2/,Server: Apache\/([\S]+)[\s]+\((.*)\)
+www,v/Apache/$1/$2/,Server: Apache\/([\S]+)[\s]+([\S]+)
+www,v/Apache///,Server: Apache[\r\n]
+
+PADS is unlike p0f in that p0f identifies operating systems passively, which PADS identifies hosts offering services.  I'd like to see PADS do both, if possible.
+
+Update: A buffer overflow vulnerability was found in PADS 1.1.  Be sure to upgrade to 1.1.1.
+
+Matt, if you see this, I can't get mail through to your matt at mattshelton dot com or mattshelton at users dot sourceforge dot net accounts.  The error I see is:
+
+host smtp.secureserver.net [64.202.166.12]:
+553 sorry, that domain isn't in my list of allowed rcpthosts (#5.7.1)

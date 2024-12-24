@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: A journey into the Sirefef packer: a research case study</title>
+<meta name="description" content="Sirefef is a fast-paced malware family. It frequently changes its obfuscated packer layer in order to avoid detection by AV scanners and to impede reverse engineering. Tim Liu present the technical processes he and his team followed during analysis and examines the anti-debug/emulation techniques used." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 1995;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/remo_expand/blocks/remo_expand/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.color.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/remo.expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<div class="titlepage" xmlns=""><div><div><h1 class="title" xmlns="http://www.w3.org/1999/xhtml"><a id="vb201212-Sirefef"></a>A journey into the Sirefef packer: a research case study</h1></div><div><p class="pubdate" xmlns="http://www.w3.org/1999/xhtml">2012-12-03</p></div><div><div class="authorgroup" xmlns="http://www.w3.org/1999/xhtml"><div class="author titlepage"><h3 class="author"><span class="surname">Tim Liu</span></h3><span class="orgname">Microsoft</span>, <span class="orgdiv">USA</span></div><b class="editedby">Editor: </b><span class="editor"><span class="firstname">Helen</span> <span class="surname">Martin</span></span></div></div><div><div class="abstract" xmlns="http://www.w3.org/1999/xhtml"><p class="title"><b>Abstract</b></p><p>Sirefef is a fast-paced malware family. It frequently changes its obfuscated packer layer in order to avoid detection by AV scanners and to impede reverse engineering. Tim Liu present the technical processes he and his team followed during analysis and examines the anti-debug/emulation techniques used.</p></div></div><div><p class="copyright" xmlns="http://www.w3.org/1999/xhtml"><i>Copyright &copy; 2012 Virus Bulletin</i></p></div></div><hr /></div>
+<div class="ccm-remo-expand">
+<div id="ccm-remo-expand-title-3339" class="ccm-remo-expand-title ccm-remo-expand-closed" data-expander-speed="200">Table of contents</div><div id="ccm-remo-expand-content-3339" class="ccm-remo-expand-content"><div class="toc"><dl><dt><span class="sect1"><a href="#id3859615"></a></span></dt><dt><span class="sect1"><a href="#id3099343">Introduction</a></span></dt><dt><span class="sect1"><a href="#id3599328">First battle ground</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id3624014">The mystery of MemoryWorkingSetList</a></span></dt><dt><span class="sect2"><a href="#id4834970">Creating child processes using native APIs</a></span></dt><dt><span class="sect2"><a href="#id4376485">Debugger impeding at the native API level</a></span></dt><dt><span class="sect2"><a href="#id4174356">Complex payload decryption</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id4453340">Second battle ground</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id3012237">Debugging parent</a></span></dt><dt><span class="sect2"><a href="#id3995927">The mystery of Exception_Record</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id4439415">Third battle ground</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id3859688">VEH (Vectored Exception Handler) and secret DLL loading</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id4230769">Conclusions</a></span></dt><dt><span class="sect1"><a href="#id3392803">Acknowledgements</a></span></dt></dl></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3859615"></a></h2></div></div></div><p>Since Alureon, we&rsquo;ve seen Sirefef rise to become the most prevalent rootkit. One challenge this threat poses for the AV researcher is the packer layer, which not only makes analysis difficult, but tests the limits of emulation in several different ways. This paper focuses on our code analysis of the packer layer of one Sirefef variant, and presents the technical and creative process we followed while analysing this threat. The purpose of this research in particular was to document Sirefef&rsquo;s novel anti-debug/emulation techniques and how they contribute to the malware evading analysis.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3099343"></a>Introduction</h2></div></div></div><p>Sirefef is a fast-paced malware family. It frequently changes its obfuscated packer layer in order to avoid detection by AV scanners and to impede reverse engineering. This article focuses on one notable variant as a case study. We present the technical process we followed during analysis and examine the anti-debug/emulation techniques used. The SHA1 is: dba147310e514050e100ac6d22cca7f16b6b7049.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3599328"></a>First battle ground</h2></div></div></div><p>Sirefef&rsquo;s packer layer can be divided into three parts. This section will cover the first packer layer. Please note that we have only documented the novel tricks we encountered during the analysis, and have not mentioned the more mundane ones.</p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3624014"></a>The mystery of MemoryWorkingSetList</h3></div></div></div><p>NtQueryVirtualMemory() has an undocumented function, [MemoryWorkingSetList], which can be used in an anti-debug technique. Let&rsquo;s take a closer look at the trick.</p><p>The _MEMORY_WORKING_SET_LIST structure has a DWORD list entry member, WorkingSetList, which records memory entry information. The least significant 12 bits for each entry correspond to flags. If the ninth bit (0x100) is set, it corresponds to &lsquo;not written&rsquo;, so if you place a breakpoint in the page, the bit inverts. <a href="#figure.1">Figure 1</a> shows the trick.</p><div class="figure"><a id="figure.1"></a><div class="mediaobject"><img alt="MemoryWorkingSet flag checking loop." src="/uploads/images/figures/2012/12/Sirefef-1.jpg" /></div><p class="title"><b>Figure&nbsp;1.&nbsp;MemoryWorkingSet flag checking loop.</b></p></div><p>ECX corresponds to the memory flag; the ESI contains the value of the virtual address where Sirefef may modify the binary under certain conditions. The ECX value is different (the ninth bit inverts) if you place a breakpoint into the range checked by the code (which is from 33344000 to 33345000 in this sample). If no breakpoint is set, the ECX value after shift is 1, otherwise it&rsquo;s 0. This memory range represents all the executable code from the entry point to the end of the code section. If the Sirefef sample executes without a debugger attached, the memory flag value (ECX) will be 0x100. Since software debuggers such as <span class="emphasis"><em>OllyDbg</em></span> generally set a breakpoint at the code entry point by default, they are trapped every time. Skipping this check function, using other debuggers (such as <span class="emphasis"><em>WinDbg</em></span>), or setting a system breakpoint in the meantime could help to avoid this trap. See the code example shown in <a href="#figure.2">Figure 2</a>.</p><div class="figure"><a id="figure.2"></a><div class="mediaobject"><img alt="Debugger check pseudo code." src="/uploads/images/figures/2012/12/Sirefef-2.jpg" /></div><p class="title"><b>Figure&nbsp;2.&nbsp;Debugger check pseudo code.</b></p></div></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id4834970"></a>Creating child processes using native APIs</h3></div></div></div><p>Sirefef creates a child process for debugging at the native level. The actual decoding happens in the child process. It first calls the DbgUiConnectToDbg() and DbgUiGetThreadDebugObject() APIs to get the DebugPort for the current thread, then it calls NtCreateProcess() to initialize a new process instance. Finally, RtlCreateUserThread() starts a new thread in the child process for debugging. <a href="#figure.3">Figure 3</a> shows the technique.</p><div class="figure"><a id="figure.3"></a><div class="mediaobject"><img alt="Creating processes using native APIs." src="/uploads/images/figures/2012/12/Sirefef-3.jpg" /></div><p class="title"><b>Figure&nbsp;3.&nbsp;Creating processes using native APIs.</b></p></div></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id4376485"></a>Debugger impeding at the native API level</h3></div></div></div><p>Once the child process has been created, a debugging loop is created for debugging incoming messages from the child. The implementation for the debugger is also at the native level. The following APIs are used for this purpose:</p><div class="itemizedlist"><ul type="disc"><li><p>DbgUiWaitStateChange()</p></li><li><p>DbgUiConvertStateChangeStructure()</p></li><li><p>DbgUiContinue()</p></li><li><p>DbgUiStopDebugging()</p></li></ul></div><p>Since only one debugger can be attached to a process, other debuggers are blocked by this trick. To solve this problem, we can set the DebugPort to Null or manually invoke DebugActiveProcessStop() later to detach the debugger.</p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id4174356"></a>Complex payload decryption</h3></div></div></div><p>The actual decryption occurs in the child process. Three obstacles are used to make the decryption complex:</p><div class="variablelist"><dl><dt><span class="term"><span class="bold"><strong>Memory hash check</strong></span></span></dt><dd><p>A hash of a specific code section is calculated by a call to RtlComputeCrc32(); the value is used later as a decryption key (RC4). As we mentioned earlier, if the [MemoryWorkingSetList] trick triggered, or any modification has occurred in memory during the analysis, the wrong hash will be generated. <a href="#figure.4">Figure 4</a> shows the memory CRC calculation.</p><div class="figure"><a id="figure.4"></a><div class="mediaobject"><img alt="Memory CRC calculation." src="/uploads/images/figures/2012/12/Sirefef-4.jpg" /></div><p class="title"><b>Figure&nbsp;4.&nbsp;Memory CRC calculation.</b></p></div><p>We can see that the memory range from 333443db to 33344c34 and 33346020 to 33346096 has been calculated to the CRC value. As a result, any modification that happens within those memory ranges will lead to the wrong CRC value.</p><p>The solution? Don&rsquo;t set any breakpoints during analysis.</p></dd><dt><span class="term"><span class="bold"><strong>256 single-step exceptions</strong></span></span></dt><dd><p>Sirefef also uses 256 single-step exceptions to trigger the decryption handling routine in the parent. The decryption routine calculates the value of the first layer key and returns the value to the child. Control switches 256 times between the parent and child, which means that neither process can be simply detached. From <a href="#figure.4">Figure 4</a>, we can see that ECX carries the memory CRC value, then the function, which sets the traceflag. This is identified as follows:</p><div class="figure"><a id="figure.5"></a><div class="mediaobject"><img alt="Traceflag function." src="/uploads/images/figures/2012/12/Sirefef-5.jpg" /></div><p class="title"><b>Figure&nbsp;5.&nbsp;Traceflag function.</b></p></div><p>From <a href="#figure.5">Figure 5</a>, we can see that the function sets the TF (trap flag) at line 4, then performs an sbb (subtraction with borrow) between EAX and ECX at line 5. The TF triggers the single-step exception and shifts control to the exception handler in the parent. <a href="#figure.6">Figure 6</a> shows the exception handler.</p><div class="figure"><a id="figure.6"></a><div class="mediaobject"><img alt="256 single-step exception handler." src="/uploads/images/figures/2012/12/Sirefef-6.jpg" /></div><p class="title"><b>Figure&nbsp;6.&nbsp;256 single-step exception handler.</b></p></div><p>We can see that lpContext.EAX is assigned a new calculated value (see the red box), and the TF is set for the original context. The exception handler modifies the EIP two bytes back, thus executing the sbb again, another 256 times. After this is done, the key is stored in EAX. (We also notice that the EDI value contains another RC4 key buffer [RC_keyBuf in the blue box], which is for further decryption and will be discussed in a later section.)</p><p>The solution is&hellip; Wait for the last single-step exception to trigger, then detach the process safely after the decryption is complete.</p></dd><dt><span class="term"><span class="bold"><strong>RC4 algorithm</strong></span></span></dt><dd><p>The RC4 algorithm is popular in the virus industry nowadays. Sirefef also uses it for producing the first layer final key.</p><p>With the key, we can correctly decrypt the second layer and move onto the second battle ground.</p></dd></dl></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4453340"></a>Second battle ground</h2></div></div></div><p>The second battle starts in the child process but ends in the parent. The second layer final key is generated at the end of this battle. We&rsquo;ve listed some notable tricks below:</p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3012237"></a>Debugging parent</h3></div></div></div><p>As we already know, Sirefef creates a child process for debugging. However, this is not one-way debugging. The child process also debugs the parent. The child first checks if any debugger is attached to the parent. If it is, the child detaches the debugger and attaches itself. <a href="#figure.7">Figure 7</a> shows the detail.</p><div class="figure"><a id="figure.7"></a><div class="mediaobject"><img alt="Debugging parent." src="/uploads/images/figures/2012/12/Sirefef-7.jpg" /></div><p class="title"><b>Figure&nbsp;7.&nbsp;Debugging parent.</b></p></div><p>We can see that the return value from ZwQueryInformationProcess() is used for checking the debugger. If found, the debugging APIs that follow are used to detach the debugger. So if you are using a debugger on the parent, you may no longer have control of your attempted debugging process since you&rsquo;ve been forced to detach. Since the two processes are debugging each other, you can&rsquo;t attach a debugger to either of them. The solution: after a further look into the child debugging loop, we discovered that the child passes some &lsquo;magic value&rsquo; to the parent (we will cover this further in a later section). We can simply disable this child debugging thread and manually provide the value needed by the parent ourselves.</p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3995927"></a>The mystery of Exception_Record</h3></div></div></div><p>At the end of the battle with the child process, an exception record structure is used to pass the initial decryption key to the parent. Consider <a href="#figure.8">Figure 8</a>:</p><div class="figure"><a id="figure.8"></a><div class="mediaobject"><img alt="Int 2D trick." src="/uploads/images/figures/2012/12/Sirefef-8.jpg" /></div><p class="title"><b>Figure&nbsp;8.&nbsp;Int 2D trick.</b></p></div><p>As we can see, the Sirefef child process triggers an exception on int 2D (the code fragment comes from the child debugging loop). Int 2D is one popular technique used for anti-debugging. In this case, the ECX register carries a &lsquo;magic value&rsquo;, which is the initial decryption key. After the exception triggers, ECX is passed to the Exception_Record-&gt;ExceptionInformation[1] (which is the magic value) and the parent handler catches the value for further generation of the second layer final key. <a href="#figure.9">Figure 9</a> shows the Exception_Record related to int 2D.</p><div class="figure"><a id="figure.9"></a><div class="mediaobject"><img alt="Int 2D Exception_Record." src="/uploads/images/figures/2012/12/Sirefef-9.jpg" /></div><p class="title"><b>Figure&nbsp;9.&nbsp;Int 2D Exception_Record.</b></p></div><p>We can see that after int 2D triggers, the magic value is passed to the Exception_Record-&gt;ExceptionParameters[1]. Now let&rsquo;s take a look at the exception handler:</p><div class="figure"><a id="figure.10"></a><div class="mediaobject"><img alt="Int 2D exception handler." src="/uploads/images/figures/2012/12/Sirefef-10.jpg" /></div><p class="title"><b>Figure&nbsp;10.&nbsp;Int 2D exception handler.</b></p></div><p>(Click <a href="/uploads/images/figures/2012/12/Sirefef-10-large.jpg" target="_top">here</a> for a larger version of Figure 10.)</p><p>The first line passes the ExceptionParameters[1] to EAX, then the RC4 decryption executes. We also notice that the RC_key has been passed to EAX (see the blue box). Remember the EDI key buffer value (actually the RC_keybuf) initialized in the 256 single-step handler? Yes, this one is contained in EAX and participates in the RC4 decryption.</p><p>In order to bypass this trick, we can manually trigger int 2D when the execution first occurs in the child (doing this means that the parent debugger checking routine we mentioned earlier will also not trigger). We are then able to modify the ExceptionParameters[1] in <a href="#figure.10">Figure 10</a> to supply the magic value to the parent.</p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4439415"></a>Third battle ground</h2></div></div></div><p>The third and final battle arena occurs inside the parent.</p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3859688"></a>VEH (Vectored Exception Handler) and secret DLL loading</h3></div></div></div><p>Sirefef calls RtlAddVectoredExceptionHandler() to install the VEH for handling exceptions rather than using the more typical SEH (Structured Exception Handler). <a href="#figure.11">Figure 11</a> shows the implementation:</p><div class="figure"><a id="figure.11"></a><div class="mediaobject"><img alt="Vectored Exception Handler (VEH)." src="/uploads/images/figures/2012/12/Sirefef-11.jpg" /></div><p class="title"><b>Figure&nbsp;11.&nbsp;Vectored Exception Handler (VEH).</b></p></div><p>After the VEH is installed, Sirefef sets a hardware breakpoint on NtMapViewOfSection() then calls LdrLoadDll(). Since NtMapViewOfSection() is invoked by LdrLoadDll(), the exception will trigger, and the code control shifts to the VEH. The VEH is in charge of the decryption of the DLL in memory, which is loaded last. After the NtMapViewOfSection() returns, the DLL is available to load.</p><div class="figure"><a id="figure.12"></a><div class="mediaobject"><img alt="Secret DLL loading part 1." src="/uploads/images/figures/2012/12/Sirefef-12.jpg" /></div><p class="title"><b>Figure&nbsp;12.&nbsp;Secret DLL loading part 1.</b></p></div><p>From <a href="#figure.12">Figure 12</a>, we can see that the DLL memory section is created first, then the NtMapViewOfSection() address is passed to the thread Context-&gt;Dr3 (hardware breakpoint set), then LdrLoadDll() is called. At this stage, the DLL memory section is empty &ndash; the section write occurs in the VEH.</p><p>In <a href="#figure.13">Figure 13</a>, we can see that the magic value is passed to RC4 again for decryption. Then the image&rsquo;s characteristic is modified from EXE to DLL in line 5. After that, the NtProtectVirtualMemory() API is called to make the page writeable and executable. Finally, the decryption occurs, starting from 0x33330200.</p><div class="figure"><a id="figure.13"></a><div class="mediaobject"><img alt="Secret DLL loading part 2." src="/uploads/images/figures/2012/12/Sirefef-13.jpg" /></div><p class="title"><b>Figure&nbsp;13.&nbsp;Secret DLL loading part 2.</b></p></div><p>The trouble with this trick is that the analysis tracing step can be difficult because the hardware breakpoint is set on a sub-function called from LdrLoadDll(). The solution: since LdrLoadDll() will eventually call all the loaded module&rsquo;s DllMain() functions, we can set a breakpoint at LdrpCallInitRoutine() to continue analysis.</p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4230769"></a>Conclusions</h2></div></div></div><p>This article has focused on some novel anti-debug/emulation techniques used in a Sirefef variant&rsquo;s packer layer. We recorded these observations during our analysis and documented them in detail as a case study. We hope these details will assist other analysts in understanding Sirefef&rsquo;s anti-debug/emulation techniques and how it contributes to evading analysis.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3392803"></a>Acknowledgements</h2></div></div></div><p>I would like to acknowledge the considerable contribution of my colleagues Scott Molenkamp and Peter Ferrie.</p><div class="bibliography"><div class="titlepage"><div><div><h3 class="title"><a id="citation.1"></a>Bibliography</h3></div></div></div><div class="bibliomixed"><a id="citation.1"></a><p class="bibliomixed">[1] Almeida, A. Kernel and remote debuggers. Developer Fusion. <span class="bibliosource"><a href="http://www.developerfusion.com/article/84367/kernel-and-remote-debuggers/" target="_blank">http://www.developerfusion.com/article/84367/kernel-and-remote-debuggers/</a></span>.</p></div><div class="bibliomixed"><a id="citation.2"></a><p class="bibliomixed">[2] Ferrie, P. The &lsquo;Ultimate&rsquo;Anti-Debugging Reference. <span class="bibliosource"><a href="http://pferrie.host22.com/papers/antidebug.pdf" target="_blank">http://pferrie.host22.com/papers/antidebug.pdf</a></span>.</p></div></div></div> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=A journey into the Sirefef packer: a research case study&url=https://www.virusbulletin.com/virusbulletin/2012/12/journey-sirefef-packer-research-case-study"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2012/12/journey-sirefef-packer-research-case-study'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2012/12/journey-sirefef-packer-research-case-study&title=A journey into the Sirefef packer: a research case study"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2012/12/journey-sirefef-packer-research-case-study&t=A journey into the Sirefef packer: a research case study"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2012/12/journey-sirefef-packer-research-case-study"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

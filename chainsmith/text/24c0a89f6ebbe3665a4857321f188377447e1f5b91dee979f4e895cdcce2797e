@@ -1,0 +1,209 @@
+Quantize or capitalize
+
+Last year, Forcepoint Security Labs blogged about the Quant Loader – a Trojan downloader previously seen being used to distribute Locky and Pony.
+We recently came across an active Quant loader administration panel hosted on a freshly registered domain which was also hosting a number of additional malware samples. At first glance everything seemed to be business as usual, but once the initial investigation was completed it became evident that some additional ‘features’ had been added...
+Three for the Price of One
+Quant is not new or a very novel piece of malware: we covered the basics of it last year when it was first advertised by its creator, MrRaiX, and began to emerge in the wild. However, analysis of the newly obtained samples quickly revealed some differences to the previously documented Quant-based Locky and Pony campaigns. Further, these newest samples all appeared to attempt to download the same payload files from the C2 server after their initial connection.
+Depending on the actual tasks enabled on the Quant server the following files are hosted by default and waiting to be downloaded and executed:
+
+bs.dll.c – A cryptocurrency stealer
+sql.dll.c – A benign SQLite library upon which ‘zs.dll.c’ depends
+zs.dll.c – A credential stealer
+
+Cryptocurrency Stealing - MBS
+
+BS.DLL.C is a small Borland Delphi based library created for extracting several less-popular cryptocurrency wallets from the victims' computer - besides the perennial number one suspect that is Bitcoin.
+It scans the user's Application Data directory for supported wallets, extracts the information found, and transfers it over to the C2 server. Judging by the actual data on the servers we examined - and presumably due to the fact that some of the more popular currencies are not supported - this functionality does not seem to be particularly fruitful.
+The currently supported clients and crypto currencies are:
+
+Bitcoin (BTC) - via MultiBit and Electrum wallets
+Terracoin (TRC)
+Peercoin/PPCoin (PPC)
+Primecoin (XPM)
+
+Note that the company behind the Multibit wallet has been out of business for over a year.
+Credential stealing - Z*Stealer
+
+ZS.DLL.C is another Delphi based library, this time for stealing both OS and application login credentials. As with the cryptocurrency stealer, once the password scan is completed the extracted information is transferred to the C2 by HTTP POST request to a PHP page on the server side.
+Based on data retrieved from the C2 servers, the credential stealing capability seems to be comparatively successful at retrieving data. A range of commonly used applications are supported:
+
+Pidgin IM
+Thunderbird
+VNC
+Sleipnir Browser
+
+Qip 2005
+Total Commander
+WinSCP
+Torch Browser
+
+Qip 2010
+Outlook Express
+Chrome
+Remote Desktop (RDP)
+
+Qip Online
+CuteFTP
+Firefox
+Windows Dialler (RAS)
+
+Miranda IM
+WsFTP
+Opera
+Wifi
+
+ICQ
+SmartFTP
+Safari
+
+Psi IM
+FlashFXP
+Internet Explorer
+
+Mail.ru
+FileZilla
+Yandex Browser
+
+The Bat
+Outlook Express
+Amigo Browser
+
+Yandex Online
+Windows Live Mail
+Comodo Browser
+
+But Wait, There’s More…
+Both of these stealers were already in development (and actively sold on underground forums) by the author when Quant loader was first released. In early 2017 the decision appears to have been made to include them with Quant Loader as part of a package, either to pump up the price or justify it by providing more functionality.
+These two modules are still sold separately: MBS can be bought separately for $100 for a full license and an additional $15 for every update while Z*Stealer would be $100 for a full license with free updates, or $55 for a base license and an additional $15 for every update. This is as compared to a recent advert offering five full Quant licences for $275.
+
+While stealing credentials and various crypto currency wallets are now enabled as the default configuration, the panel still lets users disable the distribution of these modules and/or create additional custom tasks for deploying further malware on the victim machines.
+Quantity over Quality
+Once the components above were analysed we compared the binaries from a number of different C2 servers.
+The result was a bit different from our initial expectation, at least as far as the DLL modules are concerned: while the SQLite library was always consistent - there seems to be little to no practical reason for updating that - we were expecting the MBS and Z*Stealer components to receive more frequent updates, reflecting MrRaiX's activity on the underground forums.
+Comparing the different builds of these modules, meaningful updates appear to only happen once in a long while and typically take the form of slight modifications to the code base every two to eight weeks to appeal to new buyers as something being ‘actively’ developed.
+More effort seems to go into updating the main loader executable. However, the additions being made to this are still relatively basic capabilities such as including a lengthy sleep command in an attempt to avoid sandbox environments – an old trick now bypassed by most modern sandboxes – and antivirus detection for a number of products via their registry entries:
+
+​Kaspersky Internet Security – HKLM\SOFTWARE\KasperskyLab\LicStrg , kis
+Panda Firewall - HKLM\SOFTWARE\Panda Software\Setup , FirewallName
+Norton Security - HKLM\SOFTWARE\Classes\Applications\NS.exe , TaskbarGroupIcon
+Dr. Web Firewall - HKLM\SYSTEM\ControlSet001\services\DrWebLwf , DisplayName
+Bitdefender - HKLM\SOFTWARE\Bitdefender Agent\Install , InstallPath
+BullGuard - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\bullguard.exe , Default
+
+The newer builds are also utilizing a UAC bypass trick by calling ShellExecuteEx with the non- documented 'runas' flag. Under certain UAC settings this would result in the malware running with elevated privileges without bringing up the UAC prompt. This was not present in the sample examined in September 2016 but was introduced shortly after and may be the capability referred-to as 'privilege escalation' in the advertising material.
+
+Protection Statement
+Forcepoint customers are protected against this threat at the following stages of attack:
+
+Stage 5 (Dropper File) - The Quant Loader and associated malware files are prevented from being downloaded.
+Stage 6 (Call Home) - Attempts by Quant Loader to contact its C2 servers are blocked.
+
+Conclusion
+These days you don’t have to provide a niche or technologically very capable product on the dark market, just one which fits into the unfortunately ever-expanding market. Quant Loader qualifies under these conditions and shows an example how one with average skills, a bit of desire and willingness to commit updates every few weeks can make money for years while maintaining a limited profile.
+Similarly, the packaging of Quant Loader with the stealer DLLs makes deployment easier for unskilled customers: while the software maintains the ability to drop custom payloads, the vast majority of the attacks we saw did not bother to use this capability.
+Targeting cryptocurrency wallets is not a particularly new innovation, and targeting 'offline' wallets is a relatively well-established way of attempting to steal 'coins'. Interestingly, while the stated goal of the Z*Stealer module is more general password theft, this may stand a chance of better returns by stealing user credentials for online wallet providers and exchanges such as blockchain.info and Coinbase. We have previously reported a number of malware families moving to target these services - e.g. the Trickbot banking Trojan expanded its list of targets to include Coinbase in August 2017 and, even further back, Dridex expanding its target list to include a number of Bitcoin-related applications in September 2016. Indeed, the ongoing targeting of cryptocurrency wallets and services is something covered in Forcepoint's 2018 Security Predictions.
+This again highlights the ongoing issue of small-scale, amateur cybercrime which has been a recent thread on this blog: all the time an effective campaign can be mounted with minimal effort, it will remain difficult to deter would-be cybercriminals from ‘having a go’.
+Indicators of Compromise
+C2 Servers
+
+http://5.8.88.135/q/index.php
+http://5.39.222.250/wordpress/index.php
+http://45.32.94.55/q/index.php
+http://178.17.170.211/panel/index.php
+http://146.0.77.232/stealer/index.php
+http://80.209.228.111/q/index.php
+http://185.11.146.80/index.php
+http://185.70.186.146/qq/index.php
+http://185.135.80.195/d/index.php
+http://185.212.200.194/q/index.php
+http://195.161.114.185/z/index.php
+http://filmsdays.top/q/index.php
+http://drillbyte.net/q/index.php
+http://oluwahkudi.tk/q/index.php
+http://bobjacki.ru/lib/index.php
+http://festopt.ru/q/index.php
+http://data.michaelorth.eu/q/index.php
+http://rsb18.rhostbh.com/~bakixeb2/bash/q/index.php
+http://logisticsworld.myjino.ru/z/index.php
+http://dackdack.club/api2/index.php
+http://proxy.cheesecakefactoryrestos3.com/proxy/index.php
+http://msoffice365.win/stealer/index.php
+http://dandiesinoz.com/scripts/backup/index.php
+http://vitaetortorvitaesuscipit.us/5yv9rt7w0/q/index.php
+http://n31.assetsofseyshellseden.com/proxy/index.php
+http://coinbitbot.ru/x/index.php
+http://wsupdatehq.pw/manager/index.php
+http://myyu.ru/q/index.php
+http://college37672.website/track06858565670k64/index.php
+http://trackingbase.net/track06858565670k64/index.php
+http://omega-two-two.myjino.ru/q/index.php
+http://sea.cheapshoes.pw/q/index.php
+http://festopt.cf/x/index.php
+http://festopt.tk/x/index.php
+http://bomonero2.su/bo/index.php
+http://coffeecornerss.com/q/index.php
+http://21072206.su/q/index.php
+http://news.nuupdate.ws/index.php
+http://mdmapilot.se/qcp/index.php
+http://www.airpowermouse.pw/index.php
+http://xmr0910.ru/q/index.php
+http://bontt.ru/q/index.php
+http://gickfree.ru/RnaBngBiRx4f/index.php
+Quant Loader (SHA256)
+
+01551106eb85d706af0f8665c3c44f63019640b49db7510f0750624feb007407
+02f71cb97ed8fa0ef73e45169d60351fbb92933fee2f4614dc428353fe052d42
+0254b7e9ea10034860105cb93b54872ef806644d25364b665ea1fa080bae13fb
+070b79130c9f280de92ccb1567954d977b5a58f290bc08a703656311b7d7224a
+11441441f2c1a5fbdd0b78d3489874f19dfe97ee41da14fb9523eb9ceb2bff86
+1b51e4fdf27ab6e98211c79a9eda29139feab3d7dc5141e1850116ea39f151a3
+2d4eaa628da731a524a6bb127c7a022d80afb385a646e73bb817ff12cc168e54
+35bec37c9c88edf6f300447417eb22e4e0fddec77d999ab68144630995018ad0
+3981508bfd759c5445e262945c5f1e24815b1a5b02599b1d8ff0762e45240488
+3e898dc1a4641efbc8c14e5d10e7ebd74fe4717815c5ba12cc6242346af79677
+45e919658fec7fa9225b433c86a00c8d6b7e398b9be12af827fc323f7055f3b2
+461dac8fa36a8e006334e9cbfceb70d8dd858b997b302bacb8a3b4726f8bfadf
+481a0fcf63eb82c3c4466b70258eecd322a74c1733e5fab6445ed3f1f64b824c
+495353ecdeebf9ec70f6fb75ae381fd08b6d197c43e02891b0497df47660a440
+4b6fb6a124323a6002ba22b5fefb343ea519fa21eb5c669299488a454a5dd14f
+4b9369ec3bef81ea803c2e83ed1cc33d081ad9b79b9ce8e4ee66e7fff24e62cb
+50431307050dc00901261380219319a6c2709d9b4570b536705371e1bb3c3068
+52aca3810a1fff7aa6c4cb379ff1366e051da2d70f81291b83b7b58c68d4caf3
+59a464787d697e72aa36858f7d52b0f4f77555f3bdf8f884a8f16833cc92fe44
+5cd287dad228675fda218465875145278c80268edc8132c0390ce68b1c74c261
+5e00ae95a3e35a27bf57eb3e86b2c75f05369979f6ae4efc6d426a12975052f5
+6396bbf6dbf31ecf84193d710b6fd7b9535f75b6fa598bca65a8e4d648a41213
+7fd80781aae175592f2cdad9e4c3ef24ef3966dd156f5b3fd8207bcb7e6b00d1
+8052c7c987b1887cc2d38b4050c655954fc22130396581a0c6aa11e8f178f1ac
+809d3b2180909bee2c05bddff7cb44d5706257039c3025405ef702c6d6f0f4b7
+86c5708e1bfb2b1ee3235c18898cd4570b4e6ed6ad3ec6ff5fe0cb6f8cf49996
+8b81b9cac2a9e9408f3f7d1707e45f42713c42f44ccfab15fde1b73e82745e49
+97f3e812b17d888d0d3b8ce8e8ede83f3bc2f714a57a7ee783115baf9e7e2760
+9f1f29f8bd06f5b6d231b45f37652168125529e1a89a107c990c2911938e7dde
+b058f3d29e702130d55670abba6a8fff56fb73049d8380912d262cdc8dc9e397
+b0b2f8002a37ec96d9767e4a36e62d6b0bc7eb947865a52120bb35689151f18a
+b407aebd9087ab17fe4cb8110dec6fce8a05f6579269d67d3cf72babae37f156
+b5371ae6ab4473155eeaf3c9c0ceb02bc640f5d7de5df0aa401140adcf95221a
+c2dd64b8b1cd9114530347f1185acd054d2adb50df38795a3cec11bc93a116b7
+c983d34b870240813afb96979ce0063e5d4681676422715ab8ed42c77d6dbf2b
+d02eec5861bc0a0d807c62763c80af84c881f7cb7b00897ebe405c4896cf2e8b
+dc56603abed7b5e6306cf65847df19abb78f5f5148354790fbe774e75041832b
+eebd792f3f7c178ece4727404a7b59a7c9af05009f6609c2dc245706533ecc73
+f0bda79c2fce429d5666517d914d9939f62707e574828df4859f4ee112cd9606
+f45dc416c70439aa910a5abdd64f4e682e8b937381e3354d6bc2887a9f2b29f0
+f6cd417258d168c79f9e390e0239bf192885e853ba60194044b416d89b930de9
+BS.DLL (SHA256)
+
+4e22a0ef5543f7b1dcd74b4d9f6157b1498c9f97adaba175e3be1e60e9059a21
+59bebe69c6273edf9f4a2d2841f8624dc295c8d3fcb668960c1ca5b954e871fe
+ac5b70f143ca948c0cc394c1f741747898418e14fba025103666cbc76664ef3c
+c9a84716b7723f7ad98841ca0b3199cf8059dc2506ca16a0e73b84cd39e797c3
+e8e32f90a8b39cbe9c7262512925ce4bf1d8d2cba4fd47995faa58d268dbda62
+ea663c8adbcc15bb43c82ead07817dd722c249242990ba0f28d1957b1f510da2
+fe71dc4d6930135e178c7b1d368b9c9d94b91da27a31451420237bee74ee42b9
+ZS.DLL (SHA256)
+
+af89d85a3b579ac754850bd6e52e7516c2e63141107001463486cd01bc175052
+5a2c9060f6cc1e6e0fd09b2b194631d2c7e7f024d9e2d3a9be64570e263f565f
+13ace004dad18259ca13ec16491fd008a7257081978d2118e29e584fbb3c31d3
+69722833ccd5970470d66775c35745baff4635e736973f049ebbfb87b7d89682

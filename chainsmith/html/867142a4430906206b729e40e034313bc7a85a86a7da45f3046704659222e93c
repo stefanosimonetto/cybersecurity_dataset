@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: Using .NET GUIDs to help hunt for malware</title>
+<meta name="description" content="During a long-term investigation, Brian Wallace discovered two forensic artefacts - both GUIDs - which can be used to determine whether multiple malware samples are from the same Visual Studio project, effectively identifying the family, and to identify samples that are the result of the same build, allowing for the identification of post-compilation modifications made by tools such as builders. Here, he describes his discoveries and how these new artefacts can help malware hunters around the world." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 1598;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/remo_expand/blocks/remo_expand/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.color.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/remo.expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<div class="titlepage" xmlns=""><div><div><h1 class="title" xmlns="http://www.w3.org/1999/xhtml"><a id="vb201506-NET-GUIDs"></a>Using .NET GUIDs to help hunt for malware</h1></div><div><p class="pubdate" xmlns="http://www.w3.org/1999/xhtml">2015-06-25</p></div><div><div class="authorgroup" xmlns="http://www.w3.org/1999/xhtml"><div class="author titlepage"><h3 class="author"><span class="firstname">Brian</span> <span class="surname">Wallace</span></h3><span class="orgname">Cylance Inc.</span>, <span class="orgdiv">USA</span></div><b class="editedby">Editor: </b><span class="editor"><span class="firstname">Martijn</span> <span class="surname">Grooten</span></span></div></div><div><div class="abstract" xmlns="http://www.w3.org/1999/xhtml"><p class="title"><b>Abstract</b></p><p>During a long-term investigation, Brian Wallace discovered two forensic artefacts - both GUIDs - which can be used to determine whether multiple malware samples are from the same Visual Studio project, effectively identifying the family, and to identify samples that are the result of the same build, allowing for the identification of post-compilation modifications made by tools such as builders. Here, he describes his discoveries and how these new artefacts can help malware hunters around the world.</p></div></div><div><p class="copyright" xmlns="http://www.w3.org/1999/xhtml"><i>Copyright &copy; 2015 Virus Bulletin</i></p></div></div><hr /></div>
+<div class="ccm-remo-expand">
+<div id="ccm-remo-expand-title-2248" class="ccm-remo-expand-title ccm-remo-expand-closed" data-expander-speed="200">Table of contents</div><div id="ccm-remo-expand-content-2248" class="ccm-remo-expand-content"><div class="toc"><dl><dt><span class="sect1"><a href="#id4222698">Abstract</a></span></dt><dt><span class="sect1"><a href="#id4453478">.NET GUIDS</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id3291939">MVID</a></span></dt><dt><span class="sect2"><a href="#id3646005">TypeLib ID</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id4394119">GetNETGUIDs</a></span></dt><dt><span class="sect1"><a href="#id2647741">VirusTotal integration</a></span></dt><dd><dl><dt><span class="sect2"><a href="#id3995908">VirusTotal analysis</a></span></dt><dt><span class="sect2"><a href="#id4629589">VirusTotal intelligence</a></span></dt></dl></dd><dt><span class="sect1"><a href="#id3035876">Conclusion</a></span></dt></dl></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4222698"></a>Abstract</h2></div></div></div><p>During a long-term investigation, I uncovered forensic artefacts not commonly used in .NET assembly analysis. These artefacts are both GUIDs (globally unique identifiers). One is created by Visual Studio on the creation of new projects and stored as a string, the other is generated on every build and stored as a binary value. These GUIDs can be used to determine whether multiple samples are from the same Visual Studio project, effectively identifying the family, and to identify samples that are the result of the same build, allowing for the identification of post-compilation modifications made by tools such as builders. After releasing an open-source tool to extract these GUIDs, we suggested that <span class="emphasis"><em>VirusTotal</em></span> integrate this functionality. They have done so, allowing for these new artefacts to help malware hunters around the world.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4453478"></a>.NET GUIDS</h2></div></div></div><p>Months deep into an investigation of an Iranian operation we dubbed &lsquo;Operation Cleaver&rsquo; [<span class="citation"><a href="#citation.1">1</a></span>], I found myself buried up to my eyes in malware samples to reverse engineer. As an employee of a start-up, I am no stranger to situations where the options are innovate or die, and this was one of them. Through some simple pre-processing data I gathered on the large number of samples located on a public FTP server, I could tell that a substantial percentage of the malware had been developed in a .NET-based language. Having previously worked as a software engineer developing in C#, I was quite familiar with .NET and recalled that it makes greater use of GUIDs than some other languages. I identified two GUIDs that could be of assistance in reducing the number of samples that needed to be fully reversed.</p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3291939"></a>MVID</h3></div></div></div><p>The Module Version ID, or MVID, is a GUID that can be used to distinguish various versions of a .NET module. This value is generated at build time, resulting in a new GUID for each unique build. This GUID is stored in a binary format (as opposed to string format) in a defined location in .NET assemblies. The GUID resides in the GUID heap, and its location is identified in the Module table of the MetaData tables in the .NET MetaData header.</p><p>What can we do with knowledge of this identifier? By itself, it can assist in identifying post-compilation modifications made by tools such as builders that generate customized malware binaries from a common source binary. In other cases, it can assist in identifying instances where a legitimate .NET sample has been modified.</p><p>It should be noted that the MVID can be modified by a malware operator. An informed malware operator could do this with a hex editor.</p><div class="sect3" lang="en"><div class="titlepage"><div><div><h4 class="title"><a class="chapter" id="id4320065"></a>Extraction methods</h4></div></div></div><p>Extracting the MVID statically by parsing the PE and the .NET metadata can be somewhat difficult. This is because the format relies on a large number of variables that can lead to intricacies in parsers. There are a number of simpler ways to extract the MVID.</p><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a class="chapter" id="id4494156"></a>Extracting with ildasm</h5></div></div></div><p>The disassembling counterpart to ilasm (<span class="emphasis"><em>Microsoft</em></span>&rsquo;s tool for converting Common Intermediate Language code to a portable executable), ildasm, is used to convert .NET assemblies back to the common intermediate language code. In addition, it extracts and displays the MVID which can be searched for specifically with the find command on <span class="emphasis"><em>Windows</em></span> platforms.</p><pre class="programlisting">&gt; ildasm /text /all af7ce8dcb16b6344de9856e96ce83b642bcc5ee1c0d29e3a0dcd96e67c65a085 | find &quot;MVID&quot;
+
+// MVID: {F2A0DA69-155E-4543-AD0A-206026E206DB}
+</pre></div><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a class="chapter" id="id4598801"></a>Extracting with monodis</h5></div></div></div><p>As a heavy <span class="emphasis"><em>Linux</em></span> user, it would be remiss of me not to include a more <span class="emphasis"><em>Linux</em></span>-friendly solution as well. We can obtain similar results using monodis, ildasm&rsquo;s counterpart in Mono (an open source implementation of <span class="emphasis"><em>Microsoft</em></span>&rsquo;s .NET framework), along with grep, the <span class="emphasis"><em>Linux</em></span> equivalent to <span class="emphasis"><em>Microsoft</em></span>&#39;s find.</p><pre class="programlisting">&gt; monodis af7ce8dcb16b6344de9856e96ce83b642bcc5ee1c0d29e3a0dcd96e67c65a085 | grep GUID
+
+.module E.exe // GUID = {F2A0DA69-155E-4543-AD0A-206026E206DB}
+</pre></div><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a class="chapter" id="id2525805"></a>Extract with .NET (insecure)</h5></div></div></div><p>It should come as no surprise to developers with .NET experience that there is a simple method to obtain the MVID of another .NET assembly:</p><pre class="programlisting">var aAssemblyToAnalyze = Assembly.LoadFile(strPathToFileToAnalyse); // DO NOT DO THIS
+
+var mvid = aAssemblyToAnalyze.ManifestModule.ModuleVersionID;
+</pre><p>This method should <span class="emphasis"><em>not</em></span> be used, and the next section will explain why.</p></div><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a class="chapter" id="id3164129"></a>Extract with .NET (likely secure)</h5></div></div></div><p>While working on a method to extract the MVID as well as the TypeLib ID from .NET samples, I became curious about the additional attack surface created by loading a .NET assembly with no intention of executing it. I found something interesting when testing with mixed .NET assemblies. Mixed assemblies, which are built with both .NET and unmanaged code, were intended to act as a stepping stone for developers migrating projects from purely unmanaged code to .NET. Mixed assemblies are still identified as .NET assemblies, but also contain a DllMain entry point, which is executed when loaded with Assembly.Load and related functions. A full description of this issue can be found in [<span class="citation"><a href="#citation.2">2</a></span>]. The brief explanation is that it allows for an assembly to execute code when loaded with Assembly.LoadFile and similar methods, which could be abused to gain control of a system inspecting a malicious sample.</p><p>In order to work around this issue, any assemblies loaded purely for inspection should be loaded with Assembly.ReflectionOnlyLoadFrom instead of Assembly.LoadFile, or any of the reflection-only method alternatives. While it does protect from this specific issue, there may be other unexplored attack surfaces, so it&rsquo;s best, in my opinion, to treat this method as risky but more secure than the non-reflection-only method.</p><pre class="programlisting">var aAssemblyToAnalyze = Assembly.ReflectionOnlyLoadFrom(strPathToFileToAnalyse);
+
+var mvid = aAssemblyToAnalyze.ManifestModule.ModuleVersionID;
+</pre></div></div></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3646005"></a>TypeLib ID</h3></div></div></div><p>The TypeLib ID is a GUID generated by Visual Studio on the creation of a new project by default.</p><p>It is stored in Properties/AssemblyInfo.cs and is made visible to the developer. The developer can choose to modify this value, or remove it completely (<a href="#figure.1">Figure 1</a>).</p><div class="figure"><a id="figure.1"></a><div class="mediaobject"><img alt="The TypeLib ID is stored in Properties/AssemblyInfo.cs." src="/uploads/images/figures/2015/06/NET-GUIDs-1.jpg" /></div><p class="title"><b>Figure&nbsp;1.&nbsp;The TypeLib ID is stored in Properties/AssemblyInfo.cs.</b></p></div><p>Due to its location in source code, a good number of these GUIDs can be found on public code repositories such as GitHub. In a search query [<span class="citation"><a href="#citation.3">3</a></span>], we can see that there are more than 800,000 results of projects/files which contain GUIDs defined for the assembly.</p><p>Since this value is created by Visual Studio on project creation, and is stored in source code, it is consistent across all builds of the .NET assembly unless it is modified by the developer. We can use the TypeLib ID to assist in identifying builds resulting from the same Visual Studio project, whether developed by a single developer or through sharing of the source code.</p><p>We also observed that this value is often ignored by obfuscation tools, so even after .NET malware has been obscured by a tool such as SmartAssembly, the TypeLib ID may still be used to identify a sample as belonging to a certain Visual Studio project.</p><p>When using the TypeLib ID to identify samples, researchers should note that it is simple for a malware operator to modify this value not only with access to the source code, but also statically. This could be done simply with a hex editor. A malware operator with the source code could even remove the TypeLib ID altogether.</p><div class="sect3" lang="en"><div class="titlepage"><div><div><h4 class="title"><a class="chapter" id="id2721778"></a>Extraction methods</h4></div></div></div><p>Since the TypeLib ID is actually a string in the source code, it is not stored on the GUID heap like the MVID, but instead in the Blob heap. Since it is not a required field, it is not stored in a static location in the .NET metadata header either, but is instead listed in the CustomAttribute table. This adds complexity to the static extraction of this value, more so than the MVID.</p><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a class="chapter" id="id3644654"></a>Extract with ILSpy</h5></div></div></div><p>Tools like ILSpy [<span class="citation"><a href="#citation.4">4</a></span>] and similar tools which decompile .NET assemblies for analysis can easily recover the TypeLib ID (and the MVID for that matter). No additional action is required for these tools to recover this value beyond simply opening the target assembly (<a href="#figure.2">Figure 2</a>).</p><div class="figure"><a id="figure.2"></a><div class="mediaobject"><img alt="No additional action is required for tools such as ILSpy to recover the TypeLib ID value beyond simply opening the target assembly." src="/uploads/images/figures/2015/06/NET-GUIDs-2.jpg" /></div><p class="title"><b>Figure&nbsp;2.&nbsp;No additional action is required for tools such as ILSpy to recover the TypeLib ID value beyond simply opening the target assembly.</b></p></div><p>We can identify the value as the &lsquo;assembly: Guid&rsquo; value.</p></div><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a class="chapter" id="id3608653"></a>Extract with .NET (likely secure)</h5></div></div></div><p>The simplest secure programmatic method I know of for extracting the TypeLib ID is to use .NET to load the assembly (in reflection-only mode) as we did to recover the MVID. Using a reflection-only mode makes the code slightly more complicated, but the resulting code is still quite simple (and secure compared with its non-reflection-only counterparts).</p><pre class="programlisting">var assembly = Assembly.ReflectionOnlyLoadFrom(&ldquo;af7ce8dcb16b6344de9856e96ce83b642bcc5ee1c0d29e3a0dcd96e67c65a085&rdquo;);
+foreach(var r in assembly.GetCustomAttributesData())
+{
+  if (r.AttributeType.FullName == &ldquo;System.Runtime.InteropServices.GuidAttribute&rdquo;)
+  {
+    Console.WriteLine(r.ConstructorArguments[0].Value);
+    break;
+  }
+}
+</pre></div><div class="sect4" lang="en"><div class="titlepage"><div><div><h5 class="title"><a class="chapter" id="id3427739"></a>Extract with strings</h5></div></div></div><p>The GUID itself is stored as an ASCII string in the resulting PE. While this method is not particularly recommended for accuracy, it does demonstrate that detection of TypeLib IDs can be done in tools such as YARA as long as some expectation of false positives is accepted (useful for searching via services such as <span class="emphasis"><em>VirusTotal Hunting</em></span>). The following is an example of using strings, grep, cut and head on a <span class="emphasis"><em>Linux</em></span> system to obtain the TypeLib ID:</p><pre class="programlisting">&gt; strings af7ce8dcb16b6344de9856e96ce83b642bcc5ee1c0d2
+9e3a0dcd96e67c65a085 | grep -iE &ldquo;\\\$[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}&rdquo; | head -n 1 | cut -b 2-
+
+35078dfe-0ce9-4a46-b6be-790d443ff486
+</pre></div></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4394119"></a>GetNETGUIDs</h2></div></div></div><p>In order to make extraction of both GUIDs not only simple but also cross-platform, I developed a simple open-source tool in Python 2.7 named GetNETGUIDs. This tool is hosted on GitHub and can be downloaded from [<span class="citation"><a href="#citation.5">5</a></span>].</p><p>When GetNETGUIDs is run against a .NET sample, four rows are printed: the TypeLib ID, MVID, SHA256, and path to the sample.</p><pre class="programlisting">&gt; getnetguids.py af7ce8dcb16b6344de9856e96ce83b642bcc
+5ee1c0d29e3a0dcd96e67c65a08535078dfe-0ce9-4a46-b6be-790d443ff486  f2a0da69-155e-4543-ad0a-206026e206db 
+af7ce8dcb16b6344de9856e96ce83b642bcc5ee1c0d29e3a0dcd96
+e67c65a085 	
+/tmp/af7ce8dcb16b6344de9856e96ce83b642bcc5ee1c0d29e3a0
+dcd96e67c65a085
+</pre><p>By utilizing GetNETGUIDs along with Gephi [<span class="citation"><a href="#citation.6">6</a></span>] and a helper Python script, we can visually cluster the DotNET malware set from VirusShare [<span class="citation"><a href="#citation.7">7</a></span>] (<a href="#figure.3">Figure 3</a>). In the visualizations, the red nodes represent TypeLib IDs, the light blue nodes represent MVIDs, and the portable executables are greenish-blue. An edge from a portable executable to either a red or light blue node represents that the portable executable uses that GUID for that purpose. Multiple samples that are connected to the same TypeLib ID or MVID are potentially related.</p><div class="figure"><a id="figure.3"></a><div class="mediaobject"><img alt="The red nodes represent TypeLib IDs, the light blue nodes represent MVIDs, and the portable executables are greenish-blue." src="/uploads/images/figures/2015/06/NET-GUIDs-3.jpg" /></div><p class="title"><b>Figure&nbsp;3.&nbsp;The red nodes represent TypeLib IDs, the light blue nodes represent MVIDs, and the portable executables are greenish-blue.</b></p></div><p>Similarly, we can visually cluster samples from the Operation Cleaver campaign (<a href="#figure.4">Figure 4</a>).</p><div class="figure"><a id="figure.4"></a><div class="mediaobject"><img alt="Visual cluster from the Operation Cleaver campaign." src="/uploads/images/figures/2015/06/NET-GUIDs-4.jpg" /></div><p class="title"><b>Figure&nbsp;4.&nbsp;Visual cluster from the Operation Cleaver campaign.</b></p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2647741"></a>VirusTotal integration</h2></div></div></div><p>Shortly after releasing GetNETGUIDs, I reached out to a member of the <span class="emphasis"><em>VirusTotal</em></span> staff to discuss integrating this research into <span class="emphasis"><em>VirusTotal</em></span>. Since I found it useful during the Operation Cleaver investigation, I wanted to make it available to anyone who might need it to fight advanced threat actors running rampant, as well as be able to use it myself in <span class="emphasis"><em>VirusTotal</em></span>. Since GetNETGUIDs is open source, the <span class="emphasis"><em>VirusTotal</em></span> team were happy to integrate it. (Thanks to Julio Canto at <span class="emphasis"><em>VirusTotal</em></span> for being so open and helpful!)</p><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3995908"></a>VirusTotal analysis</h3></div></div></div><p>Now, when a user submits a .NET sample file to <span class="emphasis"><em>VirusTotal</em></span>, the GUIDs mentioned above will be extracted and displayed in the File Detail tab, as shown in <a href="#figure.5">Figure 5</a>.</p><div class="figure"><a id="figure.5"></a><div class="mediaobject"><img alt="When a user submits a .NET sample file to VirusTotal, the GUIDs will be extracted and displayed in the File Detail tab." src="/uploads/images/figures/2015/06/NET-GUIDs-5.jpg" /></div><p class="title"><b>Figure&nbsp;5.&nbsp;When a user submits a .NET sample file to VirusTotal, the GUIDs will be extracted and displayed in the File Detail tab.</b></p></div><p>(Click <a href="/uploads/images/figures/2015/06/NET-GUIDs-5-large.jpg" target="_top">here</a> to view a larger version of Figure 5.)</p><p>The .NET details section contains both the Module Version ID and TypeLib ID for this sample.</p></div><div class="sect2" lang="en"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id4629589"></a>VirusTotal intelligence</h3></div></div></div><p>The <span class="emphasis"><em>VirusTotal Intelligence </em></span>platform, which is available with some <span class="emphasis"><em>VirusTotal</em></span> subscription packages, provides a large number of invaluable features. One of these allows users to search for samples based on a wide variety of fields. As part of the integration of GetNETGUIDs into <span class="emphasis"><em>VirusTotal</em></span>, a search field was added to search for both MVIDs and TypeLib IDs. This field is the &lsquo;netguid&rsquo; search field. We&rsquo;ll first search by the MVID, as shown in <a href="#figure.6">Figure 6</a>.</p><div class="figure"><a id="figure.6"></a><div class="mediaobject"><img alt="Search for the MVID using the &lsquo;netguid&rsquo; search field." src="/uploads/images/figures/2015/06/NET-GUIDs-6.jpg" /></div><p class="title"><b>Figure&nbsp;6.&nbsp;Search for the MVID using the &lsquo;netguid&rsquo; search field.</b></p></div><p>(Click <a href="/uploads/images/figures/2015/06/NET-GUIDs-6-large.jpg" target="_top">here</a> to view a larger version of Figure 6.)</p><p>We find that our original sample shows up in the results, along with another sample, which is very similar to the original one (another Black Worm sample). One could assume that at least one of these files was modified after being compiled.</p><p>Next, we will search based on the TypeLib ID, as shown in <a href="#figure.7">Figure 7</a>. We can see that this query produced more samples, as expected. Since there are multiple builds of this malware, we can see all samples resulting from that Visual Studio project. There are many other samples that share the same TypeLib ID (which are also Black Worm samples), but since this is a new feature, it has not been applied across <span class="emphasis"><em>VirusTotal</em></span>&rsquo;s complete available sample set. This means that the feature will appreciate in value as more samples are processed.</p><div class="figure"><a id="figure.7"></a><div class="mediaobject"><img alt="Search for the TypeLib ID using the &lsquo;netguid&rsquo; search field." src="/uploads/images/figures/2015/06/NET-GUIDs-7.jpg" /></div><p class="title"><b>Figure&nbsp;7.&nbsp;Search for the TypeLib ID using the &lsquo;netguid&rsquo; search field.</b></p></div><p>(Click <a href="/uploads/images/figures/2015/06/NET-GUIDs-7-large.jpg" target="_top">here</a> to view a larger version of Figure 7.)</p><p>Next, we will search for a combination of MVID and TypeLib ID, as shown in <a href="#figure.8">Figure 8</a>.</p><div class="figure"><a id="figure.8"></a><div class="mediaobject"><img alt="Search for a combination of the MVID and the TypeLib ID." src="/uploads/images/figures/2015/06/NET-GUIDs-8.jpg" /></div><p class="title"><b>Figure&nbsp;8.&nbsp;Search for a combination of the MVID and the TypeLib ID.</b></p></div><p>(Click <a href="/uploads/images/figures/2015/06/NET-GUIDs-8-large.jpg" target="_top">here</a> to view a larger version of Figure 8.)</p><p>By searching for both, we are looking for samples which have both this MVID <span class="emphasis"><em>and</em></span> TypeLib ID, making it far less likely that there was a collision on either. You might notice that the results are identical to those from the MVID-only search, further confirming their accuracy.</p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3035876"></a>Conclusion</h2></div></div></div><p>Security researchers need to take advantage of every possible tool as they battle threat actors. We hope that researchers will find it easier to uncover and identify .NET malware using MVID and TypeLib ID as artefacts &ndash; not only with extraction methods available in examples, code and scripts, but also with help from <span class="emphasis"><em>VirusTotal</em></span>.</p><p>Good hunting, fellow malware hunters.</p><div class="bibliography"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id2954709"></a>Bibliography</h3></div></div></div><div class="bibliomixed"><a id="citation.1"></a><p class="bibliomixed">[1] Operation Cleaver. <span class="bibliosource"><a href="http://cylance.com/operation-cleaver/" target="_blank">http://cylance.com/operation-cleaver/</a></span>.</p></div><div class="bibliomixed"><a id="citation.2"></a><p class="bibliomixed">[2] Wallace, B. Implications of Loading .Net Assemblies. <span class="bibliosource"><a href="http://blog.cylance.com/implications-of-loading-net-assemblies" target="_blank">http://blog.cylance.com/implications-of-loading-net-assemblies</a></span>.</p></div><div class="bibliomixed"><a id="citation.3"></a><p class="bibliomixed">[3] GitHub search query showing more than 800,000 results of projects/files which contain GUIDs defined for the assembly. <span class="bibliosource"><a href="https://github.com/search?p=1&amp;q=%22%5Bassembly%3A+Guid%28%22&amp;type=Code&amp;utf8=%E2%9C%93" target="_blank">https://github.com/search?p=1&amp;q=%22%5Bassembly%3A+Guid%28%22&amp;type=Code&amp;utf8=%E2%9C%93</a></span>.</p></div><div class="bibliomixed"><a id="citation.4"></a><p class="bibliomixed">[4] ILSpy. <span class="bibliosource"><a href="http://ilspy.net/" target="_blank">http://ilspy.net/</a></span>.</p></div><div class="bibliomixed"><a id="citation.5"></a><p class="bibliomixed">[5] GetNETGUIDs. <span class="bibliosource"><a href="https://github.com/CylanceSPEAR/GetNETGUIDs" target="_blank">https://github.com/CylanceSPEAR/GetNETGUIDs</a></span>.</p></div><div class="bibliomixed"><a id="citation.6"></a><p class="bibliomixed">[6] Gephi. <span class="bibliosource"><a href="https://gephi.github.io/" target="_blank">http://gephi.github.io/</a></span>.</p></div><div class="bibliomixed"><a id="citation.7"></a><p class="bibliomixed">[7] VirusShare. <span class="bibliosource"><a href="http://virusshare.com/" target="_blank">http://virusshare.com/</a></span>.</p></div></div></div> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<p><a href="/uploads/pdf/magazine/2015/vb201506-NET-GUIDs.pdf" target="_blank"><img class="ccm-image-block responsive" alt="" src="/uploads/images/buttons/pdf-download-button.jpg" onmouseover="this.src = '/uploads/images/buttons/pdf-download-button-hover.jpg'" onmouseout="this.src = '/uploads/images/buttons/pdf-download-button.jpg'" border="0" height="45" width="262"></a></p>
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=Using .NET GUIDs to help hunt for malware&url=https://www.virusbulletin.com/virusbulletin/2015/06/using-net-guids-help-hunt-malware"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2015/06/using-net-guids-help-hunt-malware'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2015/06/using-net-guids-help-hunt-malware&title=Using .NET GUIDs to help hunt for malware"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2015/06/using-net-guids-help-hunt-malware&t=Using .NET GUIDs to help hunt for malware"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2015/06/using-net-guids-help-hunt-malware"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

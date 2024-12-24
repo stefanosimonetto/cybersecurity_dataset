@@ -1,0 +1,147 @@
+Cooperative heuristics
+2006-01-01
+
+John D. Park
+Symantec Security Response
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+John D. Park attempts to teach an anti-virus scanner to 'think' like a human analyst.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+Non-heuristic anti-virus scanning is designed to be strict - it involves searching for matching checksums or specific bit patterns, which results in a very low false positive rate. The downside of strict scanning is that, for every new malware or new variant, a human malware analyst has to provide the scanner with a signature. Even with signatures, the scanner does not know what the malware looks like as a whole, what it does, or why it is malicious. In order to make scanning more flexible and proactive, I will teach an anti-virus scanner to think more like a human analyst.
+Before going any further, here are the assumptions I have made:
+Today's main threats are simple Trojan horses and worms, not file-infectors.
+Malware is becoming more open-sourced, and construction-kit generated. Thus, much of the source code stays the same.
+Source code can be compiled using different compiler options, and packed with various packers, which will result in different binaries.
+In addition:
+Non-heuristic anti-virus scanning (checksum, string, p-code) is still necessary to detect file-infectors, and unique or more complex malware.
+A flawless emulation or memory dump is assumed.
+I have focused mainly on readable ASCII and Unicode strings. Strings contained in most of the prevalent threats have distinctive statistical characteristics such that readable strings provide enough information to identify them.
+
+Strategy overview
+I used a number of different loose heuristics, and made them work cooperatively to verify each other, to reduce the false positive rate [1]. The three scanning methods used are: weighted mini-signature, statistical analysis using knowledgebase, and abnormal functionality detection.
+
+Scan #1 - weighted mini-signature
+One of the most common non-heuristic anti-virus scanning methods is string matching. If we want to detect a malware called 'fruit basket', containing the string 'apple, banana, orange in a basket', we might add a string signature like 'ana, orange in a baske'. This means the scanner will detect 'apple, banana, orange in a basket', but it will miss variants like 'apple, banana, orange in a yellow basket', or 'banana, orange, apple in a basket'.
+Semantically, a fruit basket is any basket containing any fruit. A more human pattern matching would use multiple short string signatures, or 'mini-signatures'. A mini-signature is shorter than a usual signature, and is too short and too generic to be used by itself. However, when used together with other mini-signatures, the risk of false positives is reduced.
+My mini-signatures for 'fruit basket' would be 'apple', 'banana', 'orange' and 'basket'. A comma, a space, and the words 'in' and 'a' are omitted from the strings since they are not unique to 'fruit basket'. We can say that matching three out of four is good enough for detection, but it is not sufficiently flexible. So, a weight is added to each mini-signature:
+Object
+Weight
+Mini-signature
+fruitbasket
+0.25
+apple
+fruitbasket
+0.25
+banana
+fruitbasket
+0.25
+orange
+fruitbasket
+0.50
+basket
+Table 1.
+The weighted detections by each mini-signature are added together and if the sum of the detected weights is more than or equal to 1, the detection of 'fruit basket' is triggered.
+A mini-signature scanner would detect the following as 'fruit basket':
+apple, banana, orange in a basket = 0.25 + 0.25 + 0.25 + 0.50 = 1.25
+apple, banana, orange in a yellow basket = 0.25 + 0.25 + 0.25 + 0.50 = 1.25
+banana, orange, apple in a basket = 0.25 + 0.25 + 0.25 + 0.50 = 1.25
+basket, basket, basket in a basket = 0.50 + 0.50 + 0.50 + 0.50 = 2.00
+apple, apple, orange, banana, apple = 0.25 + 0.25 + 0.25 + 0.25 + 0.25 = 1.25
+And, it would not detect the following:
+apple, apple, apple = 0.25 + 0.25 + 0.25 = 0.75
+orange in a basket = 0.25 + 0.50 = 0.75
+As we can see, this method is somewhat loose, and sometimes it is incorrect. But it is more flexible, like human recognition, than strict string matching. The scanning method can be used with existing string databases seamlessly, where the weights to the current signatures would be 1.00.
+
+Certainty rating
+Since we have a weight for each mini-signature, we can do a calculation to get a certainty rating, ranging from 0% to 100%. The formula I used is:
+1 - ([1 - DetectedWeight1] * [1 - DetectedWeight2] * .. * [1 - DetectedWeightN])
+So the following examples would get certainty ratings of:
+apple, banana, orange in a basket 1 - ([1 - 0.25] * [1 - 0.25] * [1 - 0.25] * [1 - 0.50]) = 78.9%
+apple, banana, orange, apple in a basket 1 - (0.75 * 0.75 * 0.75 * 0.75 * 0.50) = 84.2%
+banana, orange in a basket 1 - (0.75 * 0.75 * 0.50) = 71.9%
+basket, basket, basket in a basket 1 - (0.50 * 0.50 * 0.50 * 0.50) = 93.8%
+And, if these were to be detected:
+foo, bar, baz 1 - (1 * 1 * 1) = 0.0%
+apple, apple, apple 1 - (0.75 * 0.75 * 0.75) = 57.8%
+As we can see, the certainty rating is not always accurate, but it is generally helpful in determining how certain the scanning result is.
+Now, a malware scanner does not always have to give a binary result, like either 100% malware A, or 100% clean. It can give 95% malware B, or 24% malware C, or even 98% malware D and 70% malware E (where it's a cross-bred malware, such as W32/Mytob). With certainty ratings, users can set different thresholds - so, for example, government and financial institutions can have stricter scanning than regular home users.
+I have crafted each of my mini-signature strings and their weights manually, covering more than 250 malware families, where each family contains 1 to 20+ mini-signatures. Scanning is case-insensitive to detect trivial variants.
+
+Scan #2 - malware knowledgebase
+This scanning method relies mainly on statistics. Every anti-virus company has its own collection of malware. These are very valuable resources, and many companies trade and share them, mainly to expand their signature databases to cover all known malware. I believe these resources have not been fully utilized, and more valuable data could be extracted from these collections.
+Theoretically, by training neural networks with a sample set, a scanner should be able to distinguish malware from clean files. Work has already been done in this area by constructing neural networks of small sequences of bytes, called n-grams [1]. I took a different approach from n-grams and neural networks, mainly to reduce noise. Instead of looking for n-grams, I looked only for meaningful strings, such as filenames, IP addresses, email addresses, CLSIDs and URLs, using regular expressions. These strings, or 'components' are special in that a program communicates with the system through these strings. I compiled the components from known malware and known clean files into a malware knowledgebase, and labelled each entry with either the malware family name or 'clean'.
+This is similar to the CLSID database from castlecops.com/CLSID.html, but extended to include other components. Since the regular expressions provided enough uniqueness for each string, I could get usable results without using neural networks or weights.
+The rationale behind this scanning is as follows: malware A is known to use filenames 'Expl0re.exe', 'n0tepad.exe', 'scvhost.exe' and 'www.gogle.com', and no other files have been known to contain any of them. If you see an unknown file that contains all four of them, how likely is it that this file is malicious?
+It can even work for clean components. An unknown file contains 80 'clean' components, like 'hi.txt', 'hello.txt', 'foo.txt' and 'bar.txt'. Of those 80 components, 60 are known to be related to malware B. What is the chance that two unrelated programs share 60 out of 80 components? Even if it is a pure coincidence that they share 60 components, it would be useful for the malware analyst to know the correlation. To enhance signal-to-noise ratio, some components, such as kernel32.dll and advapi32.dll, which occur in every program, are filtered out manually.
+The promising feature of this malware knowledgebase scanning is that a known sample set or a trusted anti-virus scan can populate the malware knowledgebase with found components and their corresponding malware family names. Thus, the larger the knowledgebase grows, the more knowledgeable the scanner becomes.
+Other applied uses of this knowledgebase are:
+To find out whether a specific bank URL has been present in any known password stealers, so the bank can be warned.
+To obtain a list of all URLs in all known downloaders, so that these downloader URLs can be monitored.
+To obtain email addresses or URLs associated with certain password stealers, so that the server administrator can be asked to shut those down.
+To find a difference between a new variant and all other known variants with respect to components.
+Basically, the knowledgebase provides a single file view of all previously scanned malware and clean files.
+
+Scan #3 - abnormal functionality combinations
+It is perfectly legal for a law-abiding adult to drink alcohol. It is perfectly legal for a valid driver's licence-bearing adult to drive a vehicle. But, drinking and driving don't mix. The same logic applies to programs.
+If a program contains a string 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run' and 'advapi32.dll', it is likely that it has the capability to add an autorun registry key to start itself. If a program contains 'MIME-Version: 1.0', it is likely that it has the capability to send an email. If this program contains ‘'bank.com', it is likely that it has the capability to monitor online banking URLs.
+It is fine for a program to add an autorun registry key. It is fine for a program to send out an email. It is fine for a program to contain a bank URL. But, it is not fine for a program to have an autorun registry key, a bank name, and an email send feature. This program is likely to be a password stealer for online banking that sends sniffed traffic via email. There are combinations of functionalities that just don't make sense in benign code.
+This method is similar to mini-signature scanning in that each functionality is detected by adding up the detected weights. Monitored functionalities are: autorun registry keys, disable Windows tools, Internet Explorer start page, Internet Explorer zone settings, ID and password lists, process monitoring, downloaders, shell, sockets, anti-virus process lists, exploits, mass-mailers, email, MSN Messenger, AIM, IRC backdoor command list, P2P lure filenames, banks, Visual Basic, Borland Delphi, Visual C, JavaScript, diallers, generic adware and game registry keys. As you can see, none of the functionality is malware family-specific.
+After each functionality has been identified, the results are compared to known illegal or dangerous combinations. The following categories are alerted in descending order of importance: IRC bot, generic backdoor, password stealer, Internet Explorer security setting changer, Internet Explorer start page hijacker, downloader, anti-virus process killer. Other than these general illegal combinations, there are other uses for this method, such as looking for out-of-place functionalities. For example, a CD key crack program downloaded from a warez site, should not be using sockets or contain any bank URLs. And, it would be odd for a genuine Microsoft file to be compiled using Borland Delphi.
+Sometimes it can be hard to distinguish malware from a clean file just by looking at functionalities. For instance, an FTP server has similar functionalities to a backdoor: it listens for a command and sends or receives a file.
+
+A new naming scheme
+In order to link the results from the functionality scanner to a specific family, I needed a family name to show its functionalities. I needed the scanner to know that W32/Spybot spreads using exploits, has an IRC backdoor, downloads files, steals game keys, has embedded files, kills anti-virus processes and is written in C. So I changed the name W32/Spybot to 'WBspybotCDGMV'. The family name is in lower case, and functionalities are in upper case, where each character represents a known functionality. The preceding characters are 'necessary', and the following characters are 'optional'.
+'WBspybotCDGMV' means that a W32/Spybot must be a worm (W) and an IRC backdoor (B), and is also likely to be written in C (C), have downloading capability (D), look for game keys (G), have multiple embedded files (M) and kill anti-virus processes (V). Other functionalities are: keylogging (K), IE startpage change (S), IE zone settings (L), Windows tool disable (R), generic adware (A), generic dialler (P), written in Delphi (E) and written in Visual Basic (Z). This is similar to Bezrukov’s naming scheme [2], but I decided to keep the family name so that it can be referenced with an easy name. I removed all dots, slashes and dashes since they cause unnecessary naming differences among vendors.
+The 'optional' fields are implemented to accommodate leaner variants, which lack non-essential functionalities, yet are categorized under the same family since they share the major functionalities. The naming scheme not only reduces analysts' work from reading existing malware descriptions, but could also be used to generate a preliminary malware description on-the-fly from pre-defined templates with data fed from the knowledgebase scanner.
+
+Nutrition facts for software
+This naming scheme is not exclusive to malware, and can be applied to software in general. The software industry could adopt something similar to the Nutritional Facts label found on packaged food. Every food approved by the US Food and Drug Administration (FDA) has an easy-to-read label, giving a break down of the nutritional content of the food, such as '47g of sugar', '45mg of sodium', and so on. 'Nutritional facts for software' could display whether the software has the following functionalities: outbound connection, inbound connection, email, no GUI, autorun registry keys, driver, registry keys, pop-up windows, monitors other processes, update, dialler, etc. This would give users a better idea of what the program might do to the system, and would be a lot easier to read than the End User License Agreement (EULA).
+If this practice were to become widespread, security products could detect unlabelled functionalities. Furthermore, as a preventative measure, more advanced OSs could authorize only labelled rights to the program, while denying any unlabelled rights – a simpler and cleaner task than anti-virus scanning.
+
+Three strikes, you're out
+Let's say we scan an unknown file with all three scanners. The mini-signature scanner says the file is W32/Spybot with a weights sum of 7.3 and a certainty rating of 95.3%. The knowledgebase scanner tells us that 25 out of 28 components match with previously known components related to W32/Spybot. Finally, the functionality scanner tells us that the file contains a worm, an IRC backdoor, a downloader, game registry keys, multiple embedded files and an anti-virus process list. According to the database, W32/Spybot is WBspybotCDGMV, which matches every functionality, including the optional ones.
+Based on these results, the scanner concludes that this unknown file has strikingly similar statistical data to known W32/Spybot. It would be safe to assume that this file is indeed a W32/Spybot.
+If the file is detected by all three scanners, above some preset threshold, then it is assigned the prefix 'certain'. If it is detected by scanner #1, and missed by scanner #2 or #3, then it is assigned the prefix 'suspicious'. If it is detected by #2, and missed by scanner #1 or #3, then it is assigned the prefix 'suspicious'. If it gets detected only by scan #3, then it is assigned the prefix 'guess'.
+
+Performance tests
+The sample set comprised files from Symantec's Sample Management System (SMS) with new signatures added from 1–15 October, all of which are also detected by one other reputable anti-virus scanner. Keep in mind that all the scanning is done with 2,000 lines of heavily commented Perl script, 2,000 lines of mini-signatures, and 35,000 lines of knowledgebase, and it is independent from any existing anti-virus engine or signature database.
+Since the threshold level can be customizable for each scanner, my settings for testing were as follows: mini-signature scanning would trigger over a weight sum of 1. If more than one family name was detected, higher certainty rating would arbitrate. Knowledgebase scanning would trigger on over 50% and more than four component matches. Functionality scanner was used as a 'sanity check', and would trigger when all 'necessary' functionality matched.
+=================================
+PWSteal.Bancos, PWSteal.Banpaes, aka PWSteal.Banker
+359 files
+----------------
+302 Certain.Kbancos
+54 Suspicious.Kbancos
+3 Guess.*
+0 No Detect
+================================
+W32.Spybot, W32.Gaobot, W32.Randex, W32.Mytob and other bots, aka Sdbot, Rbot
+355 files
+----------------
+295 Certain.*bot
+41 Suspicious.*bot
+12 Guess.*
+7 No Detect
+================================
+Clean files
+5700 files
+----------------
+0 Certain.*
+9 Suspicious.*
+85 Guess.*
+5606 No Detect
+
+Afterwords
+Anti-virus scanning at the core is pattern recognition. This algorithm of cooperative scanning using weighted mini-signature and statistical analysis is not restricted to anti-virus scanning alone. Since I am treating each piece of malware like a text file, the same algorithm can be used to categorize any data, especially text documents, given that the categories are well defined. The method could easily be adapted to detect spam, or phishing. Furthermore, with appropriate adaptors, it could categorize all your documents into your personal preferences.
+I would like to thank Javier Santoyo for supporting this project, and Douglas Knowles for porting the 'dirty' Perl code to a faster C version.
+
+Bibliography
+[1] William Arnold and Gerald Tesauro, 'Automatically generated Win32 heuristic virus detection', Proceedings of the 10th Virus Bulletin Conference, 2000, pp.51–60.
+[2] Dr Vesselin Bontchev, 'Current status of the CARO Malware Naming Scheme', Proceedings of the 15th Virus Bulletin Conference, 2005, pp.160–170.

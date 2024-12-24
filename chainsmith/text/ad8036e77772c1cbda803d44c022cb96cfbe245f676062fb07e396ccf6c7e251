@@ -1,0 +1,78 @@
+A closer look at a tech support screen locker
+In this blog post, we are going to take a closer look at some of the code that the most predominant family of tech support screen lockers are currently using to frustrate their victims. This, which is dubbed VinCE because of the Program folder it creates for itself, is compiled in Microsoft Intermediate Language (MSIL), making it easier to read for those of us that are not that versed in reverse engineering.
+Background
+This screen locker is designed to make the victims desperate enough to call the displayed number and ask for help. At which point, they are expected to pay a lot of money for minimal effort. Running the main executable (SBSCP.exe) on any Windows system results in a blue screen like the one shown below. The goal of the programmer is to frustrate the efforts of getting rid of the screen, at the same time, provide the tech support scammers with an option to get rid of it easily.
+
+Don’t think that the blue screens are tailored for Windows versions. The above fake BSOD is displayed on any current Windows system, regardless of version. In fact the above screenshot was taken on a Windows 7 machine.
+The code
+Let’s take a look at some code snippets. First, the ones that produce the content of the blue screen:
+
+When you are first confronted with that blue screen, you can’t help but wonder what will happen when the completion percentage value reaches 100%. But looking at the code that controls this, full completion never happens. Because that’s all it is: a counter.
+
+Random random = new Random();
+this.intTotalCount = random.Next(25, 50);
+this.intCount = 0;
+this.growLabel1.Text = "Your PC ran into a problem and needs to restart. We're just collecting some error info, and then we'll restart for you.";
+this.growLabel2.Text = this.intCount.ToString() + "% complete";
+this.timer1.Interval = 500;
+this.timer1.Enabled = true;
+
+The most important thing we can learn from the above is that the percentage completion value shown in the screen locker stops somewhere between 25 and 50, most likely to egg the user to call the phone number.
+
+The rest of the text in the display, including the phone number, are put together in these lines of code:
+
+text = "1-888-523-2979";
+string str = "AAAAA";
+this.growLabel3.Text = "For more information about this issue and possible fixes";
+this.growLabel4.Text = "Call TOLL FREE \"" + text + "\" give them this info ";
+this.growLabel5.Text = "Stop Code: CRITICAL_PROCESS_DIED";
+this.growLabel6.Text = "Error Code : 0x000" + str;
+this.blnFormUpdate = this.updateinstalls(text);
+
+Now—a more interesting part—how do they keep users from closing the screenlock forms and from shutting down the computer while these forms are active.
+
+Actually, this is (probably) surprisingly easy. In the code below, Form1 is the lockscreen, and this bit—
+
+private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+{
+if (!this.blnClose)
+{
+e.Cancel = true;
+}
+}
+
+—translates as: cancel any event that tries to close this form except if this.blnClose is TRUE. Seeing this sent me looking, because obviously I wanted to know when this statement would be true. And I found that in the code shown below:
+
+Taking out the relevant part for our quest gives us the code below. It show us that if we use the F6 key, then this.blnClose becomes true, and it closes the program. Mission accomplished.
+
+private void Form1_KeyDown(object sender, KeyEventArgs e)
+{
+if (e.KeyCode.ToString().ToLower() == "f6")
+{
+this.blnClose = true;
+base.Close();
+}
+}
+
+But there is one more thing I wanted to point out. As you can see from the code below, the program prepares a SOAP message to communicate a user ID and the displayed phone number back to a server, which happens to host a known PUP called SPC Optimizer.
+
+string url = "http://spcoptimizer.com/servicenew/updateinstall.asmx";
+string action = "http://tempuri.org/UpdateBRN";
+strPhoneNumber += "_DOSB_8";
+XmlDocument soapEnvelopeXml = Form1.CreateSoapEnvelope(strId, strPhoneNumber);
+HttpWebRequest httpWebRequest = Form1.CreateWebRequest(url, action);
+Form1.InsertSoapEnvelopeIntoWebRequest(soapEnvelopeXml, httpWebRequest);
+
+Summary
+As a demonstration of how tech support scammers operate and try to lure victims into calling their number, we have shown you some snippets of the code.
+We especially highlighted relevant pieces of the code to show easy solutions that tech support scammers have created for themselves to get rid of the lock screen and who may be the actors behind the malware.
+File details
+SBSCP.exe – SHA256 1e4fd5500eaf819e8b8e949634a38fccc8159668b205165a565e2530b2870cfc
+A full removal guide for this Tech Support Scam can be found on our forums.
+Malwarebytes detected the executable as Trojan.TechSupportScam.
+
+Note that there is at least one slightly different variant of this one, displaying another phone number (see header of this post).
+The Web Protection module included in the Premium version of Malwarebytes blocked the contacted domain, as you can see from the screenshot below:
+
+As always: Save yourself the hassle and get protected.
+Pieter Arntz

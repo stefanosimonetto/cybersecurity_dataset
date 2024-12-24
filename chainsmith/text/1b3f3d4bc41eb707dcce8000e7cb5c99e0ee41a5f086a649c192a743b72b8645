@@ -1,0 +1,137 @@
+Analyzing a new stealer written in Golang
+Golang (Go) is a relatively new programming language, and it is not common to find malware written in it. However, new variants written in Go are slowly emerging, presenting a challenge to malware analysts. Applications written in this language are bulky and look much different under a debugger from those that are compiled in other languages, such as C/C++.
+Recently, a new variant of Zebocry malware was observed that was written in Go (detailed analysis available here).
+We captured another type of malware written in Go in our lab. This time, it was a pretty simple stealer detected by Malwarebytes as Trojan.CryptoStealer.Go. This post will provide detail on its functionality, but also show methods and tools that can be applied to analyze other malware written in Go.
+Analyzed sample
+This stealer is detected by Malwarebytes as Trojan.CryptoStealer.Go:
+
+992ed9c632eb43399a32e13b9f19b769c73d07002d16821dde07daa231109432
+513224149cd6f619ddeec7e0c00f81b55210140707d78d0e8482b38b9297fc8f
+941330c6be0af1eb94741804ffa3522a68265f9ff6c8fd6bcf1efb063cb61196 – HyperCheats.rar (original package)
+
+3fcd17aa60f1a70ba53fa89860da3371a1f8de862855b4d1e5d0eb8411e19adf – HyperCheats.exe (UPX packed)
+
+0bf24e0bc69f310c0119fc199c8938773cdede9d1ca6ba7ac7fea5c863e0f099 – unpacked
+
+Behavioral analysis
+Under the hood, Golang calls WindowsAPI, and we can trace the calls using typical tools, for example, PIN tracers. We see that the malware searches files under following paths:
+"C:\Users\tester\AppData\Local\Uran\User Data\"
+"C:\Users\tester\AppData\Local\Amigo\User\User Data\"
+"C:\Users\tester\AppData\Local\Torch\User Data\"
+"C:\Users\tester\AppData\Local\Chromium\User Data\"
+"C:\Users\tester\AppData\Local\Nichrome\User Data\"
+"C:\Users\tester\AppData\Local\Google\Chrome\User Data\"
+"C:\Users\tester\AppData\Local\360Browser\Browser\User Data\"
+"C:\Users\tester\AppData\Local\Maxthon3\User Data\"
+"C:\Users\tester\AppData\Local\Comodo\User Data\"
+"C:\Users\tester\AppData\Local\CocCoc\Browser\User Data\"
+"C:\Users\tester\AppData\Local\Vivaldi\User Data\"
+"C:\Users\tester\AppData\Roaming\Opera Software\"
+"C:\Users\tester\AppData\Local\Kometa\User Data\"
+"C:\Users\tester\AppData\Local\Comodo\Dragon\User Data\"
+"C:\Users\tester\AppData\Local\Sputnik\Sputnik\User Data\"
+"C:\Users\tester\AppData\Local\Google (x86)\Chrome\User Data\"
+"C:\Users\tester\AppData\Local\Orbitum\User Data\"
+"C:\Users\tester\AppData\Local\Yandex\YandexBrowser\User Data\"
+"C:\Users\tester\AppData\Local\K-Melon\User Data\"
+
+Those paths point to data stored from browsers. One interesting fact is that one of the paths points to the Yandex browser, which is popular mainly in Russia.
+The next searched path is for the desktop:
+"C:\Users\tester\Desktop\*"
+
+All files found there are copied to a folder created in %APPDATA%:
+The folder “Desktop” contains all the TXT files copied from the Desktop and its sub-folders. Example from our test machine:
+
+After the search is completed, the files are zipped:
+
+We can see this packet being sent to the C&C (cu23880.tmweb.ru/landing.php):
+
+Inside
+Golang compiled binaries are usually big, so it’s no surprise that the sample has been packed with UPX to minimize its size. We can unpack it easily with the standard UPX. As a result, we get plain Go binary. The export table reveals the compilation path and some other interesting functions:
+
+Looking at those exports, we can get an idea of the static libraries used inside.
+Many of those functions (trampoline-related) can be found in the module sqlite-3: https://github.com/mattn/go-sqlite3/blob/master/callback.go.
+Function crosscall2 comes from the Go runtime, and it is related to calling Go from C/C++ applications (https://golang.org/src/cmd/cgo/out.go).
+Tools
+For the analysis, I used IDA Pro along with the scripts IDAGolangHelper written by George Zaytsev. First, the Go executable has to be loaded into IDA. Then, we can run the script from the menu (File –> script file). We then see the following menu, giving access to particular features:
+
+First, we need to determine the Golang version (the script offers some helpful heuristics). In this case, it will be Go 1.2. Then, we can rename functions and add standard Go types. After completing those operations, the code looks much more readable. Below, you can see the view of the functions before and after using the scripts.
+Before (only the exported functions are named):
+
+After (most of the functions have their names automatically resolved and added):
+
+Many of those functions comes from statically-linked libraries. So, we need to focus primarily on functions annotated as main_* – that are specific to the particular executable.
+
+Code overview
+In the function “main_init”, we can see the modules that will be used in the application:
+
+It is statically linked with the following modules:
+
+GRequests (https://github.com/levigross/grequests)
+go-sqlite3 (https://github.com/mattn/go-sqlite3)
+try (https://github.com/manucorporat/try)
+
+Analyzing this function can help us predict the functionality; i.e. looking the above libraries, we can see that they will be communicating over the network, reading SQLite3 databases, and throwing exceptions. Other initializers suggests using regular expressions, zip format, and reading environmental variables.
+This function is also responsible for initializing and mapping strings. We can see that some of them are first base64 decoded:
+
+In string initializes, we see references to cryptocurrency wallets.
+Ethereum:
+
+Monero:
+
+The main function of Golang binary is annotated “main_main”.
+
+Here, we can see that the application is creating a new directory (using a function os.Mkdir). This is the directory where the found files will be copied.
+After that, there are several Goroutines that have started using runtime.newproc. (Goroutines can be used similarly as threads, but they are managed differently. More details can be found here). Those routines are responsible for searching for the files. Meanwhile, the Sqlite module is used to parse the databases in order to steal data.
+Then, the malware zips it all into one package, and finally, the package is uploaded to the C&C.
+
+What was stolen?
+To see what exactly which data the attacker is interested in, we can see look more closely at the functions that are performing SQL queries, and see the related strings.
+Strings in Golang are stored in bulk, in concatenated form:
+
+Later, a single chunk from such bulk is retrieved on demand. Therefore, seeing from which place in the code each string was referenced is not-so-easy.
+Below is a fragment in the code where an “sqlite3” database is opened (a string of the length 7 was retrieved):
+
+Another example: This query was retrieved from the full chunk of strings, by given offset and length:
+
+Let’s take a look at which data those queries were trying to fetch. Fetching the strings referenced by the calls, we can retrieve and list all of them:
+select name_on_card, expiration_month, expiration_year, card_number_encrypted, billing_address_id FROM credit_cards
+select * FROM autofill_profiles
+select email FROM autofill_profile_emails
+select number FROM autofill_profile_phone
+select first_name, middle_name, last_name, full_name FROM autofill_profile_names
+We can see that the browser’s cookie database is queried in search data related to online transactions: credit card numbers, expiration dates, as well as personal data such as names and email addresses.
+The paths to all the files being searched are stored as base64 strings. Many of them are related to cryptocurrency wallets, but we can also find references to the Telegram messenger.
+Software\\Classes\\tdesktop.tg\\shell\\open\\command
+\\AppData\\Local\\Yandex\\YandexBrowser\\User Data\\
+\\AppData\\Roaming\\Electrum\\wallets\\default_wallet
+
+\\AppData\\Local\\Torch\\User Data\\
+\\AppData\\Local\\Uran\\User Data\\
+\\AppData\\Roaming\\Opera Software\\
+\\AppData\\Local\\Comodo\\User Data\\
+\\AppData\\Local\\Chromium\\User Data\\
+\\AppData\\Local\\Chromodo\\User Data\\
+\\AppData\\Local\\Kometa\\User Data\\
+\\AppData\\Local\\K-Melon\\User Data\\
+\\AppData\\Local\\Orbitum\\User Data\\
+\\AppData\\Local\\Maxthon3\\User Data\\
+\\AppData\\Local\\Nichrome\\User Data\\
+\\AppData\\Local\\Vivaldi\\User Data\\
+\\AppData\\Roaming\\BBQCoin\\wallet.dat
+\\AppData\\Roaming\\Bitcoin\\wallet.dat
+\\AppData\\Roaming\\Ethereum\\keystore
+\\AppData\\Roaming\\Exodus\\seed.seco
+\\AppData\\Roaming\\Franko\\wallet.dat
+\\AppData\\Roaming\\IOCoin\\wallet.dat
+\\AppData\\Roaming\\Ixcoin\\wallet.dat
+\\AppData\\Roaming\\Mincoin\\wallet.dat
+\\AppData\\Roaming\\YACoin\\wallet.dat
+\\AppData\\Roaming\\Zcash\\wallet.dat
+\\AppData\\Roaming\\devcoin\\wallet.dat
+
+Big but unsophisticated malware
+Some of the concepts used in this malware remind us of other stealers, such as Evrial, PredatorTheThief, and Vidar. It has similar targets and also sends the stolen data as a ZIP file to the C&C. However, there is no proof that the author of this stealer is somehow linked with those cases.
+When we take a look at the implementation as well as the functionality of this malware, it’s rather simple. Its big size comes from many statically-compiled modules. Possibly, this malware is in the early stages of development— its author may have just started learning Go and is experimenting. We will be keeping eye on its development.
+At first, analyzing a Golang-compiled application might feel overwhelming, because of its huge codebase and unfamiliar structure. But with the help of proper tools, security researchers can easily navigate this labyrinth, as all the functions are labeled. Since Golang is a relatively new programming language, we can expect that the tools to analyze it will mature with time.
+Is malware written in Go an emerging trend in threat development? It’s a little too soon to tell. But we do know that awareness of malware written in new languages is important for our community.

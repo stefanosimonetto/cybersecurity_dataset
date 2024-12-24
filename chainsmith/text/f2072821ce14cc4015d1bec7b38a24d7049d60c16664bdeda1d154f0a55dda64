@@ -1,0 +1,96 @@
+Relock-based vulnerability in Windows 7
+2011-08-01
+
+Andrea Fortunato
+University of Verona
+,
+Italy
+
+Marco Passuello
+University of Verona
+,
+Italy
+
+Roberto Giacobazzi
+University of Verona
+,
+Italy
+Editor:
+Helen
+
+Martin
+Abstract
+Through analysis of an old piece of malware, researchers at the University of Verona have found unexpected vulnerabilities in Windows 7 and have demonstrated that with some slight tweaks, W32/Relock will run smoothly on the latest OS.
+Copyright © 2011 Virus Bulletin
+
+The new security features introduced with Windows 7 prevent the relocation of an executable to a fixed address. Their aim is to make buffer overflow attacks harder, but they indirectly make the use of OS relocation procedures for hiding or obscuring information in files impossible, since a variable relocation address makes it impossible to reconstruct information while relocating executables. In this paper we present a Windows 7 vulnerability related to the PE Header ImageBase field, which forces a relocation to a fixed address. This vulnerability is exploited to make an old obfuscation technique compatible with Windows 7. The technique, which is based on memory relocations, was first implemented in the W32/Relock virus.
+
+Introduction to Relock
+In 2007 the virus writer roy g biv introduced W32/Relock for Windows XP/2000 to demonstrate a new obfuscation technique called ‘virtual code’, based on a peculiar use of memory relocations for code stealthiness and polymorphism [1], [2], [3].
+This malware does not have self-replicating features or network capabilities; it is an executable file infector because it only affects executable files (excluding libraries) recognized by detecting the Portable Executable (PE) format. Once executed, the virus infects the targets contained in its directory (and recursively in all subdirectories) but it does not reside in memory after completing its operations.
+Designed as a proof of concept, the virus was not intended to be released into the wild to cause any damage. As such, it does not contain a harmful payload but only a PE header and a particular relocation table which represents an encryption of the malware code (Figure 1).
+Figure 1. The file rel.exe consists of a shrunken PE header with the ImageBase set to zero and a huge relocation table. There is no executable code.
+At run time, the OS will apply the relocation items specified in the table, decrypting the code and restoring the original malware. This avoids the use of a plain de-obfuscation procedure inside the virus, transferring the de-obfuscation duty to the OS instead, and making the malware highly stealthy and hard to catch by signature analysis.
+
+Virtual code technique
+The virtual code obfuscation technique relies on a particular behaviour of the dynamic linker present in Windows XP, which relocates executables with an ImageBase set to 0 (invalid) at the constant address 0x00010000. This behaviour is an essential condition in order for the obfuscating algorithm to work properly (Figure 2).
+Figure 2. Relocation mechanism occurring in Windows XP/2000 when the ImageBase is set to zero: the executable is relocated to 0x00010000.
+The basic idea behind virtual code can be summarized in a sequence of decrements which are applied to the .code section in order to set its bytes to zero, whilst symmetrically inserting relocation items of types 1, 5 and 9 in the relocation table of the virus. For simplicity, let’s focus on the relocation type 1, which causes the addition of the highest 16 bits of the difference between the base address and the image base to the randomly chosen target byte. Since this delta is always 0x00010000, the dynamic linker will always apply a unitary increment, and for this reason the obfuscation algorithm decrements the target byte by one for each relocation item successfully created. The diagram in Figure 3 illustrates this procedure.
+Figure 3. Flow diagram of a simplified version of virtual code.
+The following pseudo-code represents the core mechanism of the obfuscation procedure:
+1  while (virus code contains non -null byte){
+2   generate random number R
+3   if R < code size {
+4     if byte[R] != 0 {
+5       rel_item = R + 1000h
+6       relocation_table .append(rel_item)
+7       byte[R]= byte[R]--
+8     }
+9   }
+10 }
+The loop is executed until all the virus code is completely zeroed. For each iteration, when a valid position is found, the instruction at line 5 creates a relocation item of type 1 by adding 0x1000 to the previously selected position, and at line 7 the target byte is decremented to reflect the relocation item stored in the relocation table by the instruction at line 6.
+
+Virtual code obfuscation in Windows 7
+The advent of Windows 7 has seen the introduction of effective security measures that can block relocation-based obfuscation techniques: the execution of files with ImageBase 0 has been disabled, with the error message ‘The parameter is incorrect’ appearing. We still need a fixed memory relocation but the presence of the Address Space Layout Randomization (ASLR) prevents this, randomizing the relocation address of the executable within its virtual space. ASLR techniques are typically used to prevent buffer overflow attacks [4] and their effectiveness relies on there being only a very small chance that an attacker could guess where randomly placed data and code are located. Security is increased by increasing the search space: the more entropy is present in the random offsets, the more effective address space randomization becomes. Entropy is typically increased by raising the amount of virtual memory area space over which the randomization occurs. It is widely believed that randomizing the address space layout of a software program prevents attackers from using the same exploit code effectively against all instantiations of the program containing the same flaw. To defeat the randomization, attackers must successfully guess the positions of all their targets, which is made harder by the randomization of the address space layout each time the program is restarted.
+The effect of ASLR on Relock is to make virtual code unusable: it is no longer possible to force the relocation of an executable to a fixed address and therefore, without a constant offset, it is no longer possible to use virtual code to polymorphically hide the viral code in the relocation table. The only possible solution would be to include a plain-text procedure in the dropped virus which would patch the virus code at runtime to compensate for the difference between an assumed loading address and the real base address selected by ASLR.
+
+Forcing fixed address relocations
+The search for possible solutions to the countermeasures used in Windows 7 led to the analysis of the aligned values for the ImageBase inside the kernel memory space. When using OllyDbg to debug an executable with an ImageBase set to the aligned upper bound (0xFFFF0000) of the kernel memory space, we observed an unexpected behaviour of the OS (Figure 4): the program is relocated to the fixed address 0x00010000, thus obtaining the same vulnerability as that present on Windows XP when the ImageBase is set to 0.
+Figure 4. Canonical values of ImageBase (with ASLR enabled) produce relocations to random addresses, whereas the value 0xFFFF0000 forces relocation to the fixed address 0x00010000.
+Subsequent analysis showed that the same effect can be obtained using any value inside the interval [0x7FFE0000;0xFFFF0000]: all aligned values for the ImageBase in this range cause the relocation of the executable to 0x00010000. This behaviour exists even with ASLR enabled. Figure 5 shows how relocation addresses grow almost linearly, except for a local randomness limited to the 256 positions underneath the ImageBase. This holds until the value 0x7FFE0000 is reached; from that moment forward all values cause fixed relocations to 0x00010000.
+Figure 5. Relocation behaviour in Windows 7, an ImageBase value chosen between 0x7FFE0000 and 0xFFFF0000 causes a fixed relocation at 0x00010000, while lower values cause random relocations within the 256 aligned addresses underneath the current ImageBase.
+
+Exploiting the ImageBase: Relock 2.0
+The knowledge of those particular values for the ImageBase provides a method to obtain, at each run, the relocation of the executable to a fixed address. It is therefore possible to reuse virtual code on Windows 7, with its advantages in terms of stealthiness. Considering the characteristics of this obfuscation technique, particular interest resides in the value 0xFFFF0000, which produces a round delta equal to 0x00010000 - 0xFFFF0000 = 0x00020000.
+Thanks to this vulnerability it is possible to fully restore the functionality of the virus, thus obtaining a working implementation of virtual code once again. However, this new version cannot use relocation types 1, 5 and 9 which were used in the original Relock since they are no longer supported under Windows 7. Instead it uses type 3, which will cause the entire delta value to be added to each relocation item during the relocation phase.
+In a similar manner to the original Relock, the obfuscation procedure must decrement the corresponding RVA for each relocation item successfully created. However, the new algorithm is based on relocation items of type 3 and will therefore have to subtract all the 32 bits of the delta (0x00020000), whereas the old Relock would have subtracted only the higher 16 bits of its delta (high[0x00010000] = 1). With this procedure all the four-byte blocks whose hex values are greater than 0x00020000 (null blocks are excluded) will leave a remainder once the obfuscation phase is concluded and all these remainders constitute the .code section of the virus executable. For this reason the .code section of this new version of Relock will contain some bytes (in contrast to the original Relock whose .code section was empty). These bytes will be polymorphically different for each dropped version of the virus thanks to the presence of random decisions relating to the choice of the blocks to decrement. See Figure 6 for a graphical representation of this procedure.
+Figure 6. Diagram representing the execution flow of the new virtual code obfuscation procedure.
+The following pseudo-code represents a proposal for the new version of virtual code:
+1  choose N relocation item to create
+2  while (N > 0) {
+3   generate random number R
+4   if R < (code size - 4) {
+5      align R to 4 bytes
+6      if dword[R] >= 20000 {
+7        dword[R] = dword[R] - 20000
+8        rel_item = R + 3000h
+9        relocation_table .append(rel_item)
+10       N--
+11     }
+12   }
+13  }
+The first instruction chooses the number of relocation items that will be generated by the new obfuscation procedure. This value can be randomized, meaning that the relocation table size will be different at each obfuscation and will make the virus even more polymorphic.
+Next, lines 3 to 5 generate a random number which represents a position inside the virus body. Note that the value 4 must be subtracted from the total virus size in order to avoid selecting a dword in the last four bytes, which would cause an overflow outside the virus body. At line 5 the chosen position is aligned to four bytes, hence avoiding non-aligned overlapping relocations. The instruction at line 6 ensures that the dword at the selected random position is greater than or equal to 0x20000, and only in such a case does the instruction at line 7 subtract this amount from the selected dword.
+Finally, the instruction at line 8 generates the relocation item of type 3 (by adding 0x3000), which is then stored in the relocation table of rel.exe at line 9. This loop is executed until the number of relocation items to generate is decremented to zero.
+The number of relocation items to produce is decided randomly, which therefore has an important impact both on the size of the file and on the time required for the obfuscation procedure. The relationship between time and number of items has been analysed in a series of tests whose results are displayed in Figure 7. The function maintains an acceptable growth rate as long as the number of relocation items to produce does not exceed 200,000. With higher values this function should assume an exponential behaviour since the more items are produced, the more bytes are brought to a zero value and this causes a frequent number of failures in the compare check at line 10.
+Figure 7. Obfuscation procedure performances with different sizes for the relocation table.
+
+Conclusion
+The analysis of a relatively dated piece of malware such as W32/Relock has shown that it is possible to deeply understand the inner structure of an OS and find unexpected vulnerabilities in new OS releases. This has both pedagogical and technical outcomes. Pedagogically, it proves the importance of an accurate analysis of the code of dated malware, which can be an incredible source of inspiration both for understanding protection mechanisms and for identifying possible unexpected vulnerabilities in new OS releases.
+The peculiar nature of Relock exploits a flaw in the relocation mechanism to dynamically rebuild the malware code out of a relocation table in a polymorphic by relocation code obfuscation. This idea has been restored for Windows 7 where the discovery of sensible values for ImageBase has led to the adaptation of Relock for the new OS. During this process some important modifications have been made to the structure of the virus, in particular to the file header and to the obfuscation procedure which has been altered to compensate for the removal of relocation types 1, 5 and 9. Another important change to the structure of the virus executable resides in the .code section: instead of being empty, it contains the leftovers from the obfuscating procedure. The stealth effectiveness of the new Relock has not been compromised since heuristic analysis conducted by a range of anti-virus products gives the same results as the original malware. In conclusion, these modifications have not compromised the essence of the obfuscation algorithm and the virus runs smoothly on Windows 7, bringing these relocation-based obfuscation techniques to modern times.
+
+Bibliography
+[1] Roy g biv. Virtual Code. October 2007. http://eof-project.net/articles/roy g biv/vcode.html.
+[2] Roy g biv. W32.Relock. 2009. http://eof-project.net/sources/roy g biv/Win32.Relock.
+[3] Ferrie, P. Doin’ the eagle rock. Virus Bulletin, March 2010, p.4 http://www.virusbtn.com/virusbulletin/archive/2010/03/vb201003-lerock.
+[4] Shacham, H.; Page, M.; Pfaff, B.; Goh, E.J.; Modadugu, N.; Boneh, D. On the Effectiveness of AddressSpace Randomization. ACM Conference on Computer and Communications Security, CCS’04, October 25-29, 2004, Washington, DC, USA.

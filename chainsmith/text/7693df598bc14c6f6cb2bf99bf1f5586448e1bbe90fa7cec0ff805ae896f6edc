@@ -1,0 +1,75 @@
+CVE-2020-0601 Q&A
+
+The SophosLabs Offensive Security team answers your questions about the CVE-2020-0601 (aka Chain of Fools and Curveball) vulnerability.
+
+Written by
+Andrew Brandt,
+
+SophosLabs Offensive Security,
+
+Chester Wisniewski
+
+January 22, 2020
+
+SophosLabs Uncut Threat Research Chain of Fools Curveball SophosLabs
+
+This past Tuesday, Microsoft released its normal, monthly updates to Windows and other Microsoft products. Among the fixes included in this month’s release was one that resolves a security vulnerability in Windows, known variously as CVE-2020-0601, Chain of Fools and Curveball.
+To address the many questions we’ve received over the past week, we’ve done a question and answer session with members of the SophosLabs Offensive Security team.
+What operating systems are affected?
+Windows 10, Windows Server 2016 and Windows Server 2019 are affected by this bug. The vulnerability exists in a component of Windows called crypt32.dll. That component also exists in earlier versions of Windows but the bug was introduced relatively recently and they aren’t affected.
+What does crypt32 do?
+Windows uses crypt32 to perform cryptographic tasks, such as such as validating the certificates that software companies use to digitally sign their applications, a process called Authenticode. It’s also used to check the signatures of TLS certificates, ensuring they’ve been signed by a legitimate certificate authority (CA).
+Why does cryptographic signing matter?
+Cryptographic certificates are used to decide what to trust and what not to. Certificates are used to vouch for the authenticity of websites, and to assure users that the software they’re using was created by a legitimate software vendor and hasn’t been tampered with.
+Certificates rely on a “trust chain” that starts with a root certificate authority (root CA) trusted by the operating system. Certificates that identify a root CA can be used to sign other certificates, which can be used to sign other certificates, and so on. All the certificates in a chain trace their trustworthiness back to the root CA.
+How can this vulnerability be abused?
+This vulnerability breaks the trust chain by allowing an attacker to fool crypt32 into believing a certificate has been signed by a trusted root certificate authority when it hasn’t.
+There are two ways this can be abused:
+The first is by signing malware so that an affected operating system trusts it, believing it to have been signed by a trusted software vendor. An affected Windows computer would show that the malware’s certificate trust chain is unbroken all the way back to the root CA. Some software security tools rely on valid digital signatures to do application whitelisting and may allow malware signed in this way to run unimpeded.
+The second way this bug can be abused is to create TLS certificates for Man-in-the-Middle (MiTM) attacks. In this case an attacker proxies the internet connection between a victim’s computer and the internet, using a forged certificate to decrypt traffic that relies on TLS, such as HTTPS. This could reveal passwords and other private information.
+This kind of certificate forgery can also be used to create website certificates that appear to have been issued by a legitimate CA. This could fool users into thinking that a phishing site is the legitimate website of the company the criminal is trying to impersonate.
+You can see how the vulnerability can be used to fool crypt32 in the video below.
+
+How does the vulnerability work?
+There are three integral components that define an elliptic curve (EC) cryptographic key: a curve, a public key, and a private key:
+
+The curve component represents a mathematical elliptic curve formula.
+The public key component is a pair of numbers (x,y) that represent a coordinate on the elliptic curve defined above.
+The private key component is a large number, used for calculations, that is to be kept private by the key holder.
+
+While the EC key remains private, a certificate will be provided by the signer for other parties to be able to verify a signature’s authenticity. In elliptic curve cryptography, a certificate contains the curve and public key components of the EC key it represents.
+When the Windows system wants to check whether a given executable file has been signed by a Microsoft-owned cryptographic key, it extracts the certificate embedded in the file’s header and passes it to the crypt32.dll library function CertVerifyCertificateChainPolicy, invoked with the CERT_CHAIN_POLICY_MICROSOFT_ROOT parameter.
+The function tries to find whether the given certificate is a Microsoft one: it takes the public key component from the examined certificate, and compares it against the public key component of each of Microsoft’s root certificates. If any of them contain an exact match, crypt32 deems them the same certificate, and therefore returns “Success” – the examined certificate is a Microsoft one.
+The vulnerability here is a logic bug: the function fails to take the curve component into consideration when comparing certificates. Therefore, an EC key with an identical public key, but differing curve, to that of a Microsoft root certificate, will be accepted as a Microsoft root certificate by the function.
+Does this matter? Yes. The curve component is crucial for EC’s cryptographic calculations, and changing it will effectively produce an entirely different EC key. The curve component only exists in EC keys, as opposed to other encryption keys like RSA, therefore only EC keys are affected by this bug.
+To exploit this vulnerability, the idea is to craft a cryptographically valid and usable EC key whose public key component is copied from a Microsoft root certificate. This isn’t straightforward because the public key is derived from the private key and the curve, namely the result of a point multiplication operation between the two.
+We can pick any value for our key’s private key component, so things get much easier (and more insecure) when we set the private key to simply be 1. Under that condition, the point multiplication operation between the private key and the curve will simply return the curve. Meaning, setting our curve to be the same value as a Microsoft root certificate’s public key component will result in our desired spoofed key.
+But how flexible is the curve component? Looking at some crypto key generation libraries, one might get the idea that the curve can only be one of a pre-defined set: P-224, P-256, P-384, etc. However, thanks to Microsoft implementing support for the little-used ECParameters extension from RFC-3279 in Windows 10, it is possible to make use of a “Custom/Specified Curve” with arbitrarily chosen values in our EC key.
+Finally, by crafting an EC key with the private key value of 1, and setting both the curve and public key values to match the public key from one of Microsoft’s root certificates, we will be able to sign executable files that will have crypt32 fool Windows into thinking they came from Microsoft.
+Another crypt32 library function, CertGetCertificateChain, suffers from the same bug. This time, the supplied certificate is not tested against Microsoft’s root certificates, but in a more generic way against a given certificate chain. This is what renders some browsers (and other applications that rely on crypt32 to validate TLS certificates) vulnerable: they rely on this function to validate if a given website’s TLS certificate is ultimately trusted by one of the system’s (or the browser’s) root certificates.
+In similar fashion, crafting a valid EC key with the same public key as any of the EC certificates in the relevant trusted certificate chain, and using it to sign a fake website’s TLS certificate, will fool crypt32 and therefore the browser into believing it to be the authentic website at that domain.
+What software could be affected by it?
+Any Windows applications – such as web browsers, file transfer tools or email clients – that rely on crypt32 for checking cryptographic certificates may be vulnerable to this bug.
+What software is not affected?
+The bug affects Microsoft’s implementation of certificate validation in the crypt32 library. It is not a bug in the X.509 specification used by the library. So, for example, full-disk encryption by the Windows Bitlocker feature is not affected.
+Software that does not use crypt32 is unaffected. On Windows, it’s relatively uncommon for applications to use their own cryptographic libraries but there are a few. Notably, the Mozilla Foundation’s Firefox browser and Thunderbird email clients do not use crypt32.
+Is there a way to detect or mitigate this vulnerability?
+For now, the most effective way to mitigate the vulnerability is to patch your Windows 10, Windows Server 2016 and Windows Server 2019 systems as soon as possible. Earlier versions of Windows, such as Windows 7, Windows 8 and Windows 8.1 remain unaffected. Prior to Patch Tuesday, the bug was kept under wraps, but no longer: several people have already released proof-of-concept exploits for this bug and some people are already attempting to exploit it in the wild.
+In addition to fixing the bug, this month’s Windows Update Rollup also includes some changes to the Windows Event Logs that will reveal when an application is attempting to exploit the vulnerability and spoof a legitimate digital signature.
+Users of SIEM products can search their Windows Event Logs for Event ID 1, source: Audit-CVE. If an application with a signature forged by someone trying to exploit CVE-2020-0601 is run, an alert will appear in the logs that reads, in part, “This Event is generated when an attempt to exploit a known vulnerability ([CVE-2020-0601] cert validation) is detected.”
+Can Sophos detect attempts to exploit the vulnerability?
+Sophos has released the following protection:
+
+CVE
+SAV
+IPS
+
+CVE-2020-0601
+Exp/20200601-D
+2301366
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

@@ -1,0 +1,32 @@
+Security Advisory: Object Injection Vulnerability in WooCommerce
+Security Risk: DangerousExploitation Level: Easy/RemoteDREAD Score: 8/10Vulnerability: Object InjectionPatched Version: 2.3.11
+During a routine audit for our WAF, we discovered a dangerous Object Injection vulnerability in WooCommerce which could, in certain contexts, be used by an attacker to download any file on the vulnerable server.
+Are You At Risk?
+The vulnerability is only present when WooCommerce’s “PayPal Identity Token” option is set. If it is, your site is vulnerable to an Object Injection type of vulnerability, which essentially means that depending on the context the site is running in, it may be used to do a variety of things. We managed to use a combination of WordPress and WooCommerce components with a known PHP bug (CVE-2013-1643) to download critical files, files like wp-config.php; for those unfamiliar, this file contains the database credentials and WordPress secret keys. As seen in the past, giving an attacker access to these files usually results in full site compromise.
+
+It is worth noting that even if your site doesn’t run on top of an old version of PHP a lot of different attack vectors an attacker could be used depending on what extensions you have available. There’s also a couple other bugs related to PHP itself that we could have investigated, but we decided to stick with CVE-2013-1643 because it’s widely documented and relatively simple to recreate.
+Technical Details
+Everything begins in the get_paypal_order method of the WC_Gateway_Paypal_Response class.
+The get_paypal_order method
+
+The $custom function parameter is directly passed to WordPress function maybe_unserialize(), which can be used in Object Injection attacks when ran with direct user input.
+The check_response method
+
+As you can see from the above snippet, the get_paypal_order method is used with a variables tainted by $_REQUEST[‘cm’] – anyone accessing the page where this code gets executed (when someone visits the plugin’s order-received page with some very specific parameters set) can use this vector to spawn arbitrary class instances and potentially modify the application’s execution flow (depending on what classes are available in the current context).
+Because this type of vulnerability requires very specific conditions to be exploited, we decided to give it a try and create a Proof of Concept to demonstrate how a malicious individual could use this vulnerability, along with CVE-2013-1643, to leak WordPress configuration file wp-config.php.
+Leaking files
+Some of you might already have noticed, the CVE mentioned earlier refers to some SOAP/XML issues, nothing related to unserialize() or Object Injection as a whole. The trick lays in the fact that this particular bug affects a few PHP mechanisms, including the SoapClient class. What makes this particular class interesting is the fact it contains a __call magic method that makes it possible to submit a SOAP request to any server and parse the resulting XML making it possible to conduct XXE attacks and download files from the server.
+In order to trigger the __call method, we needed to find a place in the code where we could force our unserialized object to call a method that doesn’t exist in the original class definition, thus forcing the magic method to trigger. We found what we were searching for in WordPress PHPMailer class, specifically in the smtpClose() method.
+PHPMailer’s smtpClose method
+
+In this scenario, we would unserialize a PHPMailer class whose smtp variable would contain a carefully crafted SoapClient instance to trigger the XXE part of the exploit. That’s good in theory, but we needed to find a way to call this method.
+PHPMailer’s __destruct method
+.. we got lucky!
+The PHPMailer class also contained a destructor that calls the smtpClose() method! This means that all we’d need to do to get the __call magic method to execute is to initiate a PHPMailer class that has the Mailer variable set to “smtp”; PHP would call the necessary methods when the current script’s execution ends.
+Last but not least, we’d need  the PHPMailer class to be present in the application context when our serialized payload hits the maybe_unserialize() call, which isn’t the case by default. Generally speaking, this class is included when WordPress uses the wp_mail() function, so we had to find a place where we could force WooCommerce to send an email before our serialized payload gets unserialized.
+Hooking the process_lost_password function
+
+The process_lost_password functio
+WooCommerce allows users to reset their account’s lost password, a process that requires sending an email, exactly what the hackers want! Plus, this function is hooked very early in the WordPress boot sequence, which is perfect because it makes the PHPMailer class available for unserialization.
+Update as Soon as Possible
+If you’re using a vulnerable version of this plugin, update as soon as possible! In the event where you can not do this, we strongly recommend leveraging our Website Firewall or equivalent technology to get it patched virtually.

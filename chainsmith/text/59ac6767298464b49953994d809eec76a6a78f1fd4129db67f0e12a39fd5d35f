@@ -1,0 +1,127 @@
+Onkod: a downloader and its 'downloadee'
+2013-12-02
+
+Raul Alvarez
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+Downloaders are usually small and simple files whose goal is purely to download the ‘main course’ of a malware infection. The downloaded file (or ‘downloadee’) invariably has more features and functionalities than the downloader. Raul Alvarez looks at the W32/Onkod downloader and its downloaded file.
+Copyright © 2013 Virus Bulletin
+
+Downloaders are usually small and simple files whose goal is purely to download the ‘main course’ of a malware infection. The downloaded file (or ‘downloadee’) invariably has more features and functionalities than the downloader. In this article, we will look into a fairly new downloader variant, named W32/Onkod, and its downloaded file.
+
+The downloader
+Initial analysis of Onkod is made a little trickier and more time consuming due to the fact that it enters into a loop of 271 API calls, using a combination of the GetWindowThreadProcessId, GetWindowRect and GetDlgItemTextA APIs. The loop has (0x9C40) 40,000 iterations, generating a total of 10,840,000 API calls. This will choke an anti-virus engine if it tries to emulate the instructions.
+After making the API calls, the malware sleeps for 200 milliseconds then proceeds with the rest of the code.
+
+A simple decryptor
+The downloader’s code is unencrypted, with the exception of the API names that are needed to download and save the file, and the URL from which to grab the file.
+A simple decryptor using the key ‘oha’ is used to decrypt the required strings.
+Within the decryptor routine, Onkod generates a 50-byte key by hashing the key string (‘oha’) using a combination of CDQ, IDIV and ADD instructions.
+Each byte of the encrypted string is XORed to a byte taken pseudo-randomly from the 50-byte key.
+After the decryption routine, Onkod loads the wininet.dll, kernel32.dll and user32.dll libraries using the LoadLibraryA API. The names of these libraries are included in the list of encrypted strings.
+The addresses corresponding to the decrypted API names are resolved using the GetProcAddress API.
+
+Downloading...
+After resolving the required APIs, the malware prepares for the download process by calling the InternetOpenA API with the hard-coded user-agent string ‘Mozilla/5.0 (Windows NT 6.1; WOW64; rv:22.0) Gecko/20100101 Firefox/22.0’. Then it establishes a connection to the download link using the InternetOpenUrlA API.
+Onkod generates a 10-digit pseudo-random filename using a combination of the srand and rand functions and the GetTickCount API. The generated filename is concatenated with ‘.exe’ and is added to the %temp% path name generated earlier using the GetTempPathA API. Finally, the malware creates the file, e.g. ‘%temp%\3643476847.exe’, using a call to the CreateFileA API.
+The Internet file is downloaded and copied to ‘%temp%\3643476847.exe’, using a series of calls to the InternetReadFile and WriteFile APIs.
+After downloading the file, Onkod executes ‘3643476847.exe’ by calling the CreateProcessA API.
+To mark the end of the download procedure, a message box is displayed using a call to the MessageBoxA API. The message – which is hard-coded within the malware – reads: ‘Paint_ix.dll could not be found.’, using a call to the MessageBoxA API .
+Finally, the downloader terminates and the newly running process is the downloaded file.
+
+The downloadee
+The downloaded file starts by calling a function that calls multiple layers of other functions. Each function contains a similar structure to that shown below:
+MOV  EAX,EBP
+PUSH EAX
+XOR  EBP,EBP
+ADC  EBP,ESP
+LEA  SP,[ESP-60]
+PUSH ESI
+PUSH EDI
+PUSH EDI
+PUSH EBX
+CALL NextFunction
+
+The EAX register in the ‘MOV EAX, EBP’ and ‘PUSH EAX’ instructions can change to a different register. For example, it can be ‘MOV EBX, EBP’ and ‘PUSH EBX’.
+The next three instructions, ‘XOR EBP,EBP’, ‘ADC EBP,ESP’ and ‘LEA ESP,[ESP-60]’ are constant except for the value 60, which can change.
+The registers pushed before the call to the next function can also change in count and arrangement.
+The malware calls a total of 68 functions before reaching the one that contains the instructions that are needed. After performing the significant function (discussed below), it traverses back across the other 68 functions to reach the initial call.
+This is some form of anti-analysis trick, designed to obscure the important function. In a similar fashion, other malware performs hundreds of jumps just to execute one significant instruction.
+
+PUSH/POP data copy
+The significant function simply copies the malware code to the newly allocated memory. As clever as the anti-analysis logic is, the malware still tries to hide its operation by using a non-standard way of moving and copying data.
+‘MOV EAX, 40’ or ‘MOV EDI, 1000’ instructions are typical ways of placing constant values, such as 40, to EAX or 1000 to EDI. Onkod uses LEA (Load Effective Address) to place constant values to a register (see Figure 1).
+In another context, the source data is acquired using a combination of ‘SUB EAX, EAX’ and ‘OR EAX, DWORD PTR DS:[EBX]’. OR-ing any value taken from [EBX] yields the same value. Hence, this is another way of moving data to a register.
+For copying blocks of data and code, a typical piece of malware would use REP (repetition) instructions or a simple loop with MOV instructions. Within a loop, pushing the data or code to the stack (PUSH EAX) and POPing it directly to a specified memory location (POP DWORD PTR DS:[EDI 4]) accomplishes the same task (see Figure 1).
+Figure 1. The non-standard MOV operations.
+
+Simple decryption
+Still within the significant function, the malware allocates a memory block using a call to the VirtualAlloc API, decrypts every four bytes, and copies them to the newly allocated memory.
+The decryption is performed by placing the initial key on the EDX register (PUSH 5CDE3199, POP EDX), subtracting three from the EDX register (DEC EDX, DEC EDX, DEC EDX), and adding the value in EAX to EDX. The EAX register contains the current value of the source data and EDX has the decremented decryption key.
+The next decryption key is taken from the current DWORD value (MOV EDX, DWORD PTR DS:[EBX]) where the four bytes are swapped to reverse the little-endian order (BSWAP EDX). [EBX] points to the current DWORD source data.
+In simpler terms, the decryption key for each DWORD is taken from the DWORD before it.
+After decrypting and copying (0x724) 1,828 bytes to the newly allocated memory, the malware will return to the initial call, passing through each and every one of the 68 function calls.
+Upon reaching the initial call, the malware jumps to the newly allocated memory.
+
+Allocated code
+At the allocated memory location, Onkod decrypts part of the ‘kernel32.dll’ string using the NEG, NOT, DEC and INC instructions, and calls the LoadLibraryA API to get the imagebase of kernel32.dll.
+This is followed by parsing the PE header of kernel32.dll to get the number of exported names and to locate the last RVA (relative virtual address) of the last exported API name.
+Onkod computes the hash of the exported API names of kernel32.dll using a combination of ROR (rotate-right), ROL (rotate-left) and ADD instructions. Each API name, starting from the last exported name, is computed and compared with the given hash value until a match is found (see Figure 2).
+Figure 2. The hash values for some of the APIs needed by the downloaded file.
+Based on the index of the matched API name, the address of the API is resolved from the list of AddressOfFunctions.
+
+Main act
+After resolving the API addresses, Onkod copies (0x714) 1,812 bytes of code to the second allocated memory and transfers control to it.
+In preparation for the downloaded file’s main act, the malware allocates a third block of virtual memory using the VirtualAlloc API. This is followed by opening the original downloaded file using a combination of the GetModuleFileNameA and CreateFileA APIs.
+After setting the file pointer to the file’s payload using the SetFilePointer API, Onkod reads (0x5c000) 376,832 bytes from the file and saves it to the allocated virtual memory, using the ReadFile API. (Note that these bytes are part of the downloaded file, which is already in memory, but Onkod prefers the untainted physical bytes.)
+Then, Onkod decrypts the 376,832 bytes using the following simple algorithm:
+LODS  DWORD PTR DS:[ESI]
+PUSH  EAX
+XOR   EAX,76A39421
+BSWAP EAX
+XOR   EAX,EDX
+POP   EDX
+STOS  DWORD PTR ES:[EDI]
+
+The algorithm starts by loading the DWORD value pointed to by ESI, to EAX. ESI points to the newly allocated bytes. This is followed by saving the EAX value to the stack and XORing it with 0x76A39421. The XORed bytes in EAX are rearranged to big-endian using the BSWAP instruction and XORed again with EDX. The value in EDX was computed prior to performing the algorithm.
+The ‘POP EDX’ instruction changes the key value in EDX to the current DWORD pointed to by ESI. This simple algorithm uses two key values: one from EDX and the constant value 0x76A39421.
+Finally, the decrypted DWORD is written to the memory address pointed to by EDI.
+Figure 3. The FakeAV’s header in the downloaded file’s process.
+(Click here to view a larger version of Figure 3.)
+
+Morphing
+Extracting the whole 376,832 decrypted bytes produces another entire piece of malware, which is detected as a FakeAV variant. We will not discuss the FakeAV execution here, however, we will look at how it is called.
+In a typical scenario, a piece of malware that contains another malicious executable in its binary code could drop a new piece of malware and execute it. In some cases, the malicious code can be injected into another process and can be called remotely.
+In the case of Onkod, the FakeAV code is neither dropped nor injected.
+After the decryption of the FakeAV code, the following preparation is carried out before control is transferred to it:
+Onkod changes the memory protection of the downloaded file’s process, starting at the imagebase, to PAGE_READWRITE using a call to the VirtualProtect API. It overwrites the original MZ/PE header of the downloaded file with the MZ/PE header of the FakeAV. Then it returns the memory protection to PAGE_READONLY by calling the VirtualProtect API.
+The malware looks for the virtual memory location of the first section of the downloaded file, and changes its memory protection to PAGE_READWRITE. It copies the whole first section of the FakeAV into the first section of the downloaded file. Then it changes the memory protection of the first section of the downloaded file to PAGE_EXECUTE_READWRITE, using a call to the VirtualProtect API. The first section of the downloaded file is now executable, readable and writable.
+For this variant of FakeAV, there are only three sections. Each section is carefully computed and copied to the virtual memory of the downloaded file using the same procedure as performed in the first section.
+Onkod checks if the imagebase of the FakeAV is similar to that of the downloaded file. If it is not the same, it will readjust the imagebase of the new downloaded file.
+At this point, the downloaded file’s code has been overwritten with the FakeAV code. The downloaded file is now the FakeAV.
+
+Resolving APIs
+When an executable file, such as calc.exe, is executed, the operating system loads it into its virtual space including all the DLLs that it needs. The APIs found in the import table are resolved automatically by the Windows operating system.
+Since the FakeAV is copied manually to the process space of the downloaded file, the APIs are not yet functional. The following routine describes how the APIs are resolved:
+After adjusting the imagebase of the FakeAV, the malware parses the PE header to locate the import table. Onkod jumps to the import table and looks for the first DLL by adding the size of the import table to the import table’s address.
+The malware retrieves the module handle of the first DLL using a call to the GetModuleHandleA API. If the library is not yet loaded within the process, a call to the LoadLibraryA API is used. Then it parses the import table to locate the API names associated with the library.
+Onkod resolves the addresses of the API names by calling the GetProcAddress API, and stores them in the AddressOfFunctions table.
+The malware parses the remaining API names in the import table, resolves each API for every library by calling the GetProcAddress API, and saves them in the AddressOfFunctions table.
+Performing the above routine is very important for the FakeAV to work properly in the downloaded file’s process space.
+
+Transferring control
+Now that the API addresses have been resolved, it is time to transfer control to the FakeAV.
+Onkod parses the PEB (Process Environment Block) until it reaches the current module’s LDR_DATA_TABLE_ENTRY structure, by checking if the DllBase field value is equal to the ImageBase of the FakeAV in the downloaded file’s process space.
+This is followed by parsing the MZ/PE of the original copy of the FakeAV in memory. It gets the EntryPoint value of the original FakeAV and adds it to the imagebase. Then Onkod overwrites the EntryPoint field in the current module’s LDR_DATA_TABLE_ENTRY structure with the FakeAV’s entry point.
+Finally, an indirect jump to the FakeAV’s entry point is initiated.
+
+Wrap up
+The main goal of the downloader is to download the ‘downloadee’ – which can be anything from a banking trojan to a file infector, a malicious worm, a FakeAV, or anything in between. Since Onkod’s downloadee is a form of wrapper, it can have a different payload, as discussed above.
+The morphing of the downloaded file into a FakeAV variant is a cool trick. In order to avoid dropping a copy of the FakeAV or injecting it into a process, Onkod simply overwrites the downloaded file with the FakeAV’s code.
+Our research continues to investigate and document the various tricks and techniques used by malware so that we may be better prepared to fight and detect it – until the next time, stay safe!

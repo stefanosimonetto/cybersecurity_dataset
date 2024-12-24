@@ -1,0 +1,198 @@
+Mysterious Avatar rootkit with API, SDK, and Yahoo Groups for C&C communication
+The mysterious Avatar rootkit, detected by ESET as Win32/Rootkit.Avatar, appears to reflect a heavy investment in code development, with an API and a SDK available, plus an interesting abuse of Yahoo Groups for C&C communications.
+
+1 May 2013 - 07:44AM
+
+The mysterious Avatar rootkit, detected by ESET as Win32/Rootkit.Avatar, appears to reflect a heavy investment in code development, with an API and a SDK available, plus an interesting abuse of Yahoo Groups for C&C communications.
+
+The story of the mysterious malware detected by ESET as Win32/Rootkit.Avatar began in February 2013 when some adverts for this rootkit leaked from Russian cybercrime forums (http://pastebin.com/maPY7SS8). This information produced some heated discussions in the malware research community, however a sample of the Avatar rootkit was not found and published, until now. In this blog we present an in-depth analysis of the Win32/Rootkit.Avatar family, which has some surprising features, and is currently available for sale or rent in the crimeware marketplace.
+
+In March ESET detected two droppers with different C&C’s and compilation time stamps:
+
+Win32/Rootkit.Avatar uses a driver infection technique twice: the first in the dropper so as to bypass detections by HIPS, and the second in the rootkit driver for surviving after system reboot. The infection technique is restricted in its capability (by code signing policy for kernel-mode modules) and Win32/Rootkit.Avatar works only on x86 systems. We already analyzed in detail, some years ago, how the TDL3 rootkit family also infected system drivers so as to survive after reboot (TDL3: The Rootkit of All Evil?).
+
+Before 64-bit versions of Microsoft Windows became so prevalent, operating system tricks for infection using system drivers were really popular in rootkits. But the need for bypassing code signing policy has brought in a new generation of bootkits. More details about the complex bootkit family Win32/Gapz were presented a few weeks ago in our research whitepaper “Mind the Gapz: The most complex bootkit ever analyzed?”.
+
+The Droppers
+
+The first level dropper implements LZMA decompression for the second level dropper and the malicious driver module. The second level dropper and driver are unique in every instance because the first level dropper generates random names for mutexes/events and enforces modifications directly in the body of the modules. The most interesting trick used in the first level dropper is an anti-debugging technique based on time comparison from the KUSER_SHARED_DATA.InterruptTime system structure. The first level dropper modifies the RtlDispatchException() routine inside the KiUserExceptionDispatcher() body. The next step raises an exception and passes control to the exception-handler:
+
+The current time is collected from the KUSER_SHARED_DATA.InterruptTime system structure and compared during the next steps of execution. This non-standard trick can detect emulation or debugging at the first stages of dropper execution.
+
+The second level dropper also has checks for known virtual machine software. But these checks are based on standard, already-known tricks. Before the code for VM checking is executed it is decrypted by XOR based encryption using the key “explorer”.
+
+At the next steps the operating system version and current user privileges level are checked. The second level dropper uses two ways of escalating privilege:
+
+Exploitation of the MS11-080 vulnerability
+COM Elevation (UAC whitelist)
+
+The system infection process by dropper works as presented in the following diagram:
+
+The exploit for the MS11-080 vulnerability uses the same exploitation code as a public exploit from Metasploit Framework with minor changes. After a version check for afd.sys the dropper uses the following exploitation code:
+
+The next figure presents the code which triggers an AFDJoinLeaf pointer overwrite by sending a specific IOCTL code = 0x000120BB:
+
+The most interesting part of the exploit code is the steps taken after exploitation. After a successful exploitation kernel-mode shellcode will be executed for loading the malicious driver.
+
+The Avatar rootkit driver is not stored on the hard drive and loads only from a memory region. Here’s the call graph for the routine that loads the malicious driver:
+
+Another way to escalate privilege is to use an old technique based on COM Elevation (UAC whitelist). Upon successful escalation, the system directory (%WINDIR%\system32\drivers) is checked, searching for the driver following the infection. After successful infection the GsDriverEntry() routine is modified to execute the following malicious code stub. The modified GsDriverEntry() routine code looks like this:
+
+One of the main tasks of the malicious code stub is to attach itself to the second level dropper process and read the Avatar rootkit driver body in memory. The malicious code stub as presented in the following figure:
+
+After a successful infection, the modified driver will copy itself to the %TEMP% directory and try to load itself using standard system techniques (Service Control Manager or ZwLoadDriver()).
+
+So the Avatar rootkit driver is not stored on the hard drive and will load with the same code used in the method for MS11-080 exploitation for driver execution (see the call graph load_avatar_driver routine above).
+
+This method for loading the Avatar rootkit driver by system driver infection is effective for bypassing security software, and loads other kernel-mode modules from a “trusted” (but malicious) system driver.
+
+Avatar rootkit driver
+
+After successfully loading the Avatar rootkit driver, Avatar executes an algorithm for infecting system drivers so as to survive after reboot. In order to perform its infection, Avatar randomly chooses a driver and checks its name against a blacklist that varies for every Windows versions.
+
+The execution flow for an infected system driver looks like this:
+
+1. At the entry point, the following stub code is executed:
+
+2. Then, the GUID_DEVINTERFACE_DISK callback routine is installed into the system driver to loaded the Avatar rootkit driver from the hidden file storage. This is the same technique used by TDL3, TDL4 (The Evolution of TDL: Conquering x64) and Olmasco (MaxSS/SST).
+
+3. The original code is restored in memory:
+
+The Avatar rootkit driver is able to infect several system drivers without changing the original driver’s file size.
+
+The Avatar rootkit driver implements an interesting technique to detect the presence of a virtual machine environment. The driver module calls the MmMapIoSpace() routine from the driver to read BIOS data at address 0xF0000 and check for some specific strings:
+
+Parallels Software
+Virtual Machine
+VirtualBox
+QEMU BIOS
+VMware
+Bochs
+
+Additional checks were also found for KVM and Hyper-V based on tricks already known using cpuid instructions.
+
+The hidden file system is used to store the user-mode payload module and additional files. All files are encrypted with a custom symmetric cipher. Here’s the call graph for the routine that communicates with the hidden file system:
+
+The attributes for files stored in the hidden file system look like this:
+
+On the infected machine, additional user-mode and kernel-mode modules can be downloaded and executed that are stored in the hidden file storage. Win32/Rootkit.Avatar does not store malicious components in any standard NTFS storage, except for infected system drivers. The combination of encrypted hidden file storage and infected system drivers make it harder to use typical forensics approaches to investigate an infection by Win32/Rootkit.Avatar.
+
+The user-mode payload code injection uses the KeInitializeApc() routine to initialize an APC user-mode object and schedules the execution of this thread into the system process address space.
+
+Win32/Rootkit.Avatar Payload
+
+The version of the payload from the sample currently researched sample of Win32/Rootkit.Avatar doesn’t have many interesting features. Its main functionalities are:
+
+command center communications
+parsing configuration information
+read/write into hidden file storage
+communicating with the rootkit driver
+installing additional user-mode and kernel-mode modules
+
+Of course, this means the initial infection can be the starting point of a variety of malicious activities based on the modules that deployed. In our case the payload component avcmd.dll was injected into svchost.exe system process which started communicating with C&C IP addresses stored in the configuration file. This configuration file has the following structure:
+
+name of the botnet
+command center URLs
+1024-bit key for custom encryption algorithm
+RSA-1024 public key
+Name of process for the subsequent code injection
+
+Examples of decrypted configuration information from two different droppers are shown here:
+
+and here:
+
+In order to protect communications with the command center, a custom encryption algorithm is used, which output is base64-encoded. All network communications are done from user-mode and use standard WinINet API functions.
+
+Win32/Rootkit.Avatar has an additional way of communicating with the C&C if the other methods are not working correctly. The payload tries to search for messages in Yahoo groups using special parameters.
+
+Search sequences are based on the following parameter (in our case 17BTN1 and 17NET1):
+
+After strings are concatenated, the resulting byte sequence is encrypted using a custom algorithm with a 1024-bit key from the configuration file.
+
+BTN1 key = 6mQ98EXP3v7TKMdk704uOUzGqvikuoHt98n8IPp4K19
+a3qyZ96LoOc54sb3g9eJVyAs7VmPxQjkkM9R960ev275K24PQ550K1
+9fNk8305jRDUTb4cEut4579Zg9i32qU
+
+123
+
+BTN1 key = 6mQ98EXP3v7TKMdk704uOUzGqvikuoHt98n8IPp4K19a3qyZ96LoOc54sb3g9eJVyAs7VmPxQjkkM9R960ev275K24PQ550K19fNk8305jRDUTb4cEut4579Zg9i32qU
+
+NET1 key =  E623J5XKJ9NF4bseM5J2nkwhs1K2766DUOMUDSee3c
+7xu06Q9QayV61U4fm5H89ppuNgLt9M5D2XTCLcd0aS3m9CO1aZg9h9
+o2zb2EIC437IU3X1P3ec07481E0j2Tdr
+
+123
+
+NET1 key =  E623J5XKJ9NF4bseM5J2nkwhs1K2766DUOMUDSee3c7xu06Q9QayV61U4fm5H89ppuNgLt9M5D2XTCLcd0aS3m9CO1aZg9h9o2zb2EIC437IU3X1P3ec07481E0j2Tdr
+
+After encryption the resulting string is encoded with a base64 algorithm, after which all letters are converted to upper case and some symbols are filtered out. An example for botnet BTN1 looks like this:
+
+SymFilter(UpperCase(Base64(Encrypt(17BTN1)))) = EZTFDHWP
+
+1
+
+SymFilter(UpperCase(Base64(Encrypt(17BTN1)))) = EZTFDHWP
+
+EZTFDHWP is used for the subsequent search request on Yahoo groups. If the search request is successful, the next step is to check the group number and read the group description data.
+
+The group description is encrypted with an RSA algorithm and a 1024-bit private key. It is possible to decrypt this data with the public key stored in the configuration file. We suppose this information is to be found in the encrypted message used for returning control for a botnet without an active C&C.
+
+After we identified this functionality, we started to search for possible messages on the Yahoo groups web site. Only one group was found with the relevent parameters (11BTN1 = EFS9KHRF).  The search request looks like this:
+
+http://groups.yahoo.com/search?query=EFS9KHRF&amp;sort=relevance
+
+1
+
+http://groups.yahoo.com/search?query=EFS9KHRF&amp;sort=relevance
+
+An encrypted message is present in this group’s description:
+
+We were able to decrypt this message using the known RSA-1024 public keys from the configuration information. The key from the BTN1 botnet successfully decrypted this message:
+
+dZ8FsJ4z0::http://www.avatarbut.info http://www.avatarsbut.info
+
+1
+
+dZ8FsJ4z0::http://www.avatarbut.info http://www.avatarsbut.info
+
+This information looks similar to C&Cs found in the BTN1 botnet configuration information. The authors of this blog post suspect that this Yahoo group was created to test this communication functionality because it includes the same information already present in the BTN1 configuration file.
+
+Avatar’s scheme to maintain botnet control via Yahoo groups messages provide an excellent protection against sinkhole attemps, because information about C&C’s domains is encrypted using an asymmetric algorithm based on the RSA scheme. In the reversing process, researchers can only extract the public key to decrypting messages: this key can’t be used to encrypt new messages to create bogus groups.
+
+Avatar Runtime Library
+
+Win32/Rootkit.Avatar has a special API for developing additional components without the source code of the Avatar rootkit. This development process is based around the Avatar Runtime Library, a special SDK for developing additional user-mode components which allow communication with the Avatar rootkit driver. The Avatar Runtime Library has the following API functions:
+
+aTakeProcessToken() – assign process token from one process to other
+aExecute() – execute custom module in the context of remote process
+aLoadDriver() – load driver from hidden file system
+aLoadFileFromAvatarDisk() – read file from hidden file system
+aSaveFileOrAttrToAvatarDisk() – write file into hidden file system
+aSendReport() – send the specific report to C&C
+
+The storage structure for payload injection into the user-mode process looks like this:
+
+After analysis of the Avatar Runtime Library SDK it seems like a development project by a really skilled system developer or developers. We think that the malware developers worked on it for not less than half year because many kernel-mode techniques need lengthy testing to ensure stability.
+
+Conclusion
+
+Win32/Rootkit.Avatar is an interesting rootkit family using many interesting techniques for bypassing detection by security software. Rootkits at the level of sophistication of Avatar or Gapz can be used for long term infection by the system executing the attack. Avatar does not store its files in the standard file system and its technique for driver infection makes it harder for typical forensic approaches to be used for successful incident investigation.
+
+Avatar also has additional ways to restore botnet control if the command center is taken down or C&C is disrupted for other reasons. For cleaning it’s necessary first to deactivate the Avatar rootkit driver and user-mode payload, and only then is it possible to clean or restore the infected system driver.
+
+Anton Cherepanov, Malware Researcher
+Aleksandr Matrosov, Security Intelligence Team Lead
+
+SHA1 hashes for analyzed samples:
+
+Dropper1 (BTN1 botnet) – b2b3bb4b7c5a050a583246a8abe5a79d723b8b57
+
+1
+
+Dropper1 (BTN1 botnet) – b2b3bb4b7c5a050a583246a8abe5a79d723b8b57
+
+Dropper2 (NET1 botnet) – 93473126a9aa13834413c494ae5f62eec1016fde
+
+1
+
+Dropper2 (NET1 botnet) – 93473126a9aa13834413c494ae5f62eec1016fde

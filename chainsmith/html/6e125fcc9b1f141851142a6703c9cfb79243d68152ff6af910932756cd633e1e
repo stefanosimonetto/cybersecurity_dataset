@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: VB2019 paper: Defeating APT10 compiler-level obfuscations</title>
+<meta name="description" content="Compiler-level obfuscations, like opaque predicates and control flow flattening, are starting to be observed in the wild and are likely to become a challenge for malware analysts and researchers. This paper explains how to de-obfuscate the code of an APT10 RAT automatically by modifying the existing IDA Pro plug-in HexRaysDeob." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 6667;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/blocks/expand_collapse_toc/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/blocks/expand_collapse_toc/js/jquery.color.js"></script>
+<script type="text/javascript" src="/blocks/expand_collapse_toc/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/blocks/expand_collapse_toc/js/expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<h1><a class="chapter" name="h1-vb2019-paper-defeating-apt10-compiler-level-obfuscations"></a>VB2019 paper: Defeating APT10 compiler-level obfuscations</h1>
+<h3><a class="chapter" name="h3-takahiro-haruyama"></a>Takahiro Haruyama</h3>
+<p><em>Carbon Black, Japan</em></p>
+<hr />
+<p> </p>
+<div class="ccm-expand-collapse-toc">
+<div id="ccm-expand-collapse-toc-title-15059" class="ccm-expand-collapse-toc-title ccm-expand-collapse-toc-closed" data-expander-speed="500">Table of contents</div><div id="ccm-expand-collapse-toc-content-15059" class="ccm-expand-collapse-toc-content"><p><a class="toc-level2" href="#h2-abstract">Abstract</a><br /> <a class="toc-level2" href="#h2-introduction">Introduction</a><br /> <a class="toc-level2" href="#h2-technical-details">Technical details</a><br /> <a class="toc-level2" href="#h2-opaque-predicates">Opaque predicates</a><br /> <a class="toc-level3" href="#h3-pattern-1-x-x-1-2">Pattern 1: ~(x * (x - 1)) | -2</a><br /> <a class="toc-level3" href="#h3-pattern-2-read-only-global-variable-gt-10-or-lt-10">Pattern 2: read-only global variable &gt;= 10 or &lt; 10</a><br /> <a class="toc-level3" href="#h3-data-flow-tracking-patterns">Data-flow tracking for the patterns</a><br /> <a class="toc-level2" href="#h2-control-flow-flattening">Control flow flattening</a><br /> <a class="toc-level3" href="#h3-unflattening-multiple-maturity-levels">Unflattening in multiple maturity levels</a><br /> <a class="toc-level3" href="#h3-control-flow-handling-multiple-dispatchers">Control flow handling with multiple dispatchers</a><br /> <a class="toc-level3" href="#h3-implementation-various-conditionalunconditional-jump-cases">Implementation for various conditional/unconditional jump cases</a><br /> <a class="toc-level3" href="#h3-other-minor-changes">Other minor changes</a><br /> <a class="toc-level2" href="#h2-remaining-issues-and-improvements-ida-73-beta">Remaining issues and Improvements in IDA 7.3 Beta</a><br /> <a class="toc-level3" href="#h3-correct-propagation-opaque-predicates-deobfuscation-result">Correct propagation of opaque predicates deobfuscation result</a><br /> <a class="toc-level3" href="#h3-handling-conditional-jump-dispatcher-predecessor-multiple-predecessors">Handling a conditional jump of a dispatcher predecessor with multiple predecessors</a><br /> <a class="toc-level2" href="#h2-conclusion">Conclusion</a><br /> <a class="toc-level2" href="#h2-acknowledgements">Acknowledgements</a><br /> <a class="toc-level2" href="#h2-references">References</a></p><p>&nbsp;</p></div></div>
+<h2><a class="chapter" name="h2-abstract"></a>Abstract</h2>
+<p>Compiler-level obfuscations, like opaque predicates and control flow flattening, are starting to be observed in the wild and are likely to become a challenge for malware analysts and researchers. Opaque predicates and control flow flattening are obfuscation methods that are used to limit malware analysis by defining unused logic, performing needless calculations, and altering code flow so that it is not linear. Manual analysis of malware utilizing these obfuscations is painful and time-consuming.</p>
+<p>ANEL (also known as UpperCut) is a RAT used by APT10, typically targeting Japan. All recent ANEL samples are obfuscated with opaque predicates and control flow flattening. In this paper I will explain how to de-obfuscate the ANEL code automatically by modifying the existing <em>IDA Pro</em> plug-in HexRaysDeob.</p>
+<ul>
+<li>Specifically, the following topics will be included:</li>
+<li>Disassembler tool internals (<em>IDA Pro</em> IL microcode)</li>
+<li>How to define and track opaque predicate patterns for their elimination</li>
+<li>How to break control flow flattening while considering various conditional/unconditional jump cases even if it depends heavily on the opaque predicate conditions and has multiple switch dispatchers.</li>
+</ul>
+<p>The modified tool is available publicly and this implementation has been found to deobfuscate approximately 92% of encountered functions in the tested samples. Additionally, most of the failed functions can be properly deobfuscated in <em>IDA Pro 7.3</em>. This provides researchers with an approach with which to attack such obfuscations, which could be adopted by other families and other threat groups.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-introduction"></a>Introduction</h2>
+<p>The <em>Carbon Black</em> Threat Analysis Unit (TAU) analysed a series of malware samples that utilized compiler-level obfuscations. For example, opaque predicates were applied to Turla Mosquito [<a href="#ref1">1</a>] and APT10 ANEL samples. Another obfuscation, control flow flattening, was applied to APT10 ANEL samples and the Dharma ransomware packer.</p>
+<p>ANEL is a RAT program used by APT10 and is observed solely in Japan. According to <em>Secureworks</em> [<a href="#ref2">2</a>], all ANEL samples whose version is 5.3.0 or later are obfuscated with opaque predicates and control flow flattening.</p>
+<p>‘Opaque predicate’ is a programming term that refers to decision making where there is actually only one path. For example, this can be seen as calculating a value that will always return True. ‘Control flow flattening’ is an obfuscation method where programs do not flow cleanly from beginning to end. Instead, a switch statement is called in a loop with multiple code blocks, each of which performs operations, as detailed later in this paper (see Figure 10).</p>
+<p>The obfuscations used by ANEL looked similar to the ones described in the<em> Hex-Rays</em> blog [<a href="#ref3">3</a>], but the <em>IDA Pro</em> plug-in HexRaysDeob [<a href="#ref4">4</a>] didn’t work for one of the obfuscated ANEL samples because the tool had been made for another variant of the obfuscation.</p>
+<p>TAU investigated the ANEL obfuscation algorithms then modified the HexRaysDeob code to defeat the obfuscations. After the modification, TAU was able to recover the original code.</p>
+<p>Figure 1 shows an example of an obfuscated function; Figure 2 shows the same function once it has been deobfuscated.</p>
+<p><a class="zoom-img" title="Figure 1: Obfuscated function example (all codes cannot be displayed in a screen)." href="/files/8915/7373/1382/fig01_fn_blowfish_init_before_trim.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/0bb342b773fa770638a959dba4084949_f4142.png" alt="fig01_fn_blowfish_init_before_trim.png" width="800" height="994" /></a><span class="centered-caption">Figure 1: Obfuscated function example (all codes cannot be displayed in a screen).</span></p>
+<p><a class="zoom-img" title="Figure 2: Deobfuscated result of the function shown in Figure 1." href="/files/5915/7373/1425/fig02_fn_blowfish_init_after_trimmed.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/ae04d06ad60eb7b704f4b9585c42e717_f4143.png" alt="fig02_fn_blowfish_init_after_trimmed.png" width="800" height="379" /></a><span class="centered-caption">Figure 2: Deobfuscated result of the function shown in Figure 1.</span></p>
+<p> </p>
+<h2><a class="chapter" name="h2-technical-details"></a>Technical details</h2>
+<p>HexRaysDeob is an<em> IDA Pro</em> plug-in written by Rolf Rolles to address obfuscation seen in binaries. In order to perform the deobfuscation, the plug-in manipulates the <em>IDA</em> intermediate language called microcode. If you aren’t familiar with those structures (e.g. microcode data structures, maturity level, Microcode Explorer and so on), you should read his blog post [<a href="#ref3">3</a>]. Rolles also provides an overview of each obfuscation technique in the same post.</p>
+<p>HexRaysDeob installs two callbacks when loading:</p>
+<ul>
+<li><em>optinsn_t</em> for defeating opaque predicates (defined as ObfCompilerOptimizer)</li>
+<li><em>optblock_t</em> for defeating control flow flattening (defined as CFUnflattener)</li>
+</ul>
+<p> </p>
+<h2><a class="chapter" name="h2-opaque-predicates"></a>Opaque predicates</h2>
+<p>Before continuing, it is important to understand<em> Hex-Rays</em> maturity levels. When a binary is loaded into <em>IDA Pro</em>, the application will perform distinct layers of code analysis and optimization, referred to as maturity levels. One layer will detect shellcode, another optimizes it into blocks, another determines global variables, and so on.</p>
+<p>The <span class="monospace">optinsn_t::func</span> callback function is called in maturity levels from MMAT_ZERO (microcode does not exist) to MMAT_GLBOPT2 (most global optimizations completed). During the callback, opaque predicates pattern-matching functions are called. If the code pattern is matched with the definitions, it is replaced with another expression for the deobfuscation. This is important to perform in each maturity level as the obfuscated code could be modified or removed as the code becomes more optimized. We mainly defined two patterns for analysis of the ANEL sample.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/4098d95340102c788eb98803631c42c5_f4144.png" alt="fig03_Optimize.png" width="700" height="945" /><span class="centered-caption">Figure 3: Opaque predicates pattern-matching functions switch.</span></p>
+<p> </p>
+<h3><a class="chapter" name="h3-pattern-1-x-x-1-2"></a>Pattern 1: ~(x * (x - 1)) | -2</h3>
+<p>Figure 4 shows an example of one of the opaque predicates patterns used by ANEL.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/153e76e06bdf0a27fc5b68c2e685c791_f4145.png" alt="fig04_opaque_predicates_pat1.png" width="750" height="43" /><span class="centered-caption">Figure 4: Opaque predicates pattern 1.</span></p>
+<p>The global variable value <span class="monospace">dword_745BB58C</span> is either even or odd, so <span class="monospace">dword_745BB58C * (dword_745BB58C - 1)</span> is always even. This results in the lowest bit of the negated value becoming 1. Thus, OR by -2 (0xFFFFFFFE) will always produce the value -1.</p>
+<p>In this case, the pattern-matching function replaces <span class="monospace">dword_745BB58C * (dword_745BB58C - 1)</span> with 2.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-pattern-2-read-only-global-variable-gt-10-or-lt-10"></a>Pattern 2: read-only global variable &gt;= 10 or &lt; 10</h3>
+<p>Another pattern is shown in Figure 5.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/b511d30b3e7dcacc69347cd582810498_f4146.png" alt="fig05_opaque_predicates_pat2.png" width="370" height="71" /><span class="centered-caption">Figure 5: Opaque predicates pattern 2.</span></p>
+<p>The global variable value <span class="monospace">dword_72DBB588</span> is always 0 because the value is not initialized (we can check it using the <span class="monospace">is_loaded</span> API) and only has read accesses. So the pattern-matching function replaces the global variable with 0.</p>
+<p>There are some variants with this pattern (e.g. the variable - 10 &lt; 0), where the immediate constant may be different, such as 9.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-data-flow-tracking-patterns"></a>Data-flow tracking for the patterns</h3>
+<p>We also observed a pattern that was also using an eight-bit portion of the register. In the example shown in Figures 6 and 7, the variable <span class="monospace">v5</span> in pseudocode is a register operand (cl) in microcode. We need to check if the value comes from the result of x * (x - 1).</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/ce894258177729f7503751c0120a1333_f4147.png" alt="fig06_dataflow_pseudo_pat1.png" width="380" height="75" /><span class="centered-caption">Figure 6: Register operand (pseudocode) in pattern 1.</span></p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/de3ce6c42b65d17f2cfd9582995b36d5_f4148.png" alt="fig07_dataflow_microinsn_pat1.png" width="400" height="336" /><span class="centered-caption">Figure 7: Register operand (microcode) in pattern 1.</span></p>
+<p>In another example, the variable <span class="monospace">v2</span> in pseudocode is a register operand (ecx) in microcode. We have to validate if a global variable with the above-mentioned conditions is assigned to the register.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/f1cb7cfdbe87527bb3dd547985c004df_f4149.png" alt="fig08_dataflow_pseudo_pat2.png" width="700" height="55" /><span class="centered-caption">Figure 8: Register operand (pseudocode) in pattern 2.</span></p>
+<p><span class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/5337320836d77411772c9399fa0d76db_f4150.png" alt="fig09_dataflow_microinsn_pat2.png" width="660" height="494" />Figure 9: Register operand (microcode) in pattern 2.</span></p>
+<p>Data-flow tracking code was added to detect these use-cases. The added code requires that the mblock_t pointer information is passed from the argument of <span class="monospace">optinsn_t::func</span> to trace back previous instructions using the mblock_t linked list. However, the callback returns NULL from the mblock_t pointer if the instruction is not a top-level one. For example, Figure 9 shows <span class="monospace">jnz</span> (m_jnz) as a top-level instruction and setl (m_setl) as a sub-instruction. If <span class="monospace">setl</span> is always sub-instruction during the optimization, we never get the pointer. To handle this type of scenario, the code was modified to catch and pass the mblock_t of the <span class="monospace">jnz</span> instruction to the sub-instruction.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-control-flow-flattening"></a>Control flow flattening</h2>
+<p>The original implementation calls the <span class="monospace">optblock_t::func </span>callback function in the MMAT_LOCOPT (local optimization and graphing are complete) maturity level. Rolles previously described the unflattening algorithm in a <em>Hex-Rays</em> blog. For brevity, I will quickly cover some key points in order to understand the algorithm at a high level.</p>
+<p>Normally, the call flow graph (CFG) of a function obfuscated with control flow flattening has a loop structure that starts with the yellow-coloured ‘control flow dispatcher’ shown in Figure 10 after the First Block.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/4427670e0fcd9789dab6f62d4f31f24b_f4151.png" alt="fig10_cff_overview.png" width="800" height="369" /><span class="centered-caption"> Figure 10: Function obfuscated with control flow flattening.</span></p>
+<p>The original code is separated into the orange-coloured ‘first block’ and the green-coloured flattened blocks. The analyst is then required to resolve the correct next block and modify the destination accordingly.</p>
+<p>The next portion of the first block and each flattened block is decided by a ‘block comparison variable’ with an immediate value. The value of the variable is assigned to a specific register in each block then compared in a control flow dispatcher and other condition blocks.</p>
+<p class="centered-caption"> <a class="zoom-img" title="Figure 11: Block comparison variable example (blue-highlighted eax in this case)." href="/files/3315/7373/2104/fig11_cff_cmp_var.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/e88b9c7a8093c84be3cb02d146ee185d_f4152.png" alt="fig11_cff_cmp_var.png" width="800" height="321" /></a>Figure 11: Block comparison variable example (blue-highlighted eax in this case).</p>
+<p>If the variable registers for the comparison and assignment are different, the assignment variable is called the ‘block update variable’ (which will be described later).</p>
+<p>The algorithm looks straightforward. However, some portions of the code had to be modified in order to correctly deobfuscate the code. This is detailed further below.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-unflattening-multiple-maturity-levels"></a>Unflattening in multiple maturity levels</h3>
+<p>As previously described, the original implementation of the code only works in the MMAT_LOCOPT maturity level. Rolles said this was to handle another obfuscation called ‘Odd Stack Manipulations’, which he refers to in his blog. However, the unflattening of the ANEL code had to be performed in the later maturity level since the assignment of block comparison variables depends heavily on opaque predicates.</p>
+<p>As an example, in the obfuscated function shown in Figure 12, the <span class="monospace">v3</span> and <span class="monospace">v7</span> variables are assigned to the block comparison variable (<span class="monospace">b_cmp</span>). The values are dependent on the results of the opaque predicates.</p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 12: Simple obfuscated function example." href="/files/4215/7373/2180/fig12_cff_pseudo_op_cond_before.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/59a039b05a943948873bf2fed41a1061_f4153.png" alt="fig12_cff_pseudo_op_cond_before.png" width="800" height="733" /></a>Figure 12: Simple obfuscated function example.</p>
+<p>Once the opaque predicates are broken, the loop code becomes simpler, as shown in Figure 13.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/3f178b6f016f2203da92ea39b558df57_f4154.png" alt="fig13_cff_pseudo_op_cond_after.png" width="480" height="183" /></p>
+<p class="centered-caption">Figure 13: Simple obfuscated function example (opaque predicates deleted).</p>
+<p>However, unflattening the code in later maturity levels like MMAT_GLBOPT1 and MMAT_GLBOPT2 (first and second pass of global optimization) caused additional problems. The unflattening algorithm requires mapping information between the block comparison variable and the actual block number (mblock_t::serial) used in the microcode. In later maturity levels, some blocks are deleted by the optimization after defeating opaque predicates, which removes the mapping information.</p>
+<p>In the example shown in Figure 14, the blue-highlighted immediate value <span class="monospace">0x4624F47C</span> is assigned to the block comparison variable in the first block. The mapping can be created by checking the conditional jump instruction (<span class="monospace">jnz</span>) in MMAT_LOCOPT.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/2f33ced1aefdde7eeaea7c548d0acd4f_f4155.png" alt="fig14_cff_mapping_MMAT_LOCOPT.png" width="480" height="328" /> <span class="centered-caption">Figure 14: Mapping between block comparison variable 0x4624F47C and block number 9.</span></p>
+<p>On the other hand, there is no mapping information in MMAT_GLBOPT2 because the condition block that contains the variable has been deleted. So the next block of the first one in the level cannot be determined.</p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 15: Mapping failure." href="/files/7015/7373/2315/fig15_cff_mapping_MMAT_GLBOPT2.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/f0896685e69fa9d90612ada451b4731d_f4156.png" alt="fig15_cff_mapping_MMAT_GLBOPT2.png" width="800" height="137" /></a>Figure 15: Mapping failure.</p>
+<p>To resolve this issue, the code was written to link the block comparison variable and block address in MMAT_LOCOPT, as the block number is changed in each maturity level. If the code can’t determine the mapping in later maturity levels, it attempts to guess the next block number based on the address, considering each block and instruction address. The guessing is not 100% accurate, however it works for nearly all of the obfuscated functions tested.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/8f09eff4324c9bffc866cbcf30b08d01_f4157.png" alt="fig16_log_ea2number.png" width="840" height="432" /></p>
+<p class="centered-caption">Figure 16: The output log showing block address and number translation.</p>
+<p>Figure 17 shows the final result of the deobfuscation in this case. The function just returns the argument value.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/74eff5e763e1e9b9ae01a33f356aa9fa_f4158.png" alt="fig17_fn_just_ret_the_value_result.png" width="460" height="78" /> <span class="centered-caption">Figure 17: The result of the deobfuscation.</span></p>
+<p> </p>
+<h3><a class="chapter" name="h3-control-flow-handling-multiple-dispatchers"></a>Control flow handling with multiple dispatchers</h3>
+<p>Though the original implementation assumes an obfuscated function has only one control flow dispatcher, some functions in the ANEL sample have multiple control dispatchers. Originally, the modified code called the <span class="monospace">optblock_t::func</span> callback in MMAT_GLBOPT1 and MMAT_GLBOPT2, as the result was not correct in MMAT_CALLS (detecting call arguments). However, this did not work for functions with three or more dispatchers. Additionally, the <em>Hex-Rays</em> kernel doesn’t optimize some functions in MMAT_GLBOPT2 if it judges that optimization within the level is not required. In this case, the callback is executed just once in the implementation.</p>
+<p>To handle multiple control flow dispatchers, a callback for decompiler events was implemented. The code catches the ‘hxe_prealloc’ event (according to <em>Hex-Rays</em>, this is the final event for optimizations) then calls the <span class="monospace">optblock_t::func</span> callback. Typically, this event occurs a few to several times, so the callback can deobfuscate multiple control flow flattenings. Other additional modifications were made to the code (e.g. writing a new algorithm for finding the control flow dispatcher and first block, validating a block comparison variable, and so on).</p>
+<p>Figures 18-23 show the functions with multiple control flow dispatchers that can be unflattened after the modification. Figures 18-20 show the case of two control flow dispatchers; Figures 21-23 show the case of seven control flow dispatchers.</p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 18: Example #1 with two control flow dispatchers (graph)." href="/files/9415/7373/2987/fig18_multi_dispatch1_graph.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/2da972aabc8b1939be8e919efbf7f399_f4159.png" alt="fig18_multi_dispatch1_graph.png" width="800" height="235" /></a>Figure 18: Example #1 with two control flow dispatchers (graph).</p>
+<p class="centered-caption"> <a class="zoom-img" title="Figure 19: Example #1 with two control flow dispatchers (before)." href="/files/6015/7373/3042/fig19_multi_dispatch1_before.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/56f395e3a4cd5eb966a45a8fc4cf41d2_f4160.png" alt="fig19_multi_dispatch1_before.png" width="800" height="867" /></a>Figure 19: Example #1 with two control flow dispatchers (before).</p>
+<p> <img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/f9772544a49055bb000e9d6ec7cbb8cf_f4161.png" alt="fig20_multi_dispatch1_after.png" width="830" height="878" /></p>
+<p class="centered-caption">Figure 20: Example #1 with two control flow dispatchers (after).</p>
+<p class="centered-caption"> <a class="zoom-img" title="Figure 21: Example #2 with seven control flow dispatchers (graph)." href="/files/8615/7373/3126/fig21_fn_thread_command_dispatch_graph.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/a3f375c70333db005ab115c9184b1f40_f4162.png" alt="fig21_fn_thread_command_dispatch_graph.png" width="800" height="543" /></a>Figure 21: Example #2 with seven control flow dispatchers (graph).</p>
+<p class="centered-caption"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/36f43f24152d4a38177204d4a44d9a1e_f4163.png" alt="fig22_fn_thread_command_dispatch_pseudo_before.png" width="680" height="1115" />Figure 22: Example #2 with seven control flow dispatchers (before).</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/1cb4ae2a2e337a05d2784060760f4a1e_f4164.png" alt="fig23_fn_thread_command_dispatch_pseudo_after.png" width="750" height="1051" /><span class="centered-caption">Figure 23: Example #2 with seven control flow dispatchers (after).</span></p>
+<p> <img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/85cf1ad181db7e7ddc33ee9d9ddccd62_f4165.png" alt="fig24_duplicated_block_cmp_vars.png" width="840" height="279" /></p>
+<p class="centered-caption"> Figure 24: Ignoring duplicated block comparison variables.</p>
+<p>Normally, block comparison variables used by the control flow flattening are unique in a function. Therefore, block numbers corresponding to the variables can be determined uniquely as well. However, the function in the latter case contains duplicated block comparison variables due to multiple dispatchers. The modified code detects the duplications and applies the most likely variable.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-implementation-various-conditionalunconditional-jump-cases"></a>Implementation for various conditional/unconditional jump cases</h3>
+<p>As shown in Figure 25, the original implementation supports two cases (1)-(2) of flattened blocks to find a block comparison variable for the next block (the cases are then simplified). In the second case, the block comparison variable is searched in each block of endsWithJcc and nonJcc. If the next block is resolved, the CFG (specifically mblock_t::predset and mblock_t::succset) and the destination of the <span class="monospace">goto</span> jump instruction are updated.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/9415/7373/3326/fig25_original_support_case.png" alt="fig25_original_support_case.png" width="770" height="476" /></p>
+<p class="centered-caption">Figure 25: Originally supported two cases of blocks.</p>
+<p>We found and implemented three more cases in the ANEL sample. Of these, two cases (3)-(4) are shown in Figure 26.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/6215/7373/3355/fig26_new_support_case.png" alt="fig26_new_support_case.png" width="785" height="472" /> <span class="centered-caption">Figure 26: Newly supported two cases of blocks.</span></p>
+<p>The code tracks the block comparison variable in each predecessor and more (if there are any conditional blocks before the predecessor) to identify each next block for unflattening.</p>
+<p>In the jump case (5) that was newly implemented, the block comparison variables are not assigned in the flattened blocks but rather the first blocks according to a condition. For example, the microcode graph depicted in Figure 27 shows that edi is assigned to esi (the block comparison variable in this case) in block number 7, but the edi value is assigned in block numbers 1 and 2.</p>
+<p> <img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/9270e85e7d5b9cd6cb4ebfda1f7c64d4_f4168.png" alt="fig27_new_support_case_first_block.png" width="840" height="435" /></p>
+<p class="centered-caption">Figure 27: Newly supported case (assigned in first blocks).</p>
+<p>If the immediate value for the block comparison variable is not found in the flattened blocks, the new code tries to trace the first blocks to obtain the value and reconnects block numbers 1 and 2 as successors of block number 7, in addition to the normal operations mentioned in the original cases.</p>
+<p>Another example function, shown in Figures 28 and 29, did the same processing twice.</p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 28: Newly supported case (assigned in first blocks twice #1)." href="/files/8715/7373/3449/fig28_new_support_case_first_block2_1.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/093369bc13cf6fbf1bec444de73491c5_f4169.png" alt="fig28_new_support_case_first_block2_1.png" width="830" height="182" /></a>Figure 28: Newly supported case (assigned in first blocks twice #1).</p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 29: Newly supported case (assigned in first blocks twice #2)." href="/files/5315/7373/3490/fig29_new_support_case_first_block2_2.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/5fba8eea624af1fcec2ebc92c98b683a_f4170.png" alt="fig29_new_support_case_first_block2_2.png" width="830" height="186" /></a>Figure 29: Newly supported case (assigned in first blocks twice #2).</p>
+<p>In this case, the code parses the structure in the first blocks then reconnects each conditional block under the flattened blocks (#1 and #2 as successors of #13, #3, and #4 as successor of #11).</p>
+<p>Last, but not least, in all cases described here, the tail instruction of the dispatcher predecessor can be a conditional jump like <span class="monospace">jnz</span>, not just <span class="monospace">goto</span>. The modified code checks the tail instruction and if the true case destination is a control flow dispatcher, it updates the CFG and the destination of the instruction. However, the handling of conditional jumps in cases (2)-(4) requires more complicated operations and the latest IDA (version 7.2) at the time was not able to process them. It will be detailed below.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-other-minor-changes"></a>Other minor changes</h3>
+<p>The following changes are minor compared with the above referenced ones.</p>
+<ul>
+<li>Additional jump instructions are supported when collecting block comparison variable candidates and mapping between the variable and ea (linear address) or block number (<span class="monospace">jnz</span>/<span class="monospace">jle</span> in JZCollector, <span class="monospace">jnz</span> in JZMapper)</li>
+<li>An entropy threshold adjustment due to check in high maturity level</li>
+<li>Multiple block tracking for getting a block comparison variable</li>
+</ul>
+<p>Additionally, two more changes were introduced in regards to the block comparison/update variables referenced in the overview. First, some functions in the ANEL sample utilize a block update variable, however the assignment is a little bit tricky, as shown in Figure 30.</p>
+<p class="centered-caption"><a class="zoom-img" title="Figure 30: Block update variable usage with and instruction." href="/files/2915/7373/3575/fig30_block_update_with_and.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/095ddf548c257023d704bd82ea9dadb4_f4171.png" alt="fig30_block_update_with_and.png" width="830" height="373" /></a>Figure 30: Block update variable usage with and instruction.</p>
+<p>By using the <span class="monospace">and</span> instruction, the immediate values used in comparison look different from assigned ones. Second, in a different case, a small number of functions utilize dual block comparison variables, as shown in Figure 31.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/ba3824e206109ce5c3de45d6cfecb313_f4172.png" alt="fig31_block_sub_cmp.png" width="840" height="120" /></p>
+<p class="centered-caption">Figure 31: A function with dual block comparison variables (microcode).</p>
+<p>The modified code will consider both of the cases.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-remaining-issues-and-improvements-ida-73-beta"></a>Remaining issues and Improvements in IDA 7.3 Beta</h2>
+<p>The modified tool was tested on <em>IDA 7.2</em> with an ANEL 5.4.1 payload dropped from a malicious document with the following hash (previously reported by <em>FireEye</em> [<a href="#ref5">5</a>]): 3d2b3c9f50ed36bef90139e6dd250f140c373664984b97a97a5a70333387d18d</p>
+<p>The current code was able to deobfuscate 92% of the obfuscated functions that we encountered. In the 8% of cases where deobfuscation failed, the failure was caused by any of the three following issues:</p>
+<ol>
+<li>The next block number guessing algorithm failed.</li>
+<li><em>IDA</em> didn’t propagate the results after defeating opaque predicate patterns.</li>
+<li>There was no method to handle a conditional jump of a dispatcher predecessor with multiple predecessors.</li>
+</ol>
+<p>The first issue has already been resolved but may be problematic in the future as the approach is not 100% accurate. The guessing algorithm will be improved every time a new issue in it is found. However, the other issues were reported to <em>Hex-Rays</em> and resulted in an<em> IDA 7.3</em> beta version to address them. In the following sections, the issues and their solutions will be discussed.</p>
+<p>Additionally, the tool also worked for the following ANEL 5.5.0 rev1 payload loader DLL published by <em>Secureworks</em> [<a href="#ref6">6</a>]: f333358850d641653ea2d6b58b921870125af1fe77268a6fdfeda3e7e0fb636d.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-correct-propagation-opaque-predicates-deobfuscation-result"></a>Correct propagation of opaque predicates deobfuscation result</h3>
+<p>The<em> IDA 7.2</em> decompiler does not propagate aliased stack slots. In the example shown in Figure 32, the variables <span class="monospace">true1</span> and <span class="monospace">true2</span> are aliased. Thus the results after breaking opaque predicates are not propagated even if an immediate value 1 is assigned to them.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/96fb9aec664e9dd1d7a283e1a77cb8c9_f4173.png" alt="fig32_opaque_predicates_propagation_failure.png" width="840" height="427" /><span class="centered-caption">Figure 32: Opaque predicates deobfuscation result propagation failure on IDA 7.2.</span></p>
+<p>The<em> IDA 7.3</em> beta decompiler resolving this issue is able to deobfuscate the function correctly, as shown in Figure 33.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/4af7c148878074458bdcdc9b1385d622_f4174.png" alt="fig33_opaque_predicates_propagation_success.png" width="780" height="185" /><span class="centered-caption">Figure 33: Opaque predicates deobfuscation result propagation success on IDA 7.3 beta.</span></p>
+<p> </p>
+<h3><a class="chapter" name="h3-handling-conditional-jump-dispatcher-predecessor-multiple-predecessors"></a>Handling a conditional jump of a dispatcher predecessor with multiple predecessors</h3>
+<p>As described previously, more complicated operations are required to handle the cases (2)-(4) of flattened blocks if the dispatcher predecessor’s tail instruction is a conditional jump. For instance, in case (3), let’s consider a dispatcher predecessor with two predecessors.</p>
+<p>Handling a <span class="monospace">goto</span> case (unconditional jump case, in Figure 34) is straightforward. The implementation searches block comparison variables in <span class="monospace">pred0</span> and <span class="monospace">pred1</span> (predecessor #0 and #1) separately then resolves the next block numbers in microcode according to the variables. After that, it changes each destination in both CFG and instruction levels while appending the codes of a dispatcher predecessor to each predecessor. As a result, the dispatcher predecessor block will be eliminated.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/92a50923e32dcab1fc1de414e1a6c582_f4175.png" alt="fig34_goto_npred_goto.png" width="840" height="371" /><span class="centered-caption"> Figure 34: Before and after goto case with two predecessors.</span></p>
+<p>However, in a conditional jump (Figure 35), the destination of the true case is replaced with resolved next block numbers, however two blocks of the dispatcher predecessor and its false case block should be copied for pred1 as a false case block number must be its conditional jump’s block number plus 1 in imicrocode (<span class="monospace">dispatcher predecessor + 1</span> in this case). Therefore, the false case block cannot be shared by the two predecessors.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/aa6df9e00d18e9760203dc83373b1281_f4176.png" alt="fig35_goto_npred_cond.png" width="840" height="364" /></p>
+<p class="centered-caption">Figure 35: Before and after conditional jump case with two predecessors.</p>
+<p>Additionally, in Figure 34, if <span class="monospace">pred0</span> or <span class="monospace">pred1</span> contains a conditional jump, the dispatcher predecessor will be copied in the same way regardless of its tail instruction because a conditional jump instruction cannot be overwritten by a <span class="monospace">goto</span> one.</p>
+<p><em>IDA 7.2</em> doesn’t permit overlapped instructions by copying a microcode block (mblock_t) as many instructions must have distinct addresses. Duplicated instructions are allowed in <em>IDA 7.3</em> by clearing the flag <span class="monospace">MBA2_NO_DUP_CALLS</span>. The latest code utilizes its flag and handles cases (2)-(4) with conditional jumps correctly.</p>
+<p>Specifically, the code makes an empty block by using the <span class="monospace">mbl_array_t::insert_block</span> API then copies instructions and other information such as flags and start/end addresses from the original block. The code also has to adjust CFGs and instructions of the blocks, passing control to the exit block whose block type is <span class="monospace">BLT_STOP</span> if CFG updates by the API usage or the unflattening code cause a conflicted situation.</p>
+<p> </p>
+<p>Workaround in control flow unflattening failure</p>
+<p>If an obfuscated function contains any of the issues described in this section, the decompiled code result may be paradoxical or lose multiple code blocks. In this case, try to use the following IDAPython command in the output window:</p>
+<p class="monospace" style="padding-left: 30px;">idc.load_and_run_plugin("HexRaysDeob", 0xdead)</p>
+<p>The command will instruct the code to execute only opaque predicates deobfuscation in the current selected function. This allows an analyst to quickly check if there are any lost blocks through control flow unflattening. For instance, Figures 36 and 37 show how the pseudocode changes in one of the failure cases.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/3ecf04127eacce946d2b5061ade08409_f4177.png" alt="fig36_lost_blocks_before.png" width="480" height="175" /> <span class="centered-caption">Figure 36: One failure case pseudocode (before).</span></p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/d59da86c543976219af8b687f73af3ad_f4178.png" alt="fig37_lost_blocks_after.png" width="500" height="684" /> <span class="centered-caption">Figure 37: One failure case pseudocode (after).</span></p>
+<p>After the check, the original result can be restored by using the following command:</p>
+<p class="monospace" style="padding-left: 30px;">idc.load_and_run_plugin("HexRaysDeob", 0xf001)</p>
+<p> </p>
+<h2><a class="chapter" name="h2-conclusion"></a>Conclusion</h2>
+<p>Compiler-level obfuscations like opaque predicates and control flow flattening are starting to be observed in the wild and will be a challenge for malware analysts and researchers. Currently, malware with these obfuscations is limited, however TAU expects not only APT10 but also other threat actors to start to use them. In order to break the techniques, we have to understand both of the obfuscation mechanisms and the disassembler tool internals before we can automate the process.</p>
+<p>TAU modified the original HexRaysDeob plug-in to make it work for APT10 ANEL obfuscations. The modified code is available publicly [<a href="#ref7">7</a>]. The summary of the modifications is:</p>
+<ul>
+<li>New patterns and data-flow tracking for opaque predicates</li>
+<li>Analysis in multiple maturity levels, considering multiple control flow dispatchers and various jump cases for control flow flattening.</li>
+</ul>
+<p>This tool works for most obfuscated functions in the tested samples. This implementation can deobfuscate approximately 92% of encountered functions. Additionally, most of the failed functions will be properly deobfuscated in <em>IDA 7.3</em>.</p>
+<p>It should be noted that the tool may not work for updated versions of ANEL if they are compiled with different options of the obfuscating compiler. Testing in multiple versions is important, so TAU is looking for newer version ANEL samples. Please reach out to our unit if you have relevant samples or need assistance in deobfuscating the codes.</p>
+<p>It’s difficult to create a generic tool that can defeat every compiler-level obfuscated binary but experience and knowledge about <em>IDA</em> microcode can be useful for additional new tools.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-acknowledgements"></a>Acknowledgements</h2>
+<p>First I acknowledge <em>Hex-Rays</em> for supporting the research patiently. Next, I appreciate Rolf Rolles for releasing the original version of HexRaysDeob. Last but not least, I would like to thank TAU’s members, especially Jared Myers and Brian Baskin, for proofreading and giving a lot of feedback.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-references"></a>References</h2>
+<p><a class=" anchor" name="ref1"></a>[1] Diplomats in Eastern Europe bitten by a Turla mosquito. ESET. <a href="https://www.welivesecurity.com/wp-content/uploads/2018/01/ESET_Turla_Mosquito.pdf" target="_blank">https://www.welivesecurity.com/wp-content/uploads/2018/01/ESET_Turla_Mosquito.pdf</a>.</p>
+<p><a class=" anchor" name="ref2"></a>[2] APT10によるANELを利用した攻撃手法とその詳細解析. Secureworks. <a href="https://jsac.jpcert.or.jp/archive/2019/pdf/JSAC2019_6_tamada_jp.pdf" target="_blank">https://jsac.jpcert.or.jp/archive/2019/pdf/JSAC2019_6_tamada_jp.pdf</a>.</p>
+<p><a class=" anchor" name="ref3"></a>[3] Rolles, R. Hex-Rays Microcode API vs. Obfuscating Compiler. <a href="http://www.hexblog.com/?p=1248" target="_blank">http://www.hexblog.com/?p=1248</a>.</p>
+<p><a class=" anchor" name="ref4"></a>[4] Rolles, R. Hex-Rays microcode API plugin for breaking an obfuscating compiler. <a href="https://github.com/RolfRolles/HexRaysDeob" target="_blank">https://github.com/RolfRolles/HexRaysDeob</a>.</p>
+<p><a class=" anchor" name="ref5"></a>[5] APT10 Targeting Japanese Corporations Using Updated TTPs. FireEye. <a href="https://www.fireeye.com/blog/threat-research/2018/09/apt10-targeting-japanese-corporations-using-updated-ttps.html" target="_blank">https://www.fireeye.com/blog/threat-research/2018/09/apt10-targeting-japanese-corporations-using-updated-ttps.html</a>.</p>
+<p><a class=" anchor" name="ref6"></a>[6] ANELで日本を標的とした攻撃活動を行う攻撃者グループ BRONZE RIVERSIDEに関する調査報告. Secureworks. <a href="https://www.secureworks.jp/resources/at-bronze-riverside-updates-anel-malware" target="_blank">https://www.secureworks.jp/resources/at-bronze-riverside-updates-anel-malware</a>.</p>
+<p><a class=" anchor" name="ref7"></a>[7] HexRaysDeob for APT10 ANEL. Carbon Black. <a href="https://github.com/carbonblack/HexRaysDeob" target="_blank">https://github.com/carbonblack/HexRaysDeob</a>.</p>
+<p> </p>
+<p> </p> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<p><a href="/uploads/pdf/magazine/2019/VB2019-Haruyama.pdf" target="_blank"><img src="/uploads/images/buttons/pdf-download-button.jpg" alt="Download PDF" width="262" height="45" /></a></p>
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=VB2019 paper: Defeating APT10 compiler-level obfuscations&url=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-defeating-apt10-compiler-level-obfuscations"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-defeating-apt10-compiler-level-obfuscations'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-defeating-apt10-compiler-level-obfuscations&title=VB2019 paper: Defeating APT10 compiler-level obfuscations"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-defeating-apt10-compiler-level-obfuscations&t=VB2019 paper: Defeating APT10 compiler-level obfuscations"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-defeating-apt10-compiler-level-obfuscations"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

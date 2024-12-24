@@ -1,0 +1,38 @@
+Enter Sandbox part 20: Intercepting Buffers, f.ex. Python code from compiled binaries
+December 21, 2018 in Batch Analysis, Sandboxing
+
+In my previous post in this series I mentioned that looking at ‘dynamic’ strings processed by the analyzed sample adds a lot of value.
+We shouldn’t really think of strings as strings. We should think of them as buffers. As such, intercepting interesting buffers is actually what makes sandboxes so useful. Strings are a big part of it, but as usual, there is more.
+In some older posts I have already demonstrated how often it is the case that knowing where to look allows us to extract very interesting buffers, and often – the actual code of the hidden program/script:
+It applies to:
+Delphi programs – hooking inline comparison functions helps with extracting info of command line arguments accepted by the program (manual analysis would be quite painful, even with IDR, or designated IDA scripts and flirt signatures; they are, admittedly, a game-changer for static analysis for these binaries, but why can’t we just extract this data with a sandbox?)Nullsoft Installers – intercepting actual Nullsoft installation scriptsPerl2Exe – POS malware is easy to analyze when you extract the perl script that _is_ the actual malware
+The very same applies to WinBatch, and many other ‘script to exe’ solutions that basically try to hide script using the good ol’ security by obscurity method.
+And anyone who looked at modern (emphasis on ‘interesting’) malware knows that most of the juicy code is hidden in memory buffers allocated temporarily during the run-time, or in tones of randomly generated garbage code, or code that is virtualized. No matter what technique is used to slow down the analysis tho, tracking these buffers is often the key for a quick determination of what sample is doing.
+Admittedly, it is relatively easy to monitor the copypasta code, but much harder for creations coming from more advanced malware authors. They actively try to make this tracking work harder. Not only they strip the MZ/PE headers, section names, sometimes use their own PE loader, some use shellcode-only code, etc. Some use hundreds of small buffers that are hard to keep a track of. And then there are noise-generators that will make analysis of event intercepted by even the best-placed hook really hard (e.g. string operations that don’t mean a thing, but may trigger various detection, or will simply be truncated due to a number of API calls). The latter is actually another anti-trick. Call an API enough times and it will stop being logged. For every clever monitoring idea, there is a way to make it less clever.
+Anyway… talking about buffers is a subject for another post. In this short text I will show how placing a good hook works very well with some Python programs that got converted to .exe. In this particular instance – I will describe my thought process for analysis of an old PyInstaller-ed sample (note, it may not apply to all versions of PyInstaller; the sample I am talking about is from ~6 years ago!).
+I remember looking at this particular sample a few years back and was scratching my head.  I knew it’s a wrapper, but was not sure how to bite it. At that time there was not that much body of knowledge available on how to analyze this sort of samples, no good static decrypters/code extractors were available (at least these I tried didn’t work), so I was looking for some quick wins using the good ol’ reversing trick – cheating.
+I quickly noticed that python27.dll was loaded early during the program execution. Looking at the function names resolved by the program via GetProcAddress I hypothesized that some of them could be monitored to retrieve the source code that I assumed was present inside the sample:
+Py_NoSiteFlag, Py_OptimizeFlag, Py_VerboseFlag, Py_Initialize, Py_Finalize, Py_IncRef, Py_DecRef, PyImport_ExecCodeModule, PyRun_SimpleString, PyString_FromStringAndSize, PySys_SetArgv, Py_SetProgramName, PyImport_ImportModule, PyImport_AddModule, PyObject_SetAttrString, PyList_New, PyList_Append, Py_BuildValue, PyFile_FromString, PyString_AsString, PyDict_GetItemString, PyErr_Clear, PyErr_Occurred, PyErr_Print, PyObject_CallObject, PyObject_CallMethod, PyThreadState_Swap, Py_NewInterpreter, Py_EndInterpreter, PyInt_AsLong, PySys_SetObject
+My attention immediately focused on the PyRun_SimpleString function
+int PyRun_SimpleString
+(const char *command)
+
+This is a simplified interface to PyRun_SimpleStringFlags()
+below, leaving the PyCompilerFlags* argument set to NULL.
+
+int PyRun_SimpleStringFlags
+(const char *command, PyCompilerFlags *flags)
+
+Executes the Python source code from command in the __main__
+module according to the flags argument.
+[...]
+I hypothesized a.k.a. hoped that monitoring it would get me the python code executed by the program. I added a quick hook for this function to my program, and… lo-and-behold, I immediately was able to see the results:
+PyRun_SimpleString: import sysPyRun_SimpleString: del sys.path[:]PyRun_SimpleString: sys.path.append(r”<path>“)PyRun_SimpleString: sys.path.append(r”<other path>“)PyRun_SimpleString: # Copyright (C) — <some bootstrap pyinstaller code>[…]PyRun_SimpleString: from Crypto.Cipher import AES;from base64 import b64decode as hAtayw;import os;import base64;import ctypes;from Crypto.Cipher import AES as Ahquyeexec(hAtayw(“[…]the actual encoded malicious code followed! from there it was easy-peasy…
+This simple hook served me many times since, and I was able to quickly analyze many samples that were ‘protected’ this way.
+Sometimes the simplest things work.
+Monitoring crucial functions is not one of these things, unfortunately, because you need to first discover what these crucial functions are.
+I hope this post and other in this series help…
+
+Comments Off on Enter Sandbox part 20: Intercepting Buffers, f.ex. Python code from compiled binaries
+
+Comments are closed.

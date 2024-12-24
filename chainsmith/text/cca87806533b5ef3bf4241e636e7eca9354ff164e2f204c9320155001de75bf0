@@ -1,0 +1,91 @@
+Hiding in plain sight
+2011-04-01
+
+Raul Alvarez
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+Raul Alvarez takes a look at a lesser known stealth technology - the alternate data stream.
+Copyright © 2011 Virus Bulletin
+
+Malware uses various different encryption techniques, compression algorithms and stealth technologies to avoid detection by anti-virus scanners. Stealth technologies like rootkits are often used to hide malicious components from anti-virus scanners.
+In this article we will look at another, lesser known, stealth technology. The alternate data stream (ADS) is an old Windows trick that can easily be exploited by malware authors to hide their files.
+In this article, we will look at the early use of ADS in a proof-of-concept virus (StreamC), at how a folder can be infected (Rustock), and at ADS in use in the wild today (Joleee). We will also discuss the future of ADS in malware.
+
+Part I: Stream of concept
+Windows introduced ADS with the inception of NTFS in Windows NT. The NTFS file system is capable of supporting multiple streams of data: one file that is visible to the user, and several other files behind it. But one of the drawbacks is that we can’t transfer such a file to a non-NTFS storage device (such as a USB flash drive) unless it is formatted as NTFS; attempting to move a file containing ADS to non-NTFS storage will result in only the primary file being copied, and the ADS will vanish into thin air.
+
+The concept
+Around the year 2000, a proof-of-concept virus – let’s call it StreamC – was created with ADS, and at that time it only infected files in Windows 2000. It was evident from the early call to the GetVersion API, and a check on the AL register of whether the value is equal to 5, that the author’s original intention was to infect files in Windows 2000.
+Now, however, Windows XP, Windows XP 64-Bit Edition, Windows Server 2003 and Windows Server 2003 R2 can also be infected, since their version number also starts with 5.
+
+Infection routine
+Once it has ascertained that the OS can be infected, StreamC uses the FindFirstFileA and FindNextFileA APIs to search in the current directory for executable files (*.exe) to infect.
+If, for instance, calc.exe is found, StreamC checks if the file is compressed by checking its attributes for the value 0x800 (FILE_ATTRIBUTE_COMPRESSED). The malware will skip further processing of calc.exe if it is compressed, but otherwise it will proceed to compress the file using NTFS file compression via a call to the DeviceIoControl API. Using the FSCTL_SET_COMPRESSION(0x9C040) IoControlCode and COMPRESSION_FORMAT_DEFAULT value, calc.exe is compressed in a default NTFS compression format. Afterwards, calc.exe is copied to a temporary file.
+While calc.exe is stored away securely in a temporary file, StreamC creates a copy of itself using the filename ‘calc.exe’. Afterwards, the temporary file is placed into the malware’s memory space and copied as ADS – the calc.exe:STR stream contains the original contents of calc.exe.
+Note that the ADS naming convention always uses a colon (:) to separate the names of the primary file and the alternate data stream:
+<primary file name>:<alternate data stream name>
+For example, calc.exe:STR.
+Only two APIs are needed to create an alternate data stream: CreateFileA and WriteFile. After infecting all .exe files in the current folder, StreamC will display a message box (see Figure 1).
+Figure 1. Message box displayed by StreamC.
+
+Proof of companionship
+StreamC can be categorized as a companion virus; in the old DOS days, companion viruses created a copy of the malware using a similar name to the existing executable file. For example, calc.com would be created as a companion virus for calc.exe, since .com files are executed before .exe files in the DOS environment. This is done simply by making a copy of the virus with a .com extension.
+But StreamC does not create a .com version of itself; instead, it uses ADS technology to hide the original .exe file – StreamC is disguised as the original legitimate application.
+
+Executing the original calc.exe
+When an infected calc.exe is executed, StreamC’s infection routine is performed first, after which the original executable file will be run as a process. This is done by using, for example, calc.exe:STR as the ApplicationName of the CreateProcessA API.
+
+Part II: Hiding the hidden
+A variant of Rustock attempts to use a combination of a rootkit and ADS in an attempt to hide its code.
+
+ADS in a folder
+Given a file to infect, StreamC has shown us how simple it is to create an alternate data stream. A walk through Rustock’s code will explain how to create an ADS in a folder.
+After a series of decryption routines, Rustock checks if the operating system is NT by looking at its version number – the same check as performed by StreamC. Then, Rustock checks for an event synchronization object, to avoid re-infection. If the event {DC5E72A0-6D41-47e4-C56D-024587F4523B} is not found, it proceeds to check for the existence of an atom with the same event string name, otherwise, it creates one using the GlobalFindAtomA and GlobalAddAtomA APIs (see Figure 2). (An atom is a 16-bit integer used to access the string in the atom table, a list of global strings.)
+Figure 2. Strings used by Rustock for infection checking.
+To create an ADS in a folder, Rustock uses the GetSystemDirectoryA API to generate the system folder’s path. ‘:lzx32.sys’ is now added to the folder’s name, followed by a call to the _lcreat API – to create, for example, ‘c:\windows\system32: lzx32.sys’ – and a call to the _lwrite API to write the malware code to the stream (see Figure 3).
+Figure 3. Creating an ADS in a %system32% folder.
+In its simplicity, Rustock uses _lcreat and _lwrite to make a stream in a folder, but hiding using ADS is not enough. Rustock knows that it can easily be detected; hiding the code deeper using a rootkit is the next feasible step. By calling the OpenSCManagerA API, Rustock is now ready to launch its code as a service; a call to the CreateServiceA API with SERVICE_KERNEL_DRIVER(0x00000001) ServiceType parameter ‘c:\windows\system32: lzx32.sys’ is now launched as a device driver (see Figure 4). Finally, a call to StartServiceA activates the driver.
+Figure 4. CreateServiceA call for the rootkit functionality.
+The main rootkit functionality is to hide ‘c:\windows\system32: lzx32.sys’. By launching ‘lzx32.sys’ as a service, Rustock secures a dual layer of stealth technology for its code; an ADS and a rootkit, not to mention it is a stream in a folder.
+
+Part III: a Joleee good fellow
+Is ADS still used by malware today? Yes, a prevalent worm known as Joleee is still in the wild at the time of writing; a recent variant of Joleee shows signs of ADS usage. We will explore how this malware survives in the wild and how it uses an old-style hiding capability.
+
+Simply ADS
+Joleee uses a Bredolab-style anti-debugging trick and employs an encryption algorithm to hide its API names. After decrypting and resolving the first batch of APIs, Joleee sets up some registry settings and then proceeds to create an ADS version of itself.
+To create the ADS, StreamC and Rustock simply used a string for the filename, but for Joleee there is a considerable amount of preparation just to produce the filename itself.
+First, it gets the path for the Windows directory using the GetWindowsDirectoryA API and stores the path, character by character, in its memory space. Next, it adds the string ‘explorer.exe’ manually, four characters at a time, followed by the strings ‘:userini’ and ‘.exe’. By allocating a total of 631 bytes of code, Joleee generates the ADS name ‘C:\windows\explorer.exe:userini.exe’ and creates it using the CreateFileA API (see Figure 5).
+Figure 5. The call to the CreateFileA API to create ‘C:\windows\explorer.exe:userini.exe’.
+After successfully creating ‘C:\windows\explorer.exe:userini.exe’, Joleee copies the content of the encrypted version of itself to its memory space – using the VirtualAlloc and ReadFile APIs – and writes the malcode to the newly opened ADS file using WriteFile.
+Once the ADS version of Joleee is attached to explorer.exe, the malware continues with the rest of its malicious actions: it drops a copy of its encrypted version in the %system% folder and will attempt to delete itself from the current directory. It then proceeds to create a series of threads: for creating registry start-ups (see Figure 6), for downloading files, and for accessing SMTP domains.
+Figure 6. Some registry start-ups added by Joleee.
+
+Survival in the wild
+With a combination of spamming, decryption, anti-debugging tricks, and a touch of ADS, Joleee has all the ingredients needed to survive in the wild for long enough to add more tricks in future releases.
+
+Part IV: future of ADS malware
+You might think that ADS is an old technology and therefore not really a threat. Think again. We haven’t seen the end of exploits using alternate data streams.
+The following are some common examples of ADS in everyday computing that we might not be aware of:
+:Zone.Identifier. This is a stream generated by Internet Explorer and Outlook when saving files to the local disk from different security zones. In other words, whenever we download a file from the Internet, the Zone.Identifier ADS is added to the file.
+Format: <downloaded filename>:Zone.Identifier
+The usual content is:
+[ZoneTransfer]
+ZoneId=3
+:encryptable. This is an ADS attached to the Thumbs.db file, created when the Thumbnails view is selected in Windows Explorer. The file size is usually 0 (if it is not 0 this may be a sign that it has some malicious content).
+Format: Thumbs.db:encryptable
+:favicon. Whenever you add a link to your ‘Favorites’ in Internet Explorer and the website has an icon, the icon will be saved as :favicon.
+Format: <linkname>.ulr:favicon
+‘:Zone.Identifier’, ‘:encryptable’ and ‘:favicon’ are normal alternate data streams that reside on our computers. We don’t usually notice their existence because they are harmless and mostly used simply to identify the base file to which they are attached. But, like any other files, it is possible for them to contain malicious code, dangerous URLs, encrypted commands, or updates for existing malware.
+
+Conclusion
+ADS may be an old trick, easy to use, and easy to detect, but it will remain in existence for a long while and it will only be a matter of time before malware writers start to use ADS in new malicious ways; we must remain vigilant. A great way to start looking for ADS in your computer is to use the Streams tool from the Microsoft SysInternals site [1]. Happy hunting!
+
+Bibliography
+[1] Streams. http://technet.microsoft.com/en-us/sysinternals/bb897440.
+[2] File Streams. http://msdn.microsoft.com/en-us/library/aa364404(v=vs.85).aspx.

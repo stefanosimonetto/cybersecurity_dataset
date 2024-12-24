@@ -1,0 +1,56 @@
+Unpacking yet another .NET crypter
+In this post, we will study one of the malicious executables recently delivered by RIG Exploit Kit. It is packed in a .NET cryptor and includes similar features as one that we described some time ago (here). Similar packers are widespread and commonly used to protect various malware samples, that’s why it is worth to know their common building blocks and methods of defeating them.
+Analyzed sample
+
+388548d34807fee28dede8b411063927 – original sample
+
+3a5cc47413cd815b44a0329100e552da – loader
+07a08cf5211665dfcd090e7bab6c8608 – payload (Neurevt Bot)
+
+The interesting fact about this sample is that it comes signed:
+
+Unpacking
+The executable is written in .NET so we can decompile it using some of the popular tools made for this purpose (.NET Reflector, dnSpy, etc).
+
+As we can see, the code is obfuscated – functions have garbled, meaningless names. Also the code inside contains lot of junk instructions and is difficult to follow. Even applying a known tool for .NET deobfuscation (de4dot) didn’t helped much.
+
+Anyway, let’s start by finding the possible payload that is going to be unpacked.
+
+Looking at the resources we can see one element that looks like a distorted PE file:
+
+It is loaded and processed by the following function:
+
+Using dnSpy we can set breakpoint at the end of this function, run it and dump the output buffer.
+
+The dumped binary turned out to be another PE file written in .NET (3a5cc47413cd815b44a0329100e552da). However, it is not the malicious payload that we are looking for, but just another element of the crypter – a loader. It unpacks the real payload and injects it in another binary using RunPE technique (also known as process hollowing).
+
+The loader is not independent – it relies on resources from the previous file. We can see from the code that the resource “varitoyp” contains a set of parameters. It is decrypted by a function DeCrypt, using a word “params” as the decryption key:
+
+The real payload is hidden inside of another encrypted resource. The name of the file, as well as the decryption key is included in the parameters that are decrypted in the previous step:
+
+The payload can be injected into one of the predefined executables: vbc.exe, RegAsm.exe, AppLaunch.exe, notepad.exe – or, eventually, its own process. The choice is made based on one of the parameters from the encrypted set.
+The decryption algorithm is custom XOR based:
+
+Using a copy of this function we can easily decrypt the dumped resources from the initial binary. We were able to reconstruct a sample decoder, you can find the python script here: msil_dec.py.
+Decrypting parameters:
+./msil_dec.py --file varitoyp --key params
+0|0|0|0|0|0|0|0|0|0|10000|0|0|0|0|0|0|0|0|0|0|0|LgunkLBEWL7f5asOISuri|0|0|0|0|0|0|nTEVmryG9b8grLtmS06bryl0|ZxjmzvjUYrFNhuAOygWpbtsxcVZ|6|0|
+
+The parameters are in the form of a string, containing values separated by a delimiter. Parameters 30 and 31 contains the name of the resource hiding the encrypted payload and the key.
+nTEVmryG9b8grLtmS06bryl0, //binary
+ZxjmzvjUYrFNhuAOygWpbtsxcVZ, //key
+
+The encrypted executable is stored in the resources of the initial binary:
+
+So is the key:
+
+Decrypting:
+./msil_dec.py --file nTEVmryG9b8grLtmS06bryl0 --key ZxjmzvjUYrFNhuAOygWpbtsxcVZ > payload.exe
+
+As a result we get the final payload (07a08cf5211665dfcd090e7bab6c8608) – it is a Neurevt Bot, used i.e. for credential stealing and DDoS attacks (read more here).
+
+Conclusion
+This cryptor probably shares some code with the previous described one – it might even be the work of the same authors. Again, we see a loader with another PE file packed inside. Also, again there is an array of parameters. Finally, the list of the applications where the payload is injected is exactly the same in both cases. In the previous cryptor, a BMP file was used to hide encrypted data (configuration and the final payload). This time authors gave up applying any steganographic tricks.
+After almost a year from the previous release, we cannot say that the product evolved to something more complex. Instead – we see the same ideas, however mutated and implemented differently.
+
+This was a guest post written by Hasherezade, an independent researcher and programmer with a strong interest in InfoSec. She loves going in details about malware and sharing threat information with the community. Check her out on Twitter @hasherezade and her personal blog: https://hshrzd.wordpress.com.

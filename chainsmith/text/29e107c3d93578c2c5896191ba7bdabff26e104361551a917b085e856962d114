@@ -1,0 +1,17 @@
+IPFW Rules on VPN CFG
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+June 29, 2005
+
+I already published the IPFW rules I'm using to defend my sensors, so I figured I would add the IPFW rules I'm using on my VPN concentrator / firewall / gateway (CFG).  I relied on the FreeBSD Handbook examples heavily, as the placement of certain sections is crucial when the CFG is also NAT box.  In these rules, interface xl0 is the interface facing the "Internet" while fxp0 faces a private internal network.  Host bourque is a remote sensor with IP 192.168.2.7.  Since this entire setup exists in a lab, the 192.168.2.0/24 addresses are considered "public" addresses.#!/bin/shpub="xl0"pri="fxp0"cmd="ipfw -q add "ks="keep-state"skip="skipto 500"vpncfg_ip="192.168.2.7"bourque_ip="192.168.2.10"nameserver="192.168.2.1"ok_tcp_out="22,80"ok_udp_out="53,123"ipfw -q -f flush$cmd 002 allow all from any to any via $pri$cmd 003 allow all from any to any via lo0$cmd 100 divert natd ip from any to any in via $pub$cmd 101 check-state# Authorized outbound traffic$cmd 120 $skip udp from any to any $ok_udp_out out via $pub $ks$cmd 121 $skip tcp from any to any $ok_tcp_out out via $pub setup $ks$cmd 122 $skip icmp from any to any out via $pub $ks# ISAKMP$cmd 123 allow udp from me to $bourque_ip 500 out via $pub $ks# IPSec ESP$cmd 124 allow esp from me to $bourque_ip out via $pub $ks# ICMP$cmd 125 allow icmp from me to any out via $pub $ks# Deny all inbound traffic from non-routable reserved address spaces#$cmd 300 deny all from 192.168.0.0/16  to any in via $pub  #RFC 1918 private IP#$cmd 301 deny all from 172.16.0.0/12   to any in via $pub  #RFC 1918 private IP#$cmd 302 deny all from 10.0.0.0/8      to any in via $pub  #RFC 1918 private IP#$cmd 303 deny all from 127.0.0.0/8     to any in via $pub  #loopback#$cmd 304 deny all from 0.0.0.0/8       to any in via $pub  #loopback#$cmd 305 deny all from 169.254.0.0/16  to any in via $pub  #DHCP auto-config#$cmd 306 deny all from 192.0.2.0/24    to any in via $pub  #reserved for docs#$cmd 308 deny all from 224.0.0.0/3     to any in via $pub  #Class D & E multicast# Authorized inbound traffic$cmd 400 allow tcp from 192.168.2.5 to me 22 in via $pub setup $ks# ISAKMP$cmd 401 allow udp from $bourque_ip any to me 500 in via $pub $ks# IPSec ESP$cmd 402 allow esp from $bourque_ip any to me in via $pub $ks# ICMP$cmd 403 allow icmp from $bourque_ip any to me in via $pub $ks$cmd 450 deny log ip from any to any# This is skipto location for outbound stateful rules$cmd 500 divert natd ip from any to any out via $pub$cmd 510 allow ip from any to anyFor now I've disabled the RFC 1918 address blocking section, as it's not an issue where this VPN CFG is located.

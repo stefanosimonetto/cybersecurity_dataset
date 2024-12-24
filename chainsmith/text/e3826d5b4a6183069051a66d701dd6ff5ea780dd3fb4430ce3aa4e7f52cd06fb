@@ -1,0 +1,65 @@
+From a Site Compromise to Full Root Access – Bad Server Management – Part III
+
+When an attacker manages to compromise and get access to a website, they won’t stop there. They will aim to gain full root (admin) access to the entire server. If there are more websites hosted on the server being attacked, It is likely they will attempt to compromise every single one of them.
+How can an attacker escalate their privileges? How can they go from FTP-only access to getting root on the server? In this series of articles we will show some techniques that attackers are using to go from confined FTP/web access, to full root level access on a server.
+
+Part I – Symlinks to Root
+Part II – Local Root Exploits
+Part III – Bad Account and password management
+
+In the previous articles of this series, we talked about symlinking to root and using local exploits to increase their privileges. However, attackers often don’t need this level of work when the server is not well managed and/or properly secured. They can leverage a quick path to root (admin) with little trouble.
+
+1- Bad Sudo Settings
+Sudo is certainly one of the most misused security tools ever. Its original intent was to allow granular access and permit one user to run commands as root, without giving that user full root access. However, this granular access idea actually means “running anything they want as root” on most incorrectly configured servers.
+That’s what happens when the user has “ALL” access on the sudoers file, allowing the user to run any command as root. Here is what it looks like in the /etc/sudoers:
+
+dcid	ALL=(ALL) 	ALL
+
+In the above configuration, it means the user “dcid” can run any command as root, as long as I know the password of the user dcid. So if an attacker managed to compromise the password of dcid, they already have root. But that’s not too bad, since the attacker still needs to know the password for dcid. What is worse and even more common is giving “ALL” access on sudo without the need of a password:
+
+apache	ALL=(ALL)	NOPASSWD: ALL
+
+In this case, the Apache user can run any command as root without the need of a password. So if there is any vulnerability on the web server or web application that allows the attackers to get limited access, they can easily become root by just typing:
+
+$ sudo su -
+# id
+uid=0(root) gid=0(root)
+
+I know some people will ask who does that? Who gives Apache full sudo access to the apache web server user? My response is that you would be surprised. Lots of those server management tools actually do that to control the server via the web.
+2- Bad Permissions
+Permissions are another serious problem that are often overlooked. To illustrate, I will show an example of a server that I was just working on. It had the following crontab entry for root:
+
+7,22,37,52	*	*	*	*	/usr/local/psa/admin/sbin/backupmng >/dev/null 2>&1
+
+This is just the normal backup script used by Plesk. However, the permission of the file was not restrictive enough:
+
+# ls -la /usr/local/psa/admin/sbin/backupmng
+-rwxrwxrwx 1 root root 0 Feb 23 14:16 /usr/local/psa/admin/sbin/backupmng
+
+In it’s default configuration it allows any user to edit the file. An attacker would be able to modify it, which would then be executed as root via cron. And it doesn’t just stop there.
+Any configuration file or binary that is executed by root and doesn’t have the proper permissions can be used as well.
+Any file owned by root with write permission to others is a big red flag. Any file that root executes that is modified by others is another big red flag.
+3- Duplicated passwords
+Misuse of passwords is not that common, but does happen. You see this with some hosting companies that enforce the database password to be the same as the FTP/SSH one. This allows the attackers to look at files like wp-config.php for WordPress or configuration.php for Joomla and extract the login password for the user.
+What is more useful for the attackers is when the user running the db is the same as the “root” user:
+
+# cat public_html/wp-config.php |grep -E "DB_USER|DB_PASS"
+define('DB_USER', 'root');
+define('DB_PASSWORD', '6D1X...');
+
+This allows the attackers to just use “su” or SSH using these credentials. This type of issue is becoming less frequent, but we still see it from time to time.
+4- Bad Cron Jobs
+We mentioned cron jobs with bad permissions a bit earlier. But that’s just the tip of the iceberg in terms of bad permissions. Where we see most of the issues is with web applications that require you to configure your cron jobs. Unfortunately, most users do this as root. For example, with Magento they ask that you add the following to your crontab:
+
+*/5 * * * *  /bin/sh /absolute/path/to/magento/cron.sh
+
+However, most users do that incorrectly as root, so an attacker can just modify the cron.sh and run any command as root. That’s not limited to Magento only, we see that often on WordPress and Drupal as well.
+The Drupal team offers the solution to this problem, even if ignored by most users. If you take this approach and use drupal.sh to call cron.php, it is probably best not to use the root user to run the cron job. A non-privileged user account, or the Apache account user, for example http-service or www-data, is a better choice. To do so, call crontab -e when logged in as a non-privileged user, or for the Apache account on a Debian server, for example, you can add a user parameter:
+
+sudo crontab -e -u www-data
+
+The downside to this is that any URL’s generated by cron jobs using this method will not be properly formed, starting with “http://default/”.
+Conclusion
+I could easily go on and on listing numerous configuration mistakes on web-servers that could easily be exploited by a low-privileged attacker to get root. But the ones outlined above, although bizarre, are some of the most prevalent issues we are seeing these days contributing to attacks.
+Some of those auditing issues can be detected by an HIDS like OSSEC, some do require manual intervention to make sure nothing is missed. For web servers, I would recommend looking very closely at least at the permissions of the /etc/httpd directory.
+If you find yourself a bit over your head and would like professional security support to help better manage your web server, you have the option to contact us and inquire about our Managed Server Security Program (MSSP). It’s the latest vertical we have introduced designed to address the many web server issues we see every day and is focused on the VPS / Dedicated clients. You can contact us for help here.

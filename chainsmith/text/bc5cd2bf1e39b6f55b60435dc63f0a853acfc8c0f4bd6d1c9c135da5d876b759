@@ -1,0 +1,71 @@
+Server Security: Indicators of Compromised Behavior with OSSEC
+
+We leverage OSSEC extensively here at Sucuri to help monitor and protect our servers. If you are not familiar with OSSEC, it is an open source Intrusion Detection System (HIDS); with a powerful correlation and analysis engine that integrates log analysis, file integrity monitoring, rootkit detection, real-time alerting, and active response.
+It provides complete coverage if you are looking for an endpoint (server) security solution. If you have not used OSSEC before, I recommend reading my guide to get started: http://dcid.me/texts/my-ossec-setup-manual.html
+Note that OSSEC requires root access to your servers and is meant for network / server administrators with Linux skills.
+Indicators of Compromise (IoC)
+The core of most security products nowadays rely on being able to identify and predict how an attacker will behave. This includes most antivirus systems, Intrusion Detection Systems (IDS), Web Application Firewalls (WAF) and log management tools. The companies behind these technologies invest heavily in research and spend countless resources, both in money and people, analyzing the latest malware trends, attack vectors and vulnerabilities.
+It works well, but what if we could improve upon that? Think about it, we can never really predict, nor control how an attacker will behave anyway. And we can never really know all the tools and techniques that he has available. What if our security tools have a false negative and a zero-day slips by? How do you detect the compromise and act upon it?
+Indicators of Compromised (IoC) Behavior
+Attackers are always evolving and changing their tactics and security products are never 100% accurate on detecting malicious behavior.
+However, there is an additional data point that can be monitored – your own users and servers, specifically how they interact with each other. Not looking for malicious behavior, but finding anomalies in normal behavior that may signal a compromise.
+Over a period of time, the same person (or server) will start to display patterns that remain consistent and are measurable. This allows us to move beyond focusing on malicious behavior and and instead measure the patterns created to better understand what users are doing.
+Just think of most security tools we employ on our servers. Traditionally, they would focus on failed login attempts, for example, on blocking brute force attempts or blocking an IP after a possible abuse is detected. What if we stopped focusing on failed attempts and focused on successful ones? What if we ignored the 403’s (forbidden) errors on HTTP and focused on the 200 (success) requests?
+Looking at Indicators of Compromised Behavior with OSSEC
+I obviously have an affinity for logs going back to 2002. It’s why I built OSSEC in the first place. I have always been a firm believer that logs are probably the most useful security feed that you can get out of your network. It’s how your servers and applications communicate with you. The issue is noise. They are generally so chatty that most people just ignore them. Those that do take the time to look at them, focus on errors and failures, ignoring successful events.
+OSSEC logs can be parsed and analyzed, while filtering the noise with some tuning for your specific environment. As of late, I have made more  updates to my OSSEC fork that I hope you find useful. It’s designed for system administrators looking to evolve their security stance and increase their visibility.
+One of the areas we target is the ability to better correlate normal successful events that would bypass your analysis and try to identify changes in user behavior that might be a sign of a compromise. It is still a work in progress, and I look forward to your thoughts and recommendations.
+These are now available on my fork:
+https://github.com/dcid/ossec-hids or directly from: http://dcid.me/ossec.html
+And included by default in the rules. If you install OSSEC from there, you will get them by default, along with these new features:
+http://dcid.me/ossec-packages/CHANGELOG.txt
+Let’s look at a few examples of behavior change that might indicate a compromise:
+1- Successful logins for the same user from different countries via SSH.
+It is very hard for someone to be in two places at the same time. There are obviously proxies that can allow for this physics marvel, but they do not happen often, especially not for your average employee.
+By default, OSSEC will now alert if it sees logins for the same user from different countries/cities. This is the new rule for SSH:
+<rule id="5739" level="6" frequency="1" timeframe="28800">
+<if_matched_sid>5715</if_matched_sid>
+<same_user />
+<different_geoip />
+<description>Multiple successful logins from same user and different geoip.</description>
+<group>behavior_anomaly,</group>
+</rule>
+It uses the same_user rule option, along with different_geoip and applies this filter to every SSH successful login. When we applied OSSEC to a known compromised server we were investigating, we got an alert right away from this rule when two logins from user1 from different countries:
+2016 Mar 11 12:47:26 /var/log/secure
+Rule: 5739 (level 6) -> 'Multiple successful logins from same user and different geoip.'
+Src IP: 62.75.xx.xx / DEU
+User: user1
+Mar 11 12:47:02 login sshd[17599]: Accepted password for user1 from 62.75.xx.xx port 54395 ssh2
+An event that would have been ignored if we did not have that rule in place. And that was exactly the initial compromise point. The user had a weak password that was reused across different services and someone managed to log in as the user. Simple, but powerful.
+2- Successful logins for the same user from different countries via WordPress.
+The rule for WordPress is very similar to the SSH one and the results are pretty much the same. I just wanted to add it here, since WordPress is growing in usage in the Enterprise and security teams are a bit lost on how to monitor and secure it. But you can see the same results here when a compromised user password was used to login.
+2016 Feb 16 19:24:43 /var/log/wordpress.log
+Rule: 9552 (level 6) -> 'Multiple successful logins from same user and different geoip.'
+Src IP: 18.47.xx / USA / Massachusetts
+User: user1
+2016-02-16 19:24:42 WordPressAudit site.com user1 : Notice: 18.47.xx; User authentication succeeded: user1
+If you are not sure how to get visibility on WordPress, we recommend reading: https://blog.sucuri.net/2016/02/server-security-adding-wordpress-visibility-into-ossec.html
+3- Successful logins from same user and different browsers.
+Most users have a browser preference and use it for most of their online activities. We use it internally at Sucuri as an additional trigger to alert if a user logged in with a different browser than what he is used to.
+Can be a bit noisy and requires the logging of the user agent, but very interesting to have enabled.
+4- Successful logins on odd times.
+OSSEC has a powerful option to trigger events only on during certain times in the day. If most of your company works 8-5, you can easily add a trigger to alert when a successful login occurs outside of the defined time-frame:
+<rule id="17101" level="6">
+<if_group>authentication_success</if_group>
+<time>7 pm - 6:30 am</time>
+<description>Successful login during non-business hours.</description>
+<group>behavior_anomaly,</group>
+</rule>
+So powerful and so under utilized. You can expand that to also trigger events during the weekend or a combination.
+5- Successful logins from other countries
+That’s another easy one. If your company is based in the USA, for example, any successful logins outside of the USA should get someones attention. This simple rule allows you to alert on any non-USA login:
+<rule id="100101" level="3">
+<if_group>authentication_success</if_group>
+<srcgeoip>!USA</srcgeoip>
+<description>Successful login from outside of the USA.</description>
+<group>behavior_anomaly,</group>
+</rule>
+And these are just some examples. We will also be pushing modifications to FTS (first time seen) to properly alert on changes on authentication type via SSH and FTS activity based on GEOIP. Would love more ideas on what else we could be looking for.
+Please give it a try and let us know how it goes. Note that for this feature to work, you have to use our fork of OSSEC from here:
+http://dcid.me/ossec
+You can download the latest version there directly, or get it from our repository.

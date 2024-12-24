@@ -1,0 +1,165 @@
+Data tainting for malware analysis – part three
+2010-02-01
+
+Florent Marceau
+CERT-LEXSI
+,
+France
+Editor:
+Helen
+
+Martin
+Abstract
+In this three-part series Florent Marceau studies the use and advantages of full virtualization in the security field. The third and final part looks at the implementation of the technology.
+Copyright © 2010 Virus Bulletin
+
+In this three-part series Florent Marceau studies the use and advantages of full virtualization in the security field. Following an introduction to full virtualization (see VB, September 2009, p.6), and a look at the limitations of the technology (see VB, November 2009, p.8), the third and final part looks at the implementation of the technology.
+
+Implementation
+Our mechanism of data tainting as described previously will be the engine of our project. Every byte of RAM will have a tag in the taintmap. As we have seen previously, each byte received from the network (in order to characterize the configuration file) will be marked and propagated. This propagation is guaranteed in RAM as well as on the hard drive. Every malware sample we wish to analyse will be loaded from a virtual CD; therefore we will taint any data coming from the CD in order to mark the binary image to be analysed. This way, the code and the binary data of the malware are tainted at the outset. When the binary unpacks itself, the tainted code of the unpacker will read its similarly tainted data in order to generate the viral code – which will also be tainted thanks to the propagation mechanism.
+
+Taint mark differentiation
+Since we use a tag size of one byte, we can use eight different bit flags. These flags will be used to differentiate between the tainted data that originates from the network and the data loaded from the disk or the CD.
+This simple scheme allows us to distinguish network data from the data that is already present in the system. However, when data is manipulated by the malware code, it may be combined with the hard drive tainted data. Which flag should persist then? We need to define a persistence policy for tags. If data received from the network is saved immediately to the disk for further processing, it must keep its network taint mark and not that of the hard drive. Meanwhile, a tainted piece of hard drive data will never acquire the network tag (indeed, for our purposes, outgoing traffic is of no interest).
+
+Data dumping
+The final part of our implementation is the dumper code. The goal here is to capture all data from the network that has been manipulated by a piece of tainted code (regardless of the code’s mark of origin). This allows us to characterize an unciphered configuration file.
+The dumping code must reside in a place where the data flow can easily be controlled. We implement it as MMU hooks in order to control all reading and writing exchanges between the RAM and the CPU. These hooks must be placed and executed just before the legitimate operation; in this way, in the case of a write operation, we can check the data that will be written as well as the data that will be overwritten. For performance reasons, this code must be optimized (written in inline assembly) since its execution will involve a virtual RAM access latency that will have a heavy impact.
+We introduce here the use of another bit of the tag to distinguish between tainted data that has been manipulated and other, intact tainted data. We define manipulated data as any tainted data written in RAM from a piece of tainted code. The manipulated bit is not like the other flags that are used to distinguish the data’s origin (network or drive). The only purpose of this bit is to trigger the dumping mechanism. When a piece of tainted data is written from a given piece of tainted code, this data will be marked as manipulated. Subsequently, any access of this manipulated data area (reading or writing) will trigger the dumping mechanism. This will dump the data area in an output file and then delete the manipulated bit (but not the origin marker). Thus, the manipulated bit is not persistent (and is not propagated) in order to minimize redundancy in our dump file. This also allows the dump size to be limited and ensures that each layer of decryption and decompression will be captured.
+To summarize, in RAM we now have the original tainted data (from the network or from the disk), and among this data, some has been manipulated by tainted code and is marked as such.
+Now we only have to make the dumping logic as exhaustive as possible. For this, we chose the following implementation:
+On a write access (CPU -> RAM) (an overwrite case) from a non-tainted piece of code (such as a part of the OS): if the target address in RAM is tainted and has been manipulated, we capture it in a ‘net_dump’ file if it consists of network data, and otherwise we capture it in an ‘other_dump’ file.
+On a write access (CPU -> RAM) (an overwrite case) from a tainted piece of code (such as the malicious code): if the data to be written in RAM is tainted, we add the manipulated bit to its flag. For the data to be overwritten, as previously, if the target address in RAM is tainted and has been manipulated, we capture it in a ‘net_dump’ file if it consists of network data, and otherwise we capture it in an ‘other_dump’ file.
+On a read access (RAM -> CPU): if the data to be read in RAM is tainted and has been manipulated, we capture it in a ‘net_dump’ file if it consists of network data, and otherwise we capture it in an ‘other_dump’ file.
+In order to improve the efficiency and readability of the dump, the dumping mechanism will dump the data and all other tainted data that are contiguous with it. For this purpose, the dump mechanism scans the memory from the targeted addresses to the lower addresses of the tainted data, thereby determining the lower boundary of the dump area. The upper boundary will be determined in the same way so that we know the exact dumping scope.
+Figure 1 illustrates the dumping process.
+Figure 1. Within RAM we have tainted data that originates from the network or from the different volumes. An operation from a piece of tainted code (1), such as reading network data (2) in order to apply some arithmetic processing to it, leaves this data tainted on registers. When storing it in RAM, the dumper (3) adds the ‘modified’ mark (4). Later, whatever the origin of the operation (5), any accessing of the previous data (read / write) (6) triggers the dumper mechanism to evaluate the size of the modified tainted data (7), and then remove this modified mark to finally dump the data in its output file (8).
+
+Limitations of the dumper mechanism
+The dumping mechanism is not perfect, and is not our ideal choice, but the mechanism has to be as effective as possible for a maximum number of samples (an empirical approach). Let’s consider a decryption algorithm such as:
+( ) lea esi, [data]
+( ) mov ecx, SIZE
+( ) decode:
+( ) mov eax,[esi]
+( ) xor eax,0xd3adc0de
+( ) mov [esi],eax
+(1) add esi,3
+( ) loop decode
+This simple code will decode the data with a xor opcode using the key 0xd3adc0de. The problem here lies in (1) – at each iteration the different decoded zones overlap themselves. With the previous implementation of our dumping mechanism, during the first iteration, the first three bytes of the string would be dumped in clear text, with the fourth byte not yet decoded. The fourth byte would be decoded and dumped again only at the second iteration. The results here would then be the dump of the clear text string, yet every three bytes the text would be discontinued by a garbage data byte. Other examples are possible; there is no absolute solution here, we just have to find the one that will be the most effective.
+
+Empirical observations
+This project was put into practice two years ago. Regular monitoring of valid codes clearly shows that our main obstacles are the use of particularly heavy obfuscation and new virtual machine detection techniques. If we consider the global evolution of banker trojans we can conclude that there has been a great advancement in the malicious techniques used. Many have embedded ‘kernel rootkit’ capabilities, which won’t impact our solution, but the use of increasingly sophisticated packers and complex encryption algorithms may become a problem. We rarely find malware with anti-tainting capabilities, although anti-VM methods have become common. Thus, an implementation of data tainting that is limited to ‘explicit direct flow’ propagation is currently still sufficient (although this could change if there is an increase in the number of automated analysis platforms based on data tainting).
+
+Results
+In this section we look at the results of applying our data tainting mechanism to real-world malware.
+
+Torpig/Sinowal family
+The configuration file for this piece of malware is the same for all samples and uses a weak encryption (xor) with a constant key.
+The interest here is purely technical, more than a year ago the first versions of our platform were 100% effective against this malware family. However, with the emergence of a newer variant using the MBR rootkit Mebroot/MaOS [1], the encryption applied by the rootkit (on the rootkit itself and its downloaded files) became so strong that the code propagation tended to be lost. Unfortunately (or perhaps fortunately), this variant was available for only a short period of time and was rapidly taken offline. Thus, we didn’t have time to complete our tests on this sample.
+A new active sample of Torpig/Mebroot was found in April, which we were able to test on our platform. Results showed that, despite the heavy encryption and the rootkit deployment stage, our implementation of the data tainting mechanism, while significantly slowed, was fully effective. The results are shown below:
+MD5: d438c3cb7ab994333fe496ef04f734d0
+Hard drive dump file size: 1.2G
+Network dump file size: 28M
+We then get the following dll configuration on the network dump file:
+(...)
+?{ba1r}pbb,?pa~eps}tJO/L:/1beh}t,gxbxsx}xeh+yxuut
+66.29.115.68
+66.29.115.68
+kolpinik.com
+mikorki.com
+pibidu.com
+online.westpac.com.au ib.national.com.au www1.maxisloans.com.au
+*.inetbank.net.au access.imb.com.au www.homebank.com.au www.etradeaustralia.com.au
+secure.esanda.com is2.cuviewpoint.net onlineteller.cu.com.au ebanker.arabbank.com.au
+onlineservices.amp.com.au
+*advisernet.com.au *boq.com.au secure.accu.com.au *citibank.com.au secure.ampbanking.com
+www3.netbank.commbank.com.a *cua.com.au ibank.communityfirst.com.au ib.bigsky.net.au
+online.mecu.com.au
+*citibankonline.ca
+service.oneaccount.com www.mybusinessbank.co.uk
+*npbs.co.uk ibank.barclays.co.uk *banking.bankofscotland.co.uk www.bankofscotlandhalifax-online.co.uk
+*citibank.co.uk *icicibank.co.uk *adambanking.com *capitalonesavings.co.uk www*.440strand.com
+www.nwolb.com www.rbsdigital.com
+myonlineaccounts*.abbeynational.co.uk welcome*.smile.co.uk welcome*.co-operativebank.co.uk
+*natwest.co.uk *rbsdigital.co.uk www.mybank.alliance-leicester.co.uk ibank.cahoot.com
+online*.lloydstsb.* home.cbonline.co.uk *ybonline.co.uk
+*cseb*.it hbnet*.cedacri.it servizi.allianzbank.it servizi.atime.it *cabel.it
+homebanking.cariparma.it www.in-bank.net *isideonline.it www.linksimprese.sanpaoloimi.com
+www.nextbanking.it *bam.it *bancatoscana.it *mps.it
+www.sparkasse.at www.banking.co.at *cortalconsors.de
+bankingportal.*.de finanzportal.fiducia.de banking.*.de portal.*.de internetbanking.gad.de
+*postbank.de *apobank.de *dkb.de *haspa.de *reuschel.com *citibank.de *hypovereinsbank.de
+*bulbank.bg
+paylinks.cunet.org *bankatlantic.web-access.com *businesse-cashmanager.web-access.com
+*suntrust.com *cashproweb.com *ebanking-services.com netteller.com *wamu.com *ameritrade.com
+*bancopopular.com
+*cbbusinessonline.com *paypal.com *ebay.com *53.com *airforcefcu.com *aol.com *banking.firsttennessee.biz
+*banking.firsttennessee.com *bankofamerica.com *bankofbermuda.com *bankofoklahoma.com
+*bankofthewest* *capitalone.com *chase.com *cib.ibanking-services.com *citibank.com
+*citibusiness.com *citizensbankonline.com
+*columbiariverbank.com *comerica.com *community-boa.com *dbs.com *dollarbank.com
+*firstib.com *firsttennessee-loan* *jpmorganinvest.com *key.com *lasallebank.com
+*lehmanbank.com
+*military-boa.com *nationalcity.com *navyfcu.com *ncsecu.org *ocfcu.org *onlinebank.com
+*onlinesefcu.com
+*peoplesbank.com *selectbenefit.com *sharebuilder.com *site-secure.com *tcfbank.com
+*tcfexpressbusiness.com *uboc.com *us.hsbc.com *usaa.com *usbank.com *wachovia.com
+*wellsfargo.com
+*ubs.com *raiffeisendirect.ch *postfinance.ch *migrosbank.ch *bekb.ch *blkb.ch
+*netbanking.ch
+*lukb.ch *zkb.ch *bank.ch *bcvs.ch *bcge.ch banking.*.ch *vontobel.com *ubp.ch *sarasin.ch
+*hbl.ch *directnet.com *arabbank.ch *baloise.ch
+*alpha.gr *bankofcyprus.gr *marfinegnatiabank.gr *winbank.gr *eurobank.gr *nbg.gr *millenniumbank.gr
+*piraeusbank.com *emporiki.gr
+*centralbank.gov.cy *bankofcyprus.com *laiki.com *usb.com.cy *hellenicbank.com *coopbank.com.cy
+*universalbank.com.cy
+*uno-e.com www*.bancopopular.es www.bv-i.bancodevalencia.es oi.cajamadrid.es
+net.kutxa.net telemarch.bancamarch.es *bancocaixageral.es *caixagirona.es www.caixacatalunya.es
+*bbva.es *bbvanetoffice.com telemarch.bancamarch.es
+bancae.bancoetcheverria.es lo*.lacaixa.es www.cajacanarias.es areasegura.banif.es seguro.cam.es
+www.fibanc.es *sanostra.es www.inversis.com oie.cajamadridempresas.es
+vs*.absa.co.za mijn.postbank.nl
+marsco.com vmd.ca Citrix scottrade.com streetscape.com principal.com thinkorswim.com
+sharebuilder.com fs.ml.com netxselect.com netxclient.com
+accu.com.au adelaidebank.com.au amp.com.au bigsky.net.au boq.com.au commbank.com.au
+communityfirst.com.au cu.com.au cua.com.au imb.com.au inetbank.net.au
+mecu.com.au nab.com.au suncorp.com.au westpac.com.au hsbc.com.au bankwest.com.au
+bendigobank.com.au necu.com.au comsec.com.au ebanking.pcu.com.au
+teacherscreditunion.com.au policecredit.com.au/easyaccess stgeorge.com.au banksa.com.au
+humebuild.com.au zecco.com etrade tradingdirect.com ameriprise.com
+businesscreditcardsonline.co.uk alpha.gr bankofcyprus.gr marfinegnatiabank.gr winbank.gr
+eurobank.gr nbg.gr millenniumbank.gr piraeusbank.com emporiki.gr
+centralbank.gov.cy bankofcyprus.com laiki.com usb.com.cy hellenic coopbank.com.cy
+universalbank.com.cy
+anbusiness.com paypal.com hellenicbank citibankonline.ca clkccm cashplus capitalonebank.com
+nationalcity.com webcashmanager cashman towernet
+web-access.com cashproweb.com bankonline.sboff.com constantcontact.com/login.jsp dotmailer.co.uk/login.aspx
+yourmailinglistprovider.com/controlpanel r57shell.php c99shell webadmi
+(...)
+And the heavily ciphered rootkit configurations files:
+(...)
+INST
+gc00
+services.exe
+!This program cannot be run in DOS mode.
+(...)
+0$0/050;0D0J0Q0W0^0d0i0
+gs00
+!winlogon.exe;services.exe;csrss.exe;spoolsv.exe;
+lsass.exe;smss.exe;system.exe
+!This program cannot be run in DOS mode.
+(...)
+We were therefore able to verify that the taint propagation on the hard drive reflects the MBR contamination and also the contamination of the following sectors containing the rootkit itself.
+The previous check was only done in order to validate the tainting at the hard disk level in the presence of an MBR-infecting virus. The original version of Mebroot [1] uses sectors 60/61/62 to store its boot loader and the original boot sector, but contrary to our expectations, these sectors were not tainted. Indeed, after a quick analysis, the new variant sample (d438c3cb7ab994333fe496ef04f734d0) had partially changed its modus operandi – its boot loader and the original boot sector were now placed at the end of the hard disk. This new variant is immune to any detection/disinfection using the anti-rootkit gmer (and mbr.exe [2]). This is probably also the case for many of today’s anti-virus solutions.
+
+Further results
+Similar sets of results for the PRG/Zeus/NTOS, Infostealer, Ambler, Banker and PWS-OnlineGames.cz families can be found in [3].
+
+Conclusion
+In this paper we have revisited many concepts of the old binary instrumentation domain. In the early 90s DEC applied this kind of technology to translate VAX binary images to alpha platforms; in the 70s IBM applied it to provide debugging.
+Nowadays, superior hardware performance allows virtualization and binary analysis to be used in new ways. We have shown here one such application, which is usable on real-life malicious software. In the future we plan to improve our implementation by adding static binary analysis and constraint solving capabilities.
+
+Bibliography
+[1] Florio, E.; Kasslin, K. Your Computer is Now Stoned (...Again!) The Rise of MBR Rootkits. http://www.symantec.com/content/en/us/enterprise/media/security_response/whitepapers/your_computer_is_now_stoned.pdf.
+[2] Gmer: Stealth MBR rootkit. http://www2.gmer.net/mbr/.
+[3] http://www.virusbtn.com/vba/2010/02/vb201002-data-tainting-results.

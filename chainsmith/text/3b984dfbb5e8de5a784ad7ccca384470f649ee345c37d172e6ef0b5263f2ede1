@@ -1,0 +1,118 @@
+Your computer is now stoned (...again!)
+2008-04-01
+
+Elia Florio
+Symantec Security Response
+,
+Ireland
+
+Kimmo Kasslin
+F-Secure Security Lab
+,
+Malaysia
+Editor:
+Helen
+
+Martin
+Abstract
+Mebroot - the MBR rootkit - is one of the most advanced and stealthiest malware seen to date. It operates in the lowest levels of the operating system, uses many undocumented tricks and relies heavily on unexported functions and global variables. In this article Elia Florio and Kimmo Kasslin track the rise of the MBR rootkit.
+Copyright © 2008 Virus Bulletin
+
+We can trace the first evidence of ‘Mebroot’ (the MBR rootkit) back to the end of 2007. According to the PE timestamp of the oldest sample seen, it was compiled during early November 2007 and distributed multiple times over several weeks at the end of the year. The timeline of Mebroot's evolution (as shown in Figure 1) was first outlined by Matt Richard from iDefense [1], who discovered the first sample in the wild together with the GMER team [2].
+Figure 1. Timeline of Mebroot evolution from ‘beta’ to final release.
+We know that during November 2007 a malicious domain (hxxp://gfeptwe.com) – used in the past to distribute and install variants of Trojan.Anserin (a.k.a. Sinowal) – began to serve copies of the MBR rootkit for a limited period of time. The malware was installed via drive-by exploits using a set of old Microsoft vulnerabilities, probably in an attempt to stay under the radar during this ‘beta’ release stage.
+Two waves of related drive-by attacks took place between December 2007 and January 2008. These attacks were followed by a period of calm before finally, in February 2008, the steady flow of attacks installing Mebroot resumed [3]. The whole timeline seems like a development and QA project; in fact all the variants released in the initial period have close PE timestamps and very small changes in the code.
+We do not know how long it has taken the authors to develop and write the code of this sophisticated threat, but the idea of malicious code that modifies a system’s MBR is not new (even ignoring DOS attacks of old), having first been discussed some years ago. In 2004, Greg Hoglund wrote about MBR attacks in his book Exploiting Software [4], while the most notable research in the area of MBR rootkits was undertaken by Derek Soeder of eEye during 2005 [5]. Soeder created BootRoot, a proof-of-concept MBR rootkit able to target Windows XP and 2000. Finally, researchers Nitin and Vipin Kumar of NVLabs recently published a paper [6] about a new type of MBR rootkit called Vbootkit, designed expressly to work on Windows Vista.
+It is quite obvious that Mebroot’s authors have benefited from other people’s research, and this fact is confirmed by a quick comparison of the MBR code of Mebroot and BootRoot. A large area of Mebroot’s MBR loader is almost identical to the BootRoot code published by eEye. Mebroot’s MBR code hooks INT 13 at boot exactly as BootRoot does, with the intent of patching the OSLOADER image (part of the NTLDR file) when it is loaded. This patch is done on the fly with the same static signature as that used by BootRoot (8BF085F6742?803D). The signature is patched with a CALL DWORD[addr] instruction that passes control to the second-stage payload of the malware.
+
+Raw disk access under Windows
+Mebroot arrives with an EXE installer that is typically between 250 KB and 350 KB and which takes control of the system by overwriting the MBR. This attack is possible because some versions of Windows allow programs to overwrite disk sectors (including the MBR) directly and without proper restrictions.
+The initial reports about this MBR attack were slightly confused, so let’s clarify some points to understand when the attack is possible. On Windows 2000, XP and 2003 systems, raw access to disk is possible for any user-mode program running in ring-3 (no need to go into ring-0!), but this requires Administrator privileges [7]. The fact that most users run Windows as Administrator clearly makes them vulnerable to this type of rootkit.
+The issue has been known about for some time in the 2K/XP families, and Vista was partially secured in 2006 (with Release Candidate 2) following a successful attack demonstration by Joanna Rutkowska [8]. In fact, the attack is now mitigated on Vista by User Account Control (UAC), which blocks raw access to disks. The table below summarizes which OSs can be infected by Mebroot:
+Windows OS
+Can MBR be infected?
+Is rootkit active?
+Windows 2000 (user is Administrator)
+Yes
+Yes
+Windows XP (user is Administrator)
+Yes
+Yes
+Windows 2003 (user is Administrator)
+Yes
+Yes
+Windows Vista (UAC disabled)
+Yes
+No
+Windows Vista (UAC enabled)
+No
+No
+Table 1. Windows operating systems susceptible to Mebroot infection
+It is important to clarify that Mebroot can only infect the Vista MBR if UAC is disabled and that, even after a successful infection, the rootkit will not be able to load itself at boot because it targets specific signatures of the Windows kernel that are not present on Vista. In this scenario Vista users may live with an infected MBR that boots up the operating system normally, without any rootkit activity, because the malware is never loaded in memory. In addition to this, Vista is secure because its boot process is completely different from any previous OS. It is possible that future variants of the threat may be built to overcome this limitation though.
+
+Owning the MBR
+All the rootkit installer samples are encrypted with a custom ‘spaghetti-like’ packer that has already been seen in the Anserin/Sinowal family. This nasty packer scrambles the execution flow of a program by interleaving valid opcodes with JMP or JMP DWORD[addr] instructions. The result is a piece of polymorphic code that is difficult to trace and analyse, but which retains its functionality. Unpacking is trivial and requires just a breakpoint on the VirtualFree API.
+The installer file (mat[n].exe) seems to have a double entry point because it is designed to run either as an EXE or as a DLL module. In fact, after the infection of the MBR, the malware patches itself to become a DLL and runs a second time using the regsvr32 command to delete itself and reboot the machine. Some installers also have a delayed infection routine with a random timer. The infection starts after a delay of a few minutes to avoid automated analysis by honeypot systems and to fool quick black box analysis.
+Figure 2. Mebroot ‘spaghetti’ packer in action. Too many jumps...
+Mebroot tries to infect the first 16 disk drives connected to the machine with a loop that calls CreateFile() on \\.\PhysicalDrive[n] several times. A side effect of this behaviour is that in some cases the rootkit also infects external USB disks and hard drives. Infected external disks do not have active infections because typically they are not used to boot the operating system, but the disks will still contain traces of the malware on some sectors. One of the latest variants of Mebroot (mat25.exe) uses a different approach to perform raw operations on disk. Instead of using CreateFile() installs and loads a driver that works as a ‘wrapper’ for the system driver disk.sys. Essentially, the new installer uses its own driver to communicate with the OS disk driver and to perform low-level read/write actions using IRP. This strategy can probably bypass protection systems that block raw access to disk.
+Figure 3. Raw access to disk simply requires the CreateFile and ReadFile/WriteFile APIs.
+During installation, the malware first reads the current disk MBR and checks some characteristics of the drive such as the number of bytes per sector (it expects 512 bytes), the signature 0x55AA at the end of the MBR, and whether the drive has already been infected (the infection marker is the DWORD 0xAD022C83 at offset 0x16 of the MBR). Next, it parses the partition table to find the physical end of the disk and verifies that there is enough unpartitioned slack space at the end for it to write its own malicious code. The installer usually needs at least 650 free sectors to store the main rootkit driver. This strategy is clever for two reasons: first, the driver is not stored as a file on the system, but in raw disk sectors. Secondly, writing the malicious driver after the end of the disk means that it requires some forensic expertise to extract samples from infected machines.
+The installer makes note of the sector in which the rootkit executable is stored and then adjusts in memory the Payload Loader shellcode that will load the SYS driver at the next reboot. Finally, it overwrites three sectors immediately before the beginning of the first partition. On Windows 2000 and XP with single partitions, Mebroot typically overwrites sectors 60, 61 and 62. These sectors may be different on systems with multiple OS and disk partitions.
+
+Owning the system from the boot
+The complete scheme of the Mebroot loading process is shown in Figure 4.
+Figure 4. Mebroot loading process: how to own the system from the boot.
+The following is a step-by-step description of the rootkit boot process and kernel infection:
+The infected MBR reserves 2 KB of conventional memory and relocates itself from 0x7C00 to 0x0000.
+Next, it reads payloads from sectors 60 (kernel patcher) and 61 (payload loader) into memory blocks adjacent to the relocated code.
+The MBR code hooks INT 13 and passes control to relocated code at 0x004D.
+It reads sector 62 (old MBR) back to 0x7C00 memory and passes control to it; the OS starts booting up normally while INT 13 is hooked by the threat.
+The hooked code intercepts all disk-reading operations and patches the OSLOADER module (part of NTLDR) when it is loaded from disk.
+The patched OSLOADER calls the Kernel Patcher shellcode in memory (sector 60).
+This shellcode scans and patches the NTOSKRNL.EXE image near ‘CALL nt!IoInitSystem’.
+The modified NTOSKRNL.EXE calls the Payload Loader shellcode (sector 61), which loads and runs the rootkit driver stored in the last sector of the disk.
+To minimize the footprint and traces in memory, the loader shellcode deletes itself by filling the memory area in which it is stored with zeroes. This detail leads us to believe that nothing is left to chance and the authors of this nasty piece of code are skilled and meticulous malware programmers.
+
+New disk stealth techniques
+Analysis of the final rootkit driver loaded in memory requires some extra effort. Some rootkit variants have an extra packing layer that unpacks the real kernel driver using scrambled spaghetti code. In this case, a good breakpoint on ExAllocatePoolWithTag will do the job and allow us to dump the final unpacked driver.
+Since the rootkit SYS driver is loaded by its own loader in an unusual way, the module does not expect the normal parameters passed to Windows drivers. In fact, it receives three parameters passed by the Payload Loader: the kernel ImageBase of the unpacked driver, a pointer to PsLoadedModuleList (used to resolve imports) and the ImageBase of the packed driver. The rootkit resolves all NTOSKRNL and HAL imports with its own routine and also deletes from memory the packed driver image when it is no longer needed. Later on, even the MZ header of the unpacked driver is deleted from memory to minimize its footprint, leaving in the kernel space only random traces of code in executable memory pages.
+The rootkit hides itself by hooking the disk.sys driver. It finds DeviceObject for \Device\HardDisk[N]\DR0 and reads the old MBR from sector 62 into an allocated pool that will be used as a ‘cached copy’ of the old MBR to improve the performance of stealth operations. Since the rootkit does not have files, process or registry keys to hide, the stealth functionalities are limited to intercepting read/write operations on raw disk sectors. This is done by hooking the dispatch handlers of the \Driver\Disk for IRP_MJ_READ and IRP_MJ_WRITE routines. When a program tries to read the MBR (sector 00) or any other sector used by the rootkit (60, 61, 62 or sectors after the end of the disk) the hooked code will return a fake image of the sector, showing the old MBR or an empty sector filled with zeroes in the other cases. In a similar way, the rootkit will protect itself by blocking all write operations to its sectors.
+The rootkit needs to maintain hook-free versions of the IRP_MJ_READ and IRP_MJ_WRITE functions, so it uses a special trick: it generates a random DWORD value used as a ‘magic key’. Later, the rootkit is able to perform normal read/write operations with the original dispatch routines simply by calling the disk.sys driver with an IRP packet that contains this magic key at offset 0x40.
+
+New firewall-bypassing techniques
+Analysing the rootkit driver’s network code becomes even more difficult. The majority of its functions are still heavily obfuscated, even after successful unpacking. The fastest approach to bypass the obfuscation is to use code tracing and custom scripts to clean up the trace logs of extra garbage. After a lot of frustration and some breakthroughs, we now know that Mebroot’s firewall-bypassing technique is similar to, but goes one step further than that used by Srizbi [9].
+Like Srizbi, Mebroot operates in the NDIS layer, but it uses a different approach to gain access to the internal NDIS structures. Whereas Srizbi installed a dummy protocol, Mebroot uses the unexported ndisMiniportList which points to an existing miniport described by the _NDIS_MINIPORT_BLOCK structure. To gain exclusive access to the list it acquires the ndisMiniportListLock spinlock, which is also unexported.
+From the miniport block the code uses a similar approach to that used by Srizbi to find a suitable adapter that is bound to either the PSCHED or the TCPIP protocol. Finally, it finds the address of the lowest-level send handler function and hooks four NDIS handler functions.
+To send packets it uses the following handler function:
+NDIS!_NDIS_M_DRIVER_BLOCK
++0x020 MiniportCharacteristics : _NDIS51_MINIPORT_CHARACTERISTICS
++0x040 SendPacketsHandler : 0xf9adf332 void pcntpci5!LanceSendPackets+0
+To get a notification after the send operation has completed it uses the following hook:
+NDIS!_NDIS_MINIPORT_BLOCK
++0x0ec SendCompleteHandler : 0x81825bb0 void mbr_rootkit!Hook_SndCompHdlr
+To receive packets it uses the following hooks:
+NDIS!_NDIS_OPEN_BLOCK
++0x040 ReceiveHandler : 0x8182cd10 int mbr_rootkit!Hook_RcvHdlr
++0x050 ReceivePacketHandler : 0x8182e400 int mbr_rootkit!Hook_RcvPcktHdlr
+Mebroot’s network code is advanced in many ways. It is stealthy – only a single pointer is hooked at any one time. The rest of the hooks in the selected protocol’s _NDIS_OPEN_BLOCK structure are in use only when the rootkit is sending packets. It accomplishes this by creating a copy of the original open block structure which is then hooked. When it needs to send a packet it replaces a single pointer from the _X_BINDING_INFO structure to point to its private open block structure to make sure the packets received from that point onwards will be processed by its own handler functions. Once the packets have been processed the original pointer is put back. This process is illustrated in Figure 5.
+Figure 5. Mebroot activates the full set of its hooks only when it needs them.
+Another example of Mebroot’s stealth is the way it ensures that none of the NDIS API functions it relies on are hooked by firewalls. Instead of just copying the original ndis.sys from disk into allocated memory and using it as its private module, it uses a ‘code pullout’ technique to load only the relevant parts of the code into memory. This technique was first described by Alexander Tereshkin, a.k.a. 90210, at rootkit.com [10]. Once the relevant code blocks have been copied into one continuous block of memory it is prepared for execution. Finally, the code patches its own import address table to make sure all imported NDIS API functions point to the code that was pulled out.
+
+Conclusions
+Mebroot is the most advanced and stealthiest malware we have analysed so far. It operates in the lowest levels of the operating system, uses many undocumented tricks and relies heavily on unexported functions and global variables. We did not encounter a single blue screen while examining the latest samples that were distributed after February 2008. This is a clear sign of the level of professionalism of today's malware authors.
+It is also evident that the author of Mebroot is following closely the research carried out by individuals who have presented their findings at Black Hat conferences and on rootkit.com. Mebroot’s MBR code was almost identical to BootRoot’s, while the firewall-bypassing code closely resembles the most advanced ideas presented by Tereshkin at Black Hat USA 2006 [11]. In addition, after we successfully deciphered some of the code used to perform the code pullout it became clear that some of the functions were one-to-one with functions that are part of the phide2 source code. Maybe the next malware from Mebroot’s author will use virtualization to make it even more difficult to detect and remove – at least proof of concept source code is already available for this [12].
+Elia Florio and Kimmo Kasslin will present an extended and more detailed look at the MBR rootkit at VB2008 later this year. VB2008 takes place 1–3 October 2008 in Ottawa, Canada. See http://www.virusbtn.com/conference/vb2008/ for the full programme and registration details.
+
+Bibliography
+[1] Master Boot Record timeline. http://isc.sans.org/diary.html?storyid=3820.
+[2] Stealth MBR rootkit (Jan 2nd, 2008). GMER team. http://www2.gmer.net/mbr/.
+[3] The Flow of MBR Rootkit Trojan Resumes. http://www.symantec.com/enterprise/security_response/weblog/2008/02/the_flow_of_mbr_ rootkit_trojan.html.
+[4] Hoglund, G.; McGraw, G. Exploiting software: how to break code. 2004, p.429.
+[5] eEye BootRoot. http://research.eeye.com/html/tools/RT20060801-7.html.
+[6] BOOT KIT: Custom boot sector based Windows 2000/XP/Vista subversion. http://www.nvlabs.in/ ?q=node/11.
+[7] INFO: Direct Drive Access Under Win32. Microsoft. http://support.microsoft.com/kb/q100027.
+[8] Rutkowska, J. Subverting Vista Kernel for fun and profit. 2006. http://www.invisiblethings.org/papers/joanna%20rutkowska%20-%20subverting%20vista%20kernel.ppt.
+[9] Kasslin, K.; Florio, E. Spam from the Kernel. Virus Bulletin. November 2007, pp.5–9. http://www.virusbtn.com/vba/2007/11/vb200711-srizbi.
+[10] Phide2. http://rootkit.com/vault/90210/phide2.zip.
+[11] Tereshkin, A. Rootkits: Attacking Personal Firewalls. Black Hat USA 2006. http://www.blackhat.com/presentations/bh-usa-06/BH-US-06-Tereshkin.pdf.
+[12] Blue Pill Project. http://bluepillproject.org/.

@@ -1,0 +1,32 @@
+Security Advisory: Stored XSS in Magento
+Security Risk: DangerousExploitation Level: Easy/RemoteDREAD Score: 7/10Vulnerability: Stored XSSPatched Version: Magento CE: 1.9,2.3, Magento EE: 1.14.2.3
+During our regular research audits for our Cloud-based WAF, we discovered a Stored XSS vulnerability affecting the Magento platform that can be easily exploited remotely. We notified the Magento team and worked with them to get it fixed.
+Vulnerability Disclosure Timeline:
+
+November 10th, 2015 – Bug discovered, initial report to Magento’s security team
+December 1st, 2015 – No response from Magento. Requested confirmation of our previous email.
+December 1st, 2015 – Magento acknowledge receipt of the report.
+January 7th, 2016 – Request an ETA, been 2 months since original report.
+January 11th, 2016 – Magento answers that the patch is ready, but no ETA available.
+January 20th, 2016 – Magento releases patch bundle SUPEE-7405, which fixes the issue
+January 22th, 2016 – Sucuri Public Disclosure of Vulnerability.
+
+Am I At Risk?
+This vulnerability affects almost every install of Magento CE <1.9.2.3 and Magento EE <1.14.2.3. The buggy snippet is located inside Magento core libraries, more specifically within the administrator’s backend. Unless you’re behind a WAF or you have a very heavily modified administration panel, you’re at risk.
+As this is a Stored XSS vulnerability, this issue could be used by attackers to take over your site, create new administrator accounts, steal client informations, anything a legitimate administrator account is allowed to do.
+Technical Details
+The issue exists within: app/design/adminhtml/default/default/template/sales/order/view/info.phtml:
+
+As you can see from the above snippet, the template appends the getCustomerEmail method’s return value to the administration panel. This snippet looked similar to what we found in a bug within the WordPress Jetpack plugin a couple months ago. With that in mind, we investigated the type of validation mechanisms Magento used to check whether a given string is an email or not.
+This is what we found:
+
+It accepts two different forms of emails:
+
+Regular ones, similar to what we had found in WordPress (no double quotes, no ‘<‘ sign, etc.)
+Quoted string format, which accepts pretty much any printable characters (except for space characters, where it only allows regular spaces to be used) as long as it’s surrounded by two double-quotes
+
+This meant that, in theory, we could use an email like “><script>alert(1);</script>”@sucuri.net as our client account’s email, submit an order and see what happens when an administrator checks our order in the administration panel .
+
+We were right! We just triggered an XSS in Magento Core.
+Patch As Soon As Possible
+If you’re using a vulnerable version of Magento, update/patch as soon as possible! In the event where you can not, we strongly recommend leveraging our Website Firewall or equivalent technology to get it patched virtually.

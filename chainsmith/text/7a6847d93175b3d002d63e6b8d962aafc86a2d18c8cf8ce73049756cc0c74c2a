@@ -1,0 +1,17 @@
+Understanding Tcpdump's -d Option
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+September 30, 2004
+
+Have you ever used Tcpdump's -d option?  The man page says:-d     Dump the compiled packet-matching code in a human readable  form       to standard output and stop.I've never used that option before, but I just saw a Tcpdump developer use it to confirm a Berkeley packet filter in this thread.  The user in the thread is trying to see TCP or UDP packets with a source address of "centernet.jhuccp.org" (162.129.225.192).  First he specifies an incorrect BPF filter, which the developer then corrects.  This is mildly interesting, but the useful information on the -d option appears in this post.Tcpdump developer Guy Harris interprets output from the -d option:> www:~# tcpdump -d src host centernet.jhuccp.org and \( ip proto \\tcp > or \\udp \)> (000) ldh      [12]> (001) jeq      #0x800           jt 2    jf 8> (002) ld       [26]> (003) jeq      #0xa281e1c0      jt 4    jf 8> (004) ldb      [23]> (005) jeq      #0x6             jt 7    jf 6> (006) jeq      #0x11            jt 7    jf 8> (007) ret      #96> (008) ret      #0OK, that code: loads the 2-byte big-endian quantity at an offset of 12 from the beginning of the packet - which, on an Ethernet packet, is the type/length field in the Ethernet header - and compares it with 0x0800 - which is the type code for IPv4 - and, if it's not equal, jumps to instruction 8, which returns 0, meaning "reject this packet" (i.e., it rejects all packets other than IPv4 packets); loads the 4-byte big-endian quantity at an offset of 26 from the beginning of the packet - which, for an IPv4-over-Ethernet packet, is the source IP address in the IPv4 header - and compares it with 0xa281e1c0 - which is 162.129.225.192, or "centernet.jhuccp.org" - and, if it's not equal, jumps to instruction 8 (i.e., it rejects all packets that don't have a source IP address of 162.129.225.192); loads the one-byte quantity at an offset of 23 from the beginning of the packet - which, for an IPv4-over-Ethernet packet, is the protocol type field in the IPv4 header - and, if it's equal to 6 - i.e., if it's a TCP packet - jumps to instruction 7, which returns 96, meaning "accept this packet and get its first 96 bytes", and, if it's not 6, jumps to instruction 6, which does the same check for 17, i.e. UDP.I found this explanation very enlightening and I appreciate Guy taking the time to discuss it.

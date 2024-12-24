@@ -1,0 +1,137 @@
+Star what?
+2006-08-01
+
+Dr Vesselin Bontchev
+FRISK Software International
+,
+Iceland
+Editor:
+Helen
+
+Martin
+Abstract
+A macro virus for StarOffice, or merely an intended? Vesselin Bontchev sets the record straight.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+On 30 May 2006, a short message appeared on the Kaspersky Lab web log [1], announcing the appearance of a new macro virus for StarOffice. The log read:
+'I came across something interesting today, a macro virus which we've named Virus.StarOffice.Stardust.a ... But if you look more closely at the name, you can see why I'm interested: Stardust is a macro virus written for StarOffice, the first one I’ve seen. Macro viruses usually infect MS Office applications.'
+Now, we all know that anti-virus researchers all over the world are overloaded by the continuous glut of new malware and that the constant stress can cause them to make mistakes. And in such a quick-and-dirty publication as a blog, one cannot expect the author to have done extensive research and fact-finding before posting such a short message. Still, how many mistakes can be found in the message above?
+To begin with, the name StarOffice is unnecessarily restrictive. StarOffice is the name of a commercial product manufactured by SUN and based on the code base of OpenOffice – an open source product [2]. Any malware supposedly written for StarOffice would work under OpenOffice too.
+Second, OpenOffice is too generic to be used as a proper malware platform name. According to the CARO Malware Naming Scheme [3], one should use either the language in which the malware is written (i.e. StarBasic in this case) or the application for which the virus is specific (e.g. StarWriter).
+Almost half a decade ago, the author of this article did some research into the 'virusability' of this platform. Back then, OpenOffice supported a single macro language, called StarBasic, which was somewhat reminiscent of VBA but the two languages were not compatible. OpenOffice was able to open Microsoft Office documents – including documents that contained macros – but during the conversion process the macros were simply stripped from the document. In addition, StarBasic did not seem to have the concept of 'self' – it didn't seem possible for a StarBasic macro to say 'copy myself from here to there'.
+Of course, that did not mean that viruses for the platform were impossible. The language was powerful enough to implement several kinds of them without the capability of copying macros from one document to another. For instance, it was possible to implement mass-mailers, it was possible to implement overwriters, and it was possible to implement viruses that copied the data of the target document to themselves and then overwrote that document – pretty much like the Jinni.A virus does in MS Excel [4]. OpenOffice also conveniently allowed any macro subroutine to be attached to any event – such as a menu selection or a keypress. Still, it didn't seem likely that such viruses would have a significant chance of spreading and becoming a problem.
+Sadly, things have 'improved' a bit since then. Nowadays, OpenOffice supports several different languages: StarBasic, BeanShell, Python and JavaScript. They are all script languages, however – not macro languages – which leads us to another error in the original announcement. Whatever the new thing was, it couldn't have been a macro virus; at best, it was a script virus.
+In addition, the StarBasic language has become much more powerful too. We became aware long ago that full-featured viruses for it were possible; see for instance [5]. So, the news that someone had, supposedly, finally written a virus for it was hardly a surprise. For more information, though, we needed to analyse a sample.
+
+Not another first
+The sample arrived in an archive containing three files. One of them was in a subdirectory named 'Dropper', so it was assumed that this contained the first generation of the virus. The other two were, supposedly, infected documents.
+The files that contained the samples all had the SXW extension – in other words, they were StarWriter documents. Initially, we did not enjoy the prospect of having to reverse-engineer yet another undocumented file format (we have had more than enough undocumented file formats used by the various Microsoft products), but then we remembered that OpenOffice uses a different concept. The format really is open – the 'document' is essentially a ZIP archive, containing various XML files in various subdirectories. Indeed the idea is so good that Microsoft, allegedly, intends to steal/borrow/innovate it in the next version of Office.
+So, it really is easy to take apart the contents of an OpenOffice document. It took us just a few seconds to find the XML file that contained the 'macro virus' code.
+Now, the author of this article does not claim to be a StarBasic expert, but things started looking fishy to him immediately. The code contained three subroutines: AutoInstall, mygame and InstallGlobalModule. The first of these just called the second. This already looked strange, because 'AutoInstall' is not a special subroutine name in StarBasic (e.g. as 'AutoOpen' is in WordBasic or 'Auto_Open' is Excel's version of VBA). But let's assume that the subroutine does manage to get invoked somehow – perhaps by having been attached to a frequently-called event or something.
+The next problem was in the subroutine mygame. It began with the comments:
+&apos;*******************************
+&apos;******* OOo.Stardust  *********
+&apos;*** (c)by Necronomikon[DCA] ***
+&apos;*******************************
+and ended with what appears to be a call to InstallGlobalModule:
+&apos; InstallGlobalModule()
+One does not have to be a StarBasic expert to realize that there is no way the above could work.
+As is obvious from the first few lines, the sequence '&apos;' is clearly a comment – a notion supported by the fact that it resolves to the ' (apostrophe) character in XML and in most Basic dialects this character is used to indicate that what follows (until the end of the line) is comment. So the call to the InstallGlobalModule subroutine (which seemed to contain the bulk of replication code) is commented out – i.e. the replication is never invoked.
+A discussion with some other CARO members (e.g. [6]) confirmed that the thing was unable to replicate – i.e. it was not a virus, but an intended. Here we have another error in the original announcement, which claims that it is a virus. Admittedly the announcement also said 'Stardust is the first virus ... which is theoretically capable of infecting StarOffice…', so it could be argued that it was talking about a potential virus, not a real virus. However, the rest of the announcement quite unambiguously calls the thing a virus and it never states explicitly that the malicious code simply doesn't work.
+As we shall see in the next section though, Kaspersky Lab was far from alone in making this mistake.
+
+Amazing incompetence
+The alleged author of this thing, a malware writer who uses the handle 'Necronomikon', is well known to us from the macro malware world. Well known for his incompetence and ineptitude, that is. He is the author of several macro intendeds, like Delay.A, Gamor.A, Hilite.A, Hilite.B, Hilite.C and Hilite.G.
+For those who came late to the party, an intended is a program written with the obvious intent to make a virus, but which is too buggy to replicate. It's a double joke on its author – not only was he too incompetent to create a working virus (a rather trivial task, especially in the macro and script worlds), but was also stupid enough to release it without trying to run it (otherwise he would have noticed that it doesn't work).
+But the commented-out call to the replication routine is not the only problem for this piece of malicious code. Even if the comment is removed, it cannot be made to work. The observant reader would notice that the subroutine is then invoked without any parameters. But the declaration of this subroutine, just a few lines below, clearly indicates that it is supposed to take one mandatory and two optional arguments:
+Sub InstallGlobalModule( ByVal cGlobalLibName As String,_
+Optional cDocumentLibName,_
+Optional stardust )
+The code after that relies on the presence of the first argument and tries to take some reasonable action if the two optional ones are missing:
+If IsMissing( cDocumentLibName ) Then
+cDocumentLibName = cGlobalLibName
+EndIf
+If IsMissing( stardust ) Then
+InstallGlobalModule2( cGlobalLibName, cDocumentLibName, BASIC_MODULE
+)
+InstallGlobalModule2( cGlobalLibName, cDocumentLibName, DIALOG_MODULE
+)
+Else
+Apparently, the subroutine is supposed to perform some kind of generic module-copying function and to copy a given module to different places, depending on how the subroutine is invoked. But since it is never invoked correctly, we can't know that for sure. It looks as if the malware author has taken this subroutine from somewhere without really understanding what exactly it is supposed to do and how it is supposed to be called.
+But it gets even worse. Apparently, the procedure InstallGlobalModule2 is not part of the standard OpenOffice installation [7] – and it is not present anywhere in the code of the 'virus', either. So, even if the replication function had been invoked correctly, it would fail to work because it refers to a non-existent subroutine.
+The code immediately after the one quoted above also calls a function named 'DoesModuleExist' – which is not part of the standard OpenOffice installation either, and the implementation of which cannot be found anywhere in the code of the sample we received.
+In other words, there was absolutely no way the code we were looking at could be a virus. It didn't just have some trivial bug that could be fixed, either – it looked more like a random collection of code, whose author didn't really understand what that code was supposed to do.
+Then we turned our attention to the so-called 'dropper'. Maybe, we thought, the dropper has the capability to infect documents once, but the code is incapable of propagating for more than one generation – e.g. because some important part of it isn't copied around after the first time. However, even a cursory inspection of the code of the 'dropper' proved that this couldn't be the case. Furthermore, there was absolutely no way the 'dropper' could have produced the code in the other two samples.
+When comparing the code of the 'dropper' with that of the other two samples, we discovered only two differences. One of them was that they began with two different sets of declarations. The 'dropper' begins with:
+Dim lAutoInstall as Boolean
+Dim Url As String
+dim myFileProp as Object
+while the code in the 'samples' begins with:
+Const GLOBAL_LIBRARY = True
+Const DOCUMENT_LIBRARY = False
+Const DIALOG_MODULE = True
+Const BASIC_MODULE = False
+Dim lAutoInstall as Boolean
+Now, there is no obvious reason why the code should change like this. There are no operators that attempt to modify these lines at the beginning. However, in VBA, the source of the module often begins with a series of attribute statements. These don't generate any p-code and can change when a module copies itself from a document to the global template (as well as under several other circumstances), so we decided to give this difference the benefit of the doubt – maybe it was produced automatically somehow by OpenOffice.
+The second difference, however, was clearly put there by the malware author and there was absolutely no reasonable explanation for its absence in the supposed replicants. The difference is that just before the commented-out call to InstallGlobalModule, the 'dropper' contains the following lines:
+otext=oDocument.text
+ocursor=otext.createtextcursor()
+otext.insertString(ocursor, &quot;***Stardust***(c)by
+Necronomikon[DCA]&quot;,false)
+url=converttourl(&quot;http://stardustvx.tripod.com/SilviaSaint.JPG&quot;)
+&apos;nice idea from Slagehammer... ;)
+oDocument = StarDesktop.loadComponentFromURL(url, &quot;_blank&quot;, 0,
+myFileProp() )
+These lines attempt to download a file and to display it on the desktop. Since there was no obvious reason for their absence in the replicants, the only reasonable conclusion was that, in reality, we weren't looking at a dropper and replicants of the virus it drops – we were looking at two different variants of non-viral malware.
+Now, one incompetent malware author is hardly a surprise – among them, ineptitude is rather the rule than the exception. What is surprising, however, is how many supposedly competent anti-virus companies believed his claims and described these two different things as a single virus for OpenOffice.
+'The Stardust virus doesn't appear to work very well', says Sophos's Graham Cluley [8]. 'Not very well', huh? How about not at all?
+'We have a sample of a proof-of-concept macro-virus for OpenOffice.org', writes F-Secure's Sean in the company's blog [9]. OpenOffice.org is a website and this thing is neither macro, nor a virus. It's an intended script.
+'Type: virus' has been written by a researcher from CA in their description of this thing [10]. Nope, it ain't.
+'SB.Stardust.A!int is a proof-of-concept macro virus for Sun StarOffice documents', according to Symantec's description [11]. It's not a virus, folks! Well, at least Symantec gets points for appending 'int' at the end of the name, suggesting that it's an intended. But why not say so clearly in the description? (McAfee uses a similar approach – '.intd' is used in the name, but the author of the description is shy of stating clearly that the thing doesn't really work at all.)
+'It is the first time that the experts detected a macro virus called "Stardust" in Internet, which takes advantage of the Office-Suite OpenOffice for its attack. The moment the user opens the document template, the script that was written in StarBasic will infect all the following documents', claim the researchers from Avira [12]. Guys, your so-called 'experts' aren't.
+SoftWin's scanner calls the thing 'Worm.StarOffice.Stardust.A'. A worm? Now, I know that the experts can never agree on the exact definition of a worm, but it certainly isn't a horribly buggy piece of non-working code that doesn't even run, or replicate, let alone replicate over networks.
+Researchers at Trend Micro, seemingly, couldn't make up their minds about what the thing really does [13]. On the one hand, their description says: 'Once an infected document is opened, it downloads and opens an image of an actress from a certain website. It then proceeds to infect other StarOffice/OpenOffice Suites document files', which is clearly false. But then it adds: 'However, due to some errors in its code, it cannot perform its infection routine'. Good job! But why, then, does the description state: 'In the wild: Yes'? In the wild? No way! In the wild imagination of the journalists, maybe.
+Doesn't anyone analyse the virus samples they receive these days?
+And that's just the anti-virus companies – the ones that are supposed to know better. What can we say about the popular computer press that has never been distinguished with competence in this (or, for that matter, any other) area? As anticipated, PCWorld, ZDNet, News.com, InfoWorld, and all the rest have jumped on the '‘Stardust virus lands on OpenOffice' bandwagon.
+In fact, even the official response of OpenOffice.org to this 'threat' [14] refers to it as a virus. Although the statement reads: 'technically, it is not even a virus, as it is not self-replicating', it also goes on to say 'with OpenOffice.org's default settings, it cannot spread without user intervention'. Folks, the only kind of user intervention that would make this thing spread would be taking the module it resides in and copying it manually elsewhere.
+But, with that kind of user intervention, even the 'Hello world' macro is a virus. One would have hoped that at least the guys at OpenOffice.org are capable of reading and understanding StarBasic – but apparently not.
+
+Stage three
+At this stage, a private communication [15] from Gabor Szappanos turned my attention to the fact that the author of this malware seems to have borrowed the InstallGlobalModule subroutine from a publicly available package of macros [16].
+Indeed, if you look inside this package, you will find not only the InstallGlobalModule subroutine but also implementations of the missing InstallGlobalModule2 and DoesModuleExist. It became clear that the author of the thing had found this library, and had worked out that it seems to have the ability to copy modules from place to place, but that he had been unable to understand how it works exactly, and why.
+The malware author has tried to copy the relevant parts from the library, but since he was unable to determine which parts are relevant and how they are supposed to be used, he has messed up. Badly. Being an impatient kid, however (aren't they all?), he has rushed to send his creation to all the anti-virus companies in order to get his 15 minutes of fame. And he has received more fame than he deserved, mostly due to the incompetence of the popular media and of said anti-virus companies.
+But, apparently, the author of this malware had a nagging feeling that his creation wasn't quite perfect (to say the least). So, he continued to 'improve' it and has released yet another (third) variant. Unfortunately, he forgot, once again, to test whether the thing actually works – or at least to read the documentation of StarBasic – because the third variant is again an intended.
+The main difference this time is that the author has also lifted the function DoesModuleExist from the public macro library mentioned above. He has also changed all calls to InstallGlobalModule2 to just InstallGlobalModule – because he still hasn't taken the former subroutine from the macro library. Unfortunately, these calls are all inside a subroutine named InstallGlobalModule too – which would normally lead to infinite recursion and a crash. If that subroutine was called at all, that is. Because it isn't. There isn't even a commented-out call – nothing at all.
+
+The name of the weed
+So we still don't have any viruses for OpenOffice, no matter what the hysterical media and the incompetent anti-virus companies are claiming. Still, we do have some malware for it (three intended variants), so we needed a name for the platform in the CARO Malware Naming Scheme, as well as a family name for the trinity of variants.
+Strictly speaking, StarBasic is a script – not a macro language, since it is just ASCII text and is not tokenized or compiled in any way. So, we felt that StarBasicScript (or SBS for short) would be the proper platform name. However, in the name of brevity, we decided to use just StarBasic (or SB for short) instead.
+As for the family name, there were proposals for 'Bulldust' or 'Dustar', but the name 'Stardust' – picked by the malware author – was so widely hyped by the media, that we decided to go with it, in order to avoid additional naming confusion.
+So, the full names of the three variants are:
+intended://StarBasic/Stardust.A
+intended://StarBasic/Stardust.B
+intended://StarBasic/Stardust.C
+
+Conclusion
+OpenOffice is a virusable platform – it is perfectly possible to write a virus for it. At the time of writing this article (June 2006), there were only three non-working attempts at a virus written by somebody who obviously has more time than brains 17.
+Considering this, we would suggest that 'Necronomikon' changes his handle to 'Necromoron' – from the Greek necros ('dead' – as in 'brain-dead') and the English moron ('dolt'). We feel that the latter handle reflects his mental abilities more aptly.
+
+Bibliography
+[1] Stardust – a macro curiosity. http://www.viruslist.com/en/weblog?weblogid=187738337.
+[2] StarOffice FAQ, Question #13, available from http://www.sun.com/software/star/staroffice/faqs/technical.jsp#q_13.
+[3] Current Status of the CARO Malware Naming Scheme, available from http://www.people.frisk-software.com/~bontchev/papers/naming.html.
+[4] Bontchev V. The Three Faces of VBA – Part 2. Virus Bulletin, February 2005, pp. 4–6.
+[5] Rautiainen S. OpenOffice Security. Proceedings of the 13th Virus Bulletin Conference, 2003, pp. 51–57.
+[6] Raiu C. Kasperksy Lab. Personal communication.
+[7] FitzGerald N. Personal communication.
+[8] First virus for StarOffice poses no serious threat. http://www.sophos.com/pressoffice/news/articles/2006/05/stardust.html.
+[9] OpenOffice and Ziggy Stardust. http://www.f-secure.com/weblog/#00000893.
+[10] http://www3.ca.com/securityadvisor/virusinfo/virus.aspx?id=56047.
+[11] http://www.symantec.com/avcenter/venc/data/sb.stardust.a!int.html.
+[12] OpenOffice is vulnerable – Avira warns against the first macro virus. http://www.avira.com/en/security_news/openoffice_is_vulnerable_-_avira_warns_against_the_first_macro_virus.html.
+[13] XML_DUSTAR.A. http://www.trendmicro.com/vinfo/virusencyclo/default5.asp?VName=XML_DUSTAR.A.
+[14] Statement on the Proof of Concept Macro Virus. http://www.openoffice.org/press/statement-proof-of-concept-virus.html.
+[15] Szappanos G. VirusBuster. Personal communication.
+[16] Library Installer. http://kosh.datateamsys.com/~danny/OOo/Experiments/obsolete/LibraryInstaller-2004-03-09-01.sxd.
+[17] While this article was being prepared for publication, a real working virus for the OpenOffice platform appeared – SB/Starbugs.A. It is written by a different, less inept virus writer and works under all OpenOffice applications that can run StarBasic.

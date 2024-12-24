@@ -1,0 +1,216 @@
+Locky Ransomware - Encrypts Documents, Databases, Code, BitCoin Wallets and More...
+
+A new ransomware named Locky has emerged recently.  Locky is distributed in a manner similar to that of Dridex botnets 120 and 220. This new ransomware uses 128-bit AES encryption and has a domain generation algorithm (DGA). It is also capable of encrypting SQL databases, source code, BitCoin wallets and more.
+UPDATE: Please see our updated  blog post:  LOCKY'S NEW DGA - SEEDING THE NEW DOMAINS [RUSSIA UPDATE: 26/FEB/16] where we detail the new DGA and the Locky base configuration.
+E-mail Lures
+The e-mail lures used in Locky campaigns are similar in their nature and targeting to Dridex botnets 120 and 220. It appears likely that the same actors behind those botnets are distributing the new Locky ransomware.
+
+As usual, the DOC file attachment contains a malicious macro that will download and execute the malware payload. The lure shown above has similar characteristics to a Dridex botnet 120 e-mail campaign, and the documents used in this campaign attempted to download a Locky payload from one of the following URLs:
+
+hxxp://onigirigohan.web.fc2[.]com/1/1.exe
+hxxp://killerjeff.free[.]fr/2/2.exe
+hxxp://uponor.otistores[.]com/3/3.exe
+hxxp://premium34.tmweb[.]ru/4/4.exe
+hxxp://bebikiask.bc00[.]info/5/5.exe
+hxxp://test.rinzo[.]biz/6/6.exe
+hxxp://avp-mech[.]ru/7/7.exe
+The payload executable is typically packed and obfuscated to evade anti-virus detection.
+File Encryption
+Locky will seek to encrypt any files that it can find, except for core Windows operating system files. The list of files and extensions it targets is as follows:
+
+.m4u .m3u .mid .wma .flv .3g2 .mkv .3gp .mp4 .mov
+.avi .asf .mpeg .vob .mpg .wmv .fla .swf .wav .mp3
+.qcow2 .vdi .vmdk .vmx .gpg .aes .ARC .PAQ .tar.bz2
+.tbk .bak .tar .tgz .gz .7z .rar .zip .djv .djvu .svg
+.bmp .png .gif .raw .cgm .jpeg .jpg .tif .tiff .NEF
+.psd .cmd .bat .sh .class .jar .java .rb .asp .cs .brd
+.sch .dch .dip .pl .vbs .vb .js .h .asm .pas .cpp .c
+.php .ldf .mdf .ibd .MYI .MYD .frm .odb .dbf .db .mdb
+.sql .SQLITEDB .SQLITE3 .asc .lay6 .lay .ms11 (Securitycopy)
+.ms11 .sldm .sldx .ppsm .ppsx .ppam .docb .mml .sxm .otg
+.odg .uop .potx .potm .pptx .pptm .std .sxd .pot .pps
+.sti .sxi .otp .odp .wb2 .123 .wks .wk1 .xltx .xltm
+.xlsx .xlsm .xlsb .slk .xlw .xlt .xlm .xlc .dif .stc
+.sxc .ots .ods .hwp .602 .dotm .dotx .docm .docx .DOT
+.3dm .max .3ds .xml .txt .CSV .uot .RTF .pdf .XLS .PPT
+.stw .sxw .ott .odt .DOC .pem .p12 .csr .crt .key wallet.dat
+Each file is encrypted using Microsoft Windows' own CryptoAPI with 128-bit AES in cipher block chaining mode. The file is then renamed with a ".locky" extension.
+Network Shares. Locky will also encrypt any files found on network shares, even ones that are not locally mapped on the current machine.
+Domain Generation Algorithm
+Locky typically comes with at least one hard-coded command-and-control (C&C) IP address that it uses for its encryption key exchange and reporting infection. However, Locky also uses a DGA as part of its command-and-control (C&C) infrastructure. Forcepoint Security Labs reverse engineered and re-compiled the algorithm. Here is the DGA in C:
+
+/* Modify the SystemTime to generate domains for a different day */
+
+char *LockyDGA(unsigned int seed, SYSTEMTIME SystemTime)
+{
+int modConst1 = 0xB11924E1;
+int modConst2 = 0x27100001;
+int modConst3 = 0x2709A354;
+int modYear, modMonth, modDay;
+int modBase = 0, i = 0, genLength = 0;
+unsigned int x = 0, y = 0, z = 0;
+unsigned int modFinal = 0;
+char *domain;
+char tldchars[29] = "rupweuinytpmusfrdeitbeuknltf";
+
+// Perform some shifts with the constants
+modYear = __ROR4__(modConst1 * (SystemTime.wYear + 0x1BF5), 5);
+modDay = __ROR4__(modConst1 * (modYear + ((unsigned int)SystemTime.wDay >> 1) + modConst2), 5);
+modMonth = __ROR4__(modConst1 * (modDay + SystemTime.wMonth + modConst3), 5);
+modBase = __ROL4__(seed % 6, 21);
+modFinal = __ROR4__(modConst1 * (modMonth + modBase + modConst2), 5);
+modFinal += 0x27100001;
+
+// Length without TLD
+genLength = modFinal % 11 + 5;
+
+if (genLength)
+{
+// Allocate full length including TLD and null terminator
+domain = (char *)malloc(modFinal % 11 + 8 + 1);
+
+// Generate domain string before TLD
+do
+{
+x = __ROL4__(modFinal, i);
+y = __ROR4__(modConst1 * x, 5);
+z = y + modConst2;
+modFinal = z;
+domain[i++] = z % 25 + 97;
+}
+while (i < genLength);
+
+// Add a '.' before the TLD
+domain[i] = '.';
+
+// Generate the TLD from a hard-coded key-string of characters
+x = __ROR4__(modConst1 * modFinal, 5);
+y = (x + modConst2) % ( (sizeof(tldchars) - 1) / 2 );
+
+domain[i + 1] = tldchars[2 * y];
+domain[i + 2] = tldchars[2 * y + 1];
+domain[i + 3] = 0; // Null-terminate
+}
+return domain;
+}
+
+The algorithm generates six domains per day, which looked like:
+
+2016-02-18: wblejsfob[.]pw, kqlxtqptsmys[.]in, cgavqeodnop[.]it, pvwinlrmwvccuo[.]eu, dltvwp[.]it, uxvvm[.]us
+
+2016-02-19: wblejsfob[.]pw, kqlxtqptsmys[.]in, cgavqeodnop[.]it, pvwinlrmwvccuo[.]eu, dltvwp[.]it, uxvvm[.]us
+
+2016-02-20: nquvsq[.]pm, bgrjlkvxa[.]fr, svkjhguk[.]ru, gitybdjgbxd[.]nl, xxmavhnxts[.]tf, ovdeondpeethj[.]eu
+A full list of the domains used from February 1-29 is available at the end of this blog entry.
+
+The C&C communication looks as follows:
+
+Ransom Message & Payment
+Once Locky has encrypted all of the files it can find, it will display a ransom message to the user.  This is done by changing the current wallpaper and showing an image and text file such as the one below:
+
+Browsing to the payment page reveals a smart looking payment lure, requesting a payment of 0.5 BTC which is currently approximately $210 U.S. Dollars.
+
+Browsing to this page results in a unique BitCoin wallet being created, as documented by Hewlett Packard researchers. Once payment has been made, Locky will generate a decrypter utility on the fly with the necessary decryption key which can then be downloaded.
+Customer Protection
+Forecepoint customers are protected against this threat via TRITON® ACE at the following stages of attack:
+
+Stage 2 (Lure) - The e-mail lures associated with Locky are detected and blocked
+Stage 5 (Dropper File) - The Locky ransomware payloads are detected and blocked
+Stage 6 (Backchannel Traffic) - Attempts by Locky to communicate with its command-and-control servers are blocked in real-time
+
+In addition, the Forcepoint file sandbox detects Locky's behavior as malicious:
+
+Observations
+Crypto ransomware shows no signs of going away, with new strains showing up on a weekly basis.
+To protect yourself against threats such as these then strong and enforced policies are key.  All of the observations below should be no surprise and should be essentials in any business, backed up by continuous review, training and awareness for all those concerned:
+
+Consider having regular and external back-ups and archives of your critical data.
+Do not open e-mails attachments unless you can verify and trust the sender.
+Microsoft Office macros should be disabled by default, and only enabled if absolutely needed.
+Network segregation is key, especially for critical business systems; in order to minimize any potential damage to the business as a whole.
+
+Indicators of Compromise (IOCs)
+Locky executable SHA1 hashes:
+
+ab0a8659882d2d36a114bc7ad3b749e3c44d279d
+64772a2cdf8827bf6bafb1b7be5aa2877f92e62f
+48cffe0fba17b6ac8c7b4a1199de151f9e97d846
+1a0cb51942560793989856508302e7d2ff0e9750
+c25041bf3da85f0c5122983338a84783f7568109
+ff9790d7902fea4c910b182f6e0b00221a40d616
+1347b810ac90c13154908f7cf45b11913c182e44
+686cdfef4458b28b5fe37ea421886fbaf2fc9da6
+a6286284e74d308a45df9af519e438b0b383addb
+82468874f22b41985f8e7579aa591d2619d09eeb
+0929bff19771c253ea7f8f3f7d6f1e98804e2845
+8e5c7e0b3a6bca03148976dd0231132416e8a422
+acafa2ca62e52e123de91eca40ea5befa483a8b3
+ea0de106f727500bbbca0307ba6005a33cf0db97
+f7bb52767afd2cd32ede8b5f83012eb99ba1ce28
+fcc45e28738e46b99024e6992086baa929667851
+6fa183aa381a6dd3eb92cf90e8a6bb54887d6641
+442c6f9bd90e71ae07e7dacd24771146410c1113
+fd9267437a445424c7607ac2597a9da5b8eb6883
+9043bdcb673fda051fa94d162e4776d45883049b
+a63d4b76c61838ca59c334e731b65b7ca25d7e20
+c8a71ca31f1f54405f3a3322cb7c83e497e4477f
+341ef8483948a41d9b72c69a3d300ae6f2dda3ff
+04f8cf0fa9bb74b7f78d4663126d0e3c66392c94
+265fd969eaa383a23e381a8e6f7ed70979717dfe
+b606aaa402bfe4a15ef80165e964d384f25564e4
+1dcaee24d25536b48f8c97d75ca6f11c90199c36
+749c476ea41b1a02a14d64c6bea513f2103897d4
+8b3148eb3fe54fd32e29c2cfe6958e4e31e432f6
+f2c18a80ee4aa0dbab710c3e0be43bfe753996c3
+06f1ad27b250e4be79e712f423ef716b032d9fdf
+5465df4d230318bb8ee6a70d495b80cefe6cbac6
+06eb10222314fd1a2b6d4a9e14c6f6efa8e1ab5b
+53dd2f0f462864caeb3339bda12dea1419e6b881
+d8cfc5f9e5d67f7724e2e8c0861937b2ad4148d2
+4258d5e42a93953074af6059ad19aab9e8b1556d
+ff71b97b739926477b2220d1eb56d0fcf8a7eb08
+3aa2e66f41b4611d5d5680bdb6625c4af19c542a
+170b7d049a0e97286773fbf8d6d04ec9ca566f43
+d134fc2db8f3e7bf0518ec2853d68004ba4cd0ea
+367db19e7f856d2c974d81ac5cf1ee051c463436
+ff6cfd485855d679cf0b98215a515b3f0a88af45
+c9ac5c713f8d67c72251ddf8a50691355a0fc259
+bc2f0bf6ac047196d78916854fc3e2660fa3f174
+adc44de37b951c96b6c44f1bd1889b26eb1752a6
+c85709435a839f86c893487c7c0a2d30ba71f2c3
+6255ec5d98f44403e7ef4a1a7bc7b397268929b3
+20e88b79e9feb57fef0502c034b6ba4a57db8cde
+
+The full list of February's Command and Control domains:
+
+2016-02-01: moejvqbrjbf[.]uk, aebsejiwqtpqwm[.]tf, rqdsteevnsbyi[.]pm, fgdmh[.]eu, svavpuax[.]uk, klsasoi[.]uk
+2016-02-02: dcwcsnjmabj[.]be, qogrmnlyagpnvg[.]us, ievocplkojnbi[.]be, vtvfb[.]uk, ngxfqqbhwojnugo[.]uk, bvuoymh[.]ru
+2016-02-03: dcwcsnjmabj[.]be, qogrmnlyagpnvg[.]us, ievocplkojnbi[.]be, vtvfb[.]uk, ngxfqqbhwojnugo[.]uk, bvuoymh[.]ru
+2016-02-04: ulhejnrmgoavci[.]fr, ibhxtp[.]nl, aqayo[.]tf, ngwlibne[.]de, fsylxsr[.]uk, sivugouayv[.]be
+2016-02-05: ulhejnrmgoavci[.]fr, ibhxtp[.]nl, aqayo[.]tf, ngwlibne[.]de, fsylxsr[.]uk, sivugouayv[.]be
+2016-02-06: tcompq[.]us, hrlymxmyx[.]de, uhlpilwttsdr[.]be, pchhwbfkgbc[.]uk, drhxvktlaprrhl[.]be, qheksr[.]de
+2016-02-07: tcompq[.]us, hrlymxmyx[.]de, uhlpilwttsdr[.]be, pchhwbfkgbc[.]uk, drhxvktlaprrhl[.]be, qheksr[.]de
+2016-02-08: htldsux[.]nl , ujimbnjnig[.]nl, mvkmtegvs[.]in, alkdtyrowuku[.]us, qjbhltkobdokjut[.]ru, iytierhiukrerd[.]be
+2016-02-09: htldsux[.]nl, ujimbnjnig[.]nl, mvkmtegvs[.]in, alkdtyrowuku[.]us, qjbhltkobdokjut[.]ru, iytierhiukrerd[.]be
+2016-02-10: cofctk[.]ru, pecoqoarb[.]it, hqeogjvt[.]it, ugeffskupnj[.]pm, ivbryanerviovx[.]be, aihrksdrndwae[.]de
+2016-02-11: cofctk[.]ru, pecoqoarb[.]it, hqeogjvt[.]it, ugeffskupnj[.]pm, ivbryanerviovx[.]be, aihrksdrndwae[.]de
+2016-02-12: pbdlohaujirql[.]uk, dqaxl[.]pm, xlytcksdpjikvos[.]tf, lbvgyrv[.]nl, dqokco[.]uk, qgltkhhyj[.]ru
+2016-02-13: pbdlohaujirql[.]uk, dqaxl[.]pm, xlytcksdpjikvos[.]tf, lbvgyrv[.]nl, dqokco[.]uk, qgltkhhyj[.]ru
+2016-02-14: ssojravpf[.]be, gioaqjklhoxf[.]eu, txlmnqnunppnpuq[.]ru, lneqqkvxxogomu[.]eu, ydbayd[.]de, qpdar[.]pw
+2016-02-15: ssojravpf[.]be, gioaqjklhoxf[.]eu, txlmnqnunppnpuq[.]ru, lneqqkvxxogomu[.]eu, ydbayd[.]de, qpdar[.]pw
+2016-02-16: fnarsipfqe[.]pw , sdwempsovemtr[.]yt, kpybuhnosdrm[.]in, xfyubqmldwvuyar[.]yt, luvenxj[.]uk, dkoipg[.]pw
+2016-02-17: fnarsipfqe[.]pw, sdwempsovemtr[.]yt, kpybuhnosdrm[.]in, xfyubqmldwvuyar[.]yt, luvenxj[.]uk, dkoipg[.]pw
+2016-02-18: wblejsfob[.]pw, kqlxtqptsmys[.]in, cgavqeodnop[.]it, pvwinlrmwvccuo[.]eu, dltvwp[.]it, uxvvm[.]us
+2016-02-19: wblejsfob[.]pw, kqlxtqptsmys[.]in, cgavqeodnop[.]it, pvwinlrmwvccuo[.]eu, dltvwp[.]it, uxvvm[.]us
+2016-02-20: nquvsq[.]pm, bgrjlkvxa[.]fr, svkjhguk[.]ru, gitybdjgbxd[.]nl, xxmavhnxts[.]tf, ovdeondpeethj[.]eu
+2016-02-21: nquvsq[.]pm, bgrjlkvxa[.]fr, svkjhguk[.]ru, gitybdjgbxd[.]nl, xxmavhnxts[.]tf, ovdeondpeethj[.]eu
+2016-02-22: bhjkmek[.]fr, swcopf[.]nl, gmybmiqmi[.]tf, tyinupbwflbq[.]tf, loxotmoxjti[.]in, yexexqnrrxyjki[.]fr
+2016-02-23: bhjkmek[.]fr, swcopf[.]nl, gmybmiqmi[.]tf, tyinupbwflbq[.]tf, loxotmoxjti[.]in, yexexqnrrxyjki[.]fr
+2016-02-24: fkaloueopre[.]pm, sawuwqgxdqulwx[.]it, jxqdry[.]ru, bnjhx[.]eu, odgtnkmq[.]pw, gpiqvbc[.]it
+2016-02-25: fkaloueopre[.]pm, sawuwqgxdqulwx[.]it, jxqdry[.]ru, bnjhx[.]eu, odgtnkmq[.]pw, gpiqvbc[.]it
+2016-02-26: rvdpsiwxipvy[.]fr, mxdboggndfjpnuu[.]fr, ekfbhxkaoigjyj[.]uk, racnbf[.]ru, fpceaoggl[.]pm, wfuiglgv[.]be
+2016-02-27: rvdpsiwxipvy[.]fr, mxdboggndfjpnuu[.]fr, ekfbhxkaoigjyj[.]uk, racnbf[.]ru, fpceaoggl[.]pm, wfuiglgv[.]be
+2016-02-28: mgfdkwsydxxbkw[.]it, eshdvdyytklqp[.]nl, rieps[.]ru, jugpickpjduryej[.]be, wkgghly[.]pw, kadsbsfnhv[.]tf
+2016-02-29: mgfdkwsydxxbkw[.]it, eshdvdyytklqp[.]nl, rieps[.]ru, jugpickpjduryej[.]be, wkgghly[.]pw, kadsbsfnhv[.]tf
+
+Blog contributors: Nick Griffin, Ran Mosessco, Andy Settle

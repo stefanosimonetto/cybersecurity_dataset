@@ -1,0 +1,56 @@
+Fake Plugins, Fake Security
+
+Update: The plugin name is fake and has nothing to do with the well-known WP-SpamShield plugin in the official WordPress plugin repository.
+WordPress users are becoming increasingly more aware of security threats and as a result, they are taking more actions to secure their websites (e.g. by installing security plugins). While this is a good thing, there are always black hats trying to take advantage of new opportunities to compromise websites. For example, we’re seeing a rising number of fake plugins claiming to offer security, when in reality they have malicious intentions.
+Recently, a fake WordPress security plugin called X-WP-SPAM-SHIELD-PRO got our attention. Fake plugins often have a few folders and plugin names that appear legitimate, but the contents include a malicious file that contains a backdoor or similar malware.
+Masquerading As a Security Plugin
+In the case of the X-WP-SPAM-SHIELD-PRO plugin, we identified a legitimate structure and file names:
+
+We also found legitimate, “security-related” file names in the ./includes folder:
+
+Looks good, right? Unfortunately, it’s all fake.
+After checking each of the files, the contents turned out to be simple hack tools serving the purpose of the attacker.
+Enumerates and Disables Plugins
+To give you a better perspective, let’s inspect the file class-social-facebook.php. The file name appears to be related to the Facebook social network and the plugin pretends to be a “Spam Shield”, so it’s a reasonable assumption that the plugin will include a class that blocks any potential unwanted Facebook spam. However, in this case, it’s just a fake file name.
+Here’s the real content and functionality of that particular file:
+
+It includes a few WordPress core files wp-load.php and plugin.php; leveraging these core functions saves a lot of time for the attacker, and here’s why:
+The rest of the code lists all of the active plugins within the WordPress installation, giving the attacker a nice overview, including any security plugins installed. After that, it disables all of your plugins! Nice way to avoid any unwanted attention… only it breaks your site, potentially making it unusable.
+Fetching Admin Users and WordPress Version
+Next, let’s check the content of  class-term-metabox-formatter.php and class-admin-user-profile.php
+With such complicated file names, there has to be some really serious, complex code for sure…
+Code snippet pasted from both files
+It turns out that these complicated file names are really just concealing simple malware.
+The first file snippet grabs the WordPress version, and the second one provides a list of all admin users in the WordPress installation. Both of these items are extremely sensitive in nature.
+Once the attacker receives these details from the fake plugin, they possess a lot of the initial information needed to compromise a website. The WordPress version, despite being externally readable in most installations, could serve as an indicator for open vulnerabilities which are not fixed in that particular version. The leaked information about admin accounts is obviously a real security threat.
+Malicious mw01main Admin User
+The directories include files that appear to be innocent, such as plugin-header.php. However, the code inside is anything but harmless:
+
+The plugin-header.php file contains code to add an additional administrator account – mw01main – to your site. It also contains code to delete itself.
+This is the first time during this research investigation that we’ve noticed a reference to some external site – mainwall.org. There’s a clearly visible username and password, and an email used for the new administrator account which an attacker could use to login to your site. Nasty.
+So, what about the domain being referenced by the file?
+That’s it. The website just displays some basic text: S T A G E O N E.
+Sounds ominous, but there’s nothing else here. Let’s continue digging into our investigation of fake plugins.
+Ping Home to the Hacker
+The other files in the ./includes folder contain pretty much the same kind of malicious content: code to list the active plugins, code to list all plugins, etc.
+Let’s inspect the main “plugin file”: wp-spam-shield-pro.php
+It adds some hooks to the WordPress installation, taking advantage of core functionalities. X-WP-SPAM-SHIELD-PRO was properly loaded as a plugin, indicating that the malware authors know a lot about developing WordPress plugins. It’s not just a simple Trojan Horse, and there was clearly some effort behind coding it.
+There’s also a pretty ironic commented description:
+“An exceptionally powerful and user-friendly WordPress Anti Spam plugin which every WordPress Site Needs.”
+
+The attackers included a “ping home” function, which informs them whenever the plugin is activated on a website. Whenever they receive a ping, they know they have access and full control of your site.
+They’ve also created a custom sendPost(); function, which provides them with any information they want using a standardized method. Let’s take a look at it:
+
+This function collects information about the user, password, current site this plugin is active on, server IP address, and few other pieces of sensitive data. This information is then sent back to their server using the POST method, making it difficult to detect within your site logs.
+Malicious Uploads as Updates
+The fake plugin also includes “update” functionality. In other words – a backdoor allowing them to upload anything to your site.
+
+No asking. They can simply download a ZIP archive, unpack it to your system, and delete the archive. A prime example of a backdoor.
+Unfortunately, the ZIP archive provided by the malicious site was corrupted and despite my attempts to recover it, I was unable to access the data. The only result was a partial ZIP archive structure:
+
+The ZIP was related to the very well known All-In-One SEO Pack WordPress plugin, but since I was not able to recover the contents, I can only speculate what the attacker’s intentions were. Either they were trying to infect this commonly-used plugin with malicious code, or they were just providing corrupted ZIP archive of the original package for their own testing purposes (recall the “Stage One” on their site). Alternatively, they made a simple mistake – until we can get our hands on another domain that has been compromised by this fake plugin, we won’t know for certain.
+Conclusion
+Not all security plugins are secure. By installing fake plugins from unreliable sources or leaving your site vulnerable to compromise, you’re putting your website at a great risk. Descriptions and names can be deceiving, and don’t necessarily mean the plugin will behave in the way that it claims to.
+When it comes to unused plugins, less is more. Storing unwanted plugins in your WordPress installation is considered bad practice and increases the chances of a compromise. To ensure that your plugins have the latest bug patches and security releases, we recommend that you audit and update them on a regular basis.
+Do you know which plugins you have installed, and do you update them on regular basis? Are you keeping only the plugins you need to minimize security risks? Do you use a reliable security plugin and check its reports? These are only a few questions a responsible site owner should ask. If you have any concerns about malware infections, backdoors or compromised websites and need a hand, we’d be happy to help!
+Stay safe and keep your eyes open.

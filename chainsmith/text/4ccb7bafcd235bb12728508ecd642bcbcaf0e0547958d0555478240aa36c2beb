@@ -1,0 +1,100 @@
+PRODUCTS & SERVICES
+
+Unlocking the power of Sophos Central API
+
+We've waved farewell to unsupported data gathering; the Sophos Central API is here!
+
+Written by
+Mark Lanczak-Faulds
+
+December 19, 2019
+
+Products & Services Sophos Central Sophos Central API Sophos Security Team
+
+Last year I wrote about how the Sophos Security Team uses a variety of data streams to help give context to its threat hunting data.
+One of those data streams is from our very own Sophos Central, but we have always used an unsupported method to obtain it, until now. The Sophos Security Team is super excited to let you know that the Sophos Central API has been officially released!
+This means there’s now a supported method to get tenant information from Sophos Central, and it will help provide context to other security logs you may be monitoring in your estate.
+We are also sharing our Sophos Central API Connector Python Library to help you get the information quickly using your Sophos Central API keys.
+Let’s dig deeper into how the data is used and obtained.
+About the API
+There are several steps required to begin querying endpoint and event information from the Sophos Central API. You will need to create and securely store a client ID and client secret to access the API for your tenant(s). We can’t stress enough how important it is to store these keys securely.
+Here’s the basic concept of the authorization process:
+
+Authorize and obtain a bearer token for OAuth2 using your client ID and client secret.
+Authenticate with the whoami api to get your partner, organization or tenant ID using the bearer token.
+If you are a partner or organization, you can obtain all your tenant ID information for your different estates using the specific API.
+
+Once you have your tenant IDs and their associated data region API host, you can begin to get endpoint or event data for those tenants. In this article we’ll focus on two APIs: GET /alerts and GET /endpoints.
+GET /endpoints
+The Endpoint API focuses on querying computer and server endpoints. It allows you to perform routine actions on them such as gathering system information, performing or configuring a scan, gathering or changing the tamper-protection state, triggering an update, or deleting an endpoint. When using the GET /endpoints path this will get all the endpoints for the specified tenant.
+GET /alerts
+The Common API is the interactive alert management for open alerts and allows you to act on them. The GET /alerts functionality, which is part of the Common API, fetches alerts which match the criteria you have specified in the query parameters.
+Once you have the allowed actions from the alert, you can post to perform an action for that event. Alternatively, there is a path to post a search for specific event criteria, or search for alerts for a specific endpoint ID.
+For information on how to create your API keys and more detailed information on the APIs themselves, have a look at the Sophos Central API developer site.
+All of this is important to know, but how does the Sophos Security Team obtain and use this data?
+What we use the data for
+The information obtained from Sophos Central API, coupled with other security/applications logs in our SIEM, allows us to enrich our security use cases. This lets us pinpoint the more serious events and swiftly act on these.
+It also aids automation, allowing the flows to act on events and obtain more information from Central on a specific given device. This offers greater insight to the health state of the machine. Not only that – given the alert type, you can clean or delete detections, trigger a new scan, or see which systems you need to focus on in an incident.
+We plan to offer even more data and functionality over the coming months. I would encourage you to keep an eye on our What’s New page for further announcements.
+Sophos Security Team Central API Connector Library
+Our goal when developing the API Connector Library was to make it easy for our team to utilize the Sophos Central API in our various security use cases.
+We then realized the library would also be useful for you, our customers, to help you begin ingesting data into your SIEM, or simply obtaining the data so you could see what you could do with it.
+So that’s exactly what we have done! The library is now available. You can access it from:
+
+PyPI – pip install sophos-central-api-connector
+GitHub
+
+Alongside the library, we have a sophos_central_main.py which has been written to get the inventory or alert data from Sophos Central API using the CLI.
+There are four output options available using the CLI:
+
+stdout: Print the inventory information to the console.
+json: Save the output of the request to a json file.
+splunk: This will send the data to Splunk with no changes made and apply the settings from the token configuration.
+splunk_trans: Using this output will apply the information set in the splunk_config.ini for the host, source, and sourcetype. This will override the settings in the token configuration. However, it will not change the Index that the data should be sent to.
+
+I will cover the functionality with an example command, but first we need to cover the different config files it uses.
+Configuration Files
+sophos_central_api_config.py
+The majority of the variables contained in this config file must remain static to maintain the correct functionality of the Sophos Central API Connector. However, there are two variables which can be changed if you’d prefer default behavior to be different.
+DEFAULT_OUTPUT: This variable is set to ‘stdout’ so if no output argument is passed to the CLI, results will be returned to the console. You can change this to be another valid value if desired.
+DEFAULT_DAYS: This variable is set to ‘1’ if no days argument is passed in certain scenarios. This default is also used for the default number of days passed for polling alert events. More on this to follow below.
+sophos_config.ini
+While you can set static API credentials in this configuration, we strongly advise that this is only done for testing purposes. Where possible, use AWS Secrets Manager to store your credential ID and token.
+You can access your AWS Secrets by configuring your details as below:
+secret_name: <secret_name>
+region_name: <aws_region>
+client_id_key: <specified_key_name>
+client_secret_key: <specified_key_name>
+The page size configuration is the number of events you would like to appear per page when querying the Sophos Central API. You may specify maximum page sizes, which will be checked during the execution of the connector. If these pages sizes are left blank, the default page sizes will be used as determined by the API.
+splunk_config.ini
+This config is solely for admins who are sending the alerts and inventory directly to Splunk. There are options for both static token information as well as an option to use the AWS Secrets Manager. We would recommend that the static entry option is only used for testing purposes and the token is stored and accessed securely.
+Information on how to enable and setup the Splunk HTTP Event Collector can be found in the HTTP Event Collector documentation.
+Example Commands
+Once you have set up your config files, you can start see what data you have.
+To display syntax help information:
+‘python <path to file>/sophos_central_main.py --help’
+To get your tenant information:
+‘python <path to file>/sophos_central_main.py --auth <auth_option> --get tenants’
+To get inventory data:
+‘python <path to file>/sophos_central_main.py --auth <auth_option> --get inventory --output <output_option>’
+If you wish to just get the inventory for one specific tenant, then the syntax is the following:
+‘python <path to file>/sophos_central_main.py --auth <auth_option> --get inventory --tenant <tenant_id> --output <output_option>’
+You can use the tenant ID displayed when the get tenant query was run.
+As with the option for “get inventory”, you can retrieve alerts for a specific tenant or all tenants. In addition, you can specify the number of days’ worth of alerts you would like to pull back by using the days parameter.
+Sophos Central holds event data for 90 days, so when passing the days argument, you can specify days as an integer from 1 to 90. If no argument for the number of days is passed, a default of one day is set, or to whatever was set in the ‘default_days’ in the sophos_central_api_config.py file.
+To get the alert data run:
+‘python <path to file>/sophos_central_main.py --auth <auth_option> --get alerts --days <integer: 1-90> --output <output_option>’
+Because alerts could come into Central at varying times depending on when the machine sends the information back, we needed a way to see what alerts had already been sent to our SIEM. When passing the polling option, a list of successful events will be maintained to prevent duplicates from being sent to the SIEM.
+To run the polling option:
+‘python <path to file>/sophos_central_main.py --auth <auth_option> --get alerts --days <integer: 1-90> --poll_alerts --output <splunk or splunk_trans>’
+There is no polling option for the “get inventory” functionality, as the data for all systems should be returned to obtain a full inventory. This is because the data for each machine can change each time the CLI is run, or simply get specific endpoint id inventory data if required.
+Why the Sophos Security Team is excited about Sophos Central API
+We love the flexibility Sophos Central API offers, and how it allows us to bring more context to our other logs. We’ve been able to instantly get an idea of the host health and whether there have been any recent detections. Plus, alerts and devices are really easy to maintain from Central.
+It’s safe to say that the Security Team has given the API a big thumbs up already, and we hope that you find the Sophos Central API Connector Python Library useful too.
+Keep an eye out for more features in the future as Sophos Central API continues to be updated.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

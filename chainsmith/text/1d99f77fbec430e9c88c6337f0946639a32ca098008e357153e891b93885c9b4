@@ -1,0 +1,265 @@
+MalwareBytes CTF: Capturing the flag I didn’t plan to catch…
+May 20, 2018 in CTF
+
+While browsing Twitter on Friday, April 27th I came across an announcement from @hasherezade about the release of a new crackme that she prepared and published on the MalwareBytes blog. I actually didn’t plan to take a part in it, but somehow I eventually got tempted and decided to give it a go…
+Then I won!
+But let’s not get ahead of ourselves…
+The file in question (mb_crackme_2.exe) is a 8MB executable. Once you see something like this, you… run away. I mean, seriously… well… good we have the sandboxes?
+The problem is that in this case it’s a CTF and you need to reverse…
+Sigh…
+Okay…
+So… I checked the file type and… decided to run away again.
+PyInstaller… @#$%^&(!)
+I hate this stuff :).
+It’s an .exe that spawns another .exe and there is a crazy amount of garbage dropped all over the place on the system where the file is executed.
+So I try my luck with some decompiling tools I collected in the past. Of course, none worked. That’s actually very typical. But I used them before and knew it’s possible to extract the junk files and then decompile the main code.
+Quick google follows for the latest, and the best and it landed me on a github page of In Ming Loh from @countercept.
+A-ha. Updated last Nov, pretty new.
+Download.
+Try.
+Fail.
+I guess that’s why I don’t like Python ;).
+Yup, the script didn’t work, but after quick code analysis (python trace log FTW) I modded it a bit to work and was able to decompile the main file (which was called ‘another’).
+Hooray!
+The decompiled python script is a battle pretty much won.
+So I thought.
+I quickly identified Level1 user name hardcoded in the source code: hackerman.
+The Password was present only as a hash, but Google helped to identify the hash as being taken from the following string: Password123 .
+So, now I have a Login and the Password.
+
+What about the PIN?
+The PIN requires quick thinking – google didn’t return any hits, so I have to brute-force.
+Sigh…
+I hate writing code in Python…
+I love to rip it out from sources though and make it what I want it to do 😉
+I ripped the code from the main module and let it go:
+import os
+import sys
+import io
+import math
+import hashlib
+import random
+from Crypto.Cipher import AES
+from Crypto import Random
+unpad = lambda s: s[:-ord(s[len(s) - 1:])]
+pad = lambda s: s + (BS - len(s) % BS) * chr(BS - len(s) % BS)
+class AESCipher:
+
+def __init__(self, key):
+self.key = ''.join(map(chr, key))
+
+def encrypt(self, raw):
+raw = pad(raw)
+cipher = AES.new(self.key, AES.MODE_ECB)
+return cipher.encrypt(raw)
+
+def decrypt(self, enc):
+cipher = AES.new(self.key, AES.MODE_ECB)
+return unpad(cipher.decrypt(enc))
+
+def get_url_key(my_seed):
+random.seed(my_seed)
+key = ''
+for i in xrange(0, 32):
+id = random.randint(0, 9)
+key += str(id)
+
+return key
+
+def check_key(key):
+my_md5 = hashlib.md5(key).hexdigest()
+if my_md5 == 'fb4b322c518e9f6a52af906e32aee955':
+return True
+return False
+
+PIN=0
+while True:
+key = get_url_key(int(PIN))
+
+if check_key(key):
+print (PIN)
+encrypted_url = '\xa6\xfa\x8fO\xba\x7f\x9d\xe2c\x81`\xf5\xd5\xf6\x07\x85\xfe[hr\xd6\x80?U\x90\x89)\xd1\xe9\xf0<\xfe'
+aes = AESCipher(bytearray(key))
+output = aes.decrypt(encrypted_url)
+print (output)
+exit(0)
+PIN = PIN+1
+It pretty quickly identified the PIN to be 9667.
+When submitted I passed the Level1.
+
+My python code (not really mine, cuz I ripped it out) also printed the URL that was encrypted inside the python code.
+The aforementioned URL was the second stage stored at https://i.imgur.com/dTHXed7.png.
+
+The picture is a garbage, so something must be hidden inside it.
+No, don’t salivate yet! IT IS NOT STEGO!!!
+Read the python code…
+def get_encoded_data(bytes):
+imo = Image.open(io.BytesIO(bytes))
+rawdata = list(imo.getdata())
+tsdata = ''
+for x in rawdata:
+for z in x:
+tsdata += chr(z)
+
+del rawdata
+return tsdata
+A-ha…
+So.. I downloaded the pic and ripped the above code and put it into another quick& dirty script.
+import os
+import sys
+import io
+from PIL import Image
+
+imo = Image.open("dTHXed7.png")
+rawdata = list(imo.getdata())
+tsdata = ''
+for x in rawdata:
+for z in x:
+tsdata += chr(z)
+
+file = open("blob.bin","wb")
+file.write(tsdata)
+file.close()
+I seriously don’t like python… at first I forgot to use ‘wb’ and used ‘w’ instead and got a corrupted .exe. It was obviously misaligned, cuz of new line battle between Windows and *NIX. So, maybe it’s not Python I don’t like after all.
+After fixing the ‘wb’ I got the nice DLL.
+Well… not so nice…
+When you load it it doesn’t obviously work and just laughs at you telling you that you failed.
+Okay..
+Quick analysis shows that there is a code that modifies VEH (Vector Exception Handler) using two AddVectoredExceptionHandler calls.
+The first routine:
+The second routine:
+
+So… now we know that it tries to protect itself from analysts by checking if it is loaded inside the pyinstaller.exe and also checking if the analysts is not using some instrumentation. At least this is my assumption i.e. that’s why the environment variable mb_chall is set in the first routine and later checked inside the other. If you bypass some bit, the other bit won’t work.
+Only if the PID stored in the environment variable is correct the handler will redirect the code execution by EIP+-6.
+This is too much for me to handle and instead of killing myself with analysing this stuff inside the pyinstaller I patched the python27.dll check (NOP NOP NOP NOP), and then once I found out about the EIP change I just went and directly analyzed the code at the EIP+6 – so we just need to execute the console_thread (this is a name I’ve given this routine).
+
+So now we can start analysis from this place.
+Surprise…
+A thread is created that calls EnumWindows, then a callback checks if the dedicated console window with the predetermined window text is available. The internals of it don’t interest me too much as I am just… craving for the flag.
+So, I quickly identify that once the console window is present an EnumChildWindows API will be called with another callback.
+And this second callback is where the real juice is.
+Again, ignoring the inner workings of the console window I realize that the command it accepts is ‘dump_the_key’.
+I instrument the code to decrypt (RC4) a small 617 bytes long blob at 0x10032000 and I get the base64-encoded string:
+eJx9lL1OAkEQx+sreIeLlUQKBPXUxAISYmehD2As
+/IrEGKQwMT4AJLzD5ioIhNwd9wEFhQJ+JNgo/YUg
+4CVEE7ji7LzdPe4GOWl+2czO/GdnZnc/jgfoamxc
+mvrJqHuaL2znssxgdDTUz/oWW0fLSLjRKiFMhVDC
+VGVCYlFFwiqmImBKlE2wlkKCFWmVWMHaoFQIZcAa
+YRUzImBy1NLwyNEo1VPgJLIWCSte7EwWSgkoV0AU
+zCj/tXPaXBTNq5YY98yKl905D/URQKwGPFVwThHr
+OGta1yPYBcozFWmgY9P+MG5eGfjX5tSqng+1Rx9A
+t1tEh3ag+W/trF/tcKZ2FON7fnFuaqBXnODZ3Ykw
+0+xOVG2uhwvrolXYPl5/wD3haosUfO8DM9sTR0EE
+U274VOFOlvbBtoctdb2EwpYWwVRXMaUwsUSJhSNM
+EG4RbmIqa8QzggqBbAa/WX2SHqMdxC/hl/udQgZr
+fLHTJ4yfc2aQ7A4PJ2YK1dneZypvBFGROlybY1vk
+/MtI57Ea+QfyB+ZPsl+Ov73sPnfYIop3exfl19hT
+a69zjwN5rHbLI3vLzb6C+DvephO733pPdPRYux3M
+ZeHfEsj+AqgYif8=
+
+Now… this bit, according to the code of the DLL is injected into the memory address of actxprxy.dll that is loaded into this process. Mind you this is supposed to be loaded inside the pyinstaller crazy process child.
+Luckily, this actxprxy.dll rings a bell as I saw the python code that expects this data inside the PyInstaller madness:
+def decode_pasted():
+my_proxy = kernel_dll.GetModuleHandleA('actxprxy.dll')
+if my_proxy is None or my_proxy == 0:
+return False
+else:
+char_sum = 0
+arr1 = my_proxy
+str = ''
+while True:
+val = get_char(arr1)
+if val == '\x00':
+break
+char_sum += ord(val)
+str = str + val
+arr1 += 1
+
+print char_sum
+if char_sum != 52937:
+return False
+colors = level3_colors()
+if colors is None:
+return False
+val_arr = zlib.decompress(base64.b64decode(str))
+final_arr = dexor_data(val_arr, colors)
+try:
+exec final_arr
+except:
+print 'Your guess was wrong!'
+return False
+
+return True
+So… knowing what happens to this data, I de-Base64, dezlibbed, and got the raw data.
+Yet it’s still encrypted… but we are already finishing.
+The encryption is based on the color values R, G, B so it has to be 3 bytes long.
+Instead of finding out in any smart way, I brute force the encrypted blob on a single-xor key basis and quickly identify first color to be 0x80, then using the same trick the second color to be 0x0 and third to be 0x80.
+Now.. a quick perl code and a quick decrypting routine:
+use strict;
+use warnings;
+
+my $f=shift || die ("Gimme a file name!\n");
+open F,"<$f";
+binmode F;
+read F,my $data,-s $f;
+close F;
+
+my $newdata = '';
+
+my $key="\x80\x00\x80";
+my $n=0;
+for (my $i=0; $i<length($data); $i++)
+{
+my $b=ord(substr($data,$i,1));
+my $k=ord(substr($key,$n,1));
+$newdata.=chr($b^$k);
+$n++;$n=0 if ($n>(length($key)-1));
+}
+
+open F,">$f.out";
+binmode F;
+print F $newdata;
+close F;
+We now get a flagship python code:
+import colorama
+from colorama import *
+def print_flag():
+flag_hex = (
+0x73, 0x75, 0x72, 0x64, 0x65, 0x61, 0x68, 0x50, 0x20,
+0x2D, 0x20, 0x22,0x2E, 0x6E, 0x65, 0x64, 0x64, 0x69,
+0x68, 0x20, 0x79, 0x6C, 0x6C, 0x75, 0x66, 0x65, 0x72,
+0x61, 0x63, 0x20, 0x6E, 0x65, 0x65, 0x62, 0x20, 0x73,
+0x61, 0x68, 0x20, 0x74, 0x61, 0x68, 0x77, 0x20, 0x73,
+0x65, 0x76, 0x69, 0x65, 0x63, 0x72, 0x65, 0x70, 0x20,
+0x77, 0x65, 0x66, 0x20, 0x61, 0x20, 0x66, 0x6F, 0x20,
+0x65, 0x63, 0x6E, 0x65, 0x67, 0x69, 0x6C, 0x6C, 0x65,
+0x74, 0x6E, 0x69, 0x20, 0x65, 0x68, 0x74, 0x20, 0x3B,
+0x79, 0x6E, 0x61, 0x6D, 0x20, 0x73, 0x65, 0x76, 0x69,
+0x65, 0x63, 0x65, 0x64, 0x20, 0x65, 0x63, 0x6E, 0x61,
+0x72, 0x61, 0x65, 0x70, 0x70, 0x61, 0x20, 0x74, 0x73,
+0x72, 0x69, 0x66, 0x20, 0x65, 0x68, 0x74, 0x20, 0x3B,
+0x6D, 0x65, 0x65, 0x73, 0x20, 0x79, 0x65, 0x68, 0x74,
+0x20, 0x74, 0x61, 0x68, 0x77, 0x20, 0x73, 0x79, 0x61,
+0x77, 0x6C, 0x61, 0x20, 0x74, 0x6F, 0x6E, 0x20,0x65,
+0x72, 0x61, 0x20, 0x73, 0x67, 0x6E, 0x69, 0x68, 0x54,
+0x22 )
+flag_str = ""
+for i in flag_hex:
+flag_str = chr(i) + flag_str
+init()
+print(Style.BRIGHT + Back.MAGENTA) + "flag{" +
+flag_str + "}" + (Style.RESET_ALL)
+print_flag()
+We have to run it to FINALLY get the flag:
+“Things are not always what they seem;
+the first appearance deceives many;
+the intelligence of a few perceives what has been carefully hidden.”
+– Phaedrus
+That’s it…
+As you can see I skipped through many parts in the interest of ROI and kinda luckily was able to bypass a number of tricks or disturb the assumed flow of events using aggressive code instrumentation and by understanding the code of the main module (python) and how it interacts with the assembly (DLL). Some people who tried to crack it reached out to me and many of them tried to do the analysis the hard way i.e. inside the pyinstaller – it is obviously possible, but so much harder! Remember kids: cheating is reversing! Or the other way around!
+Hope you enjoyed it!
+I want to thank @hasherezade for creating the CTF. It was fun!
+
+Comments Off on MalwareBytes CTF: Capturing the flag I didn’t plan to catch…
+
+Comments are closed.

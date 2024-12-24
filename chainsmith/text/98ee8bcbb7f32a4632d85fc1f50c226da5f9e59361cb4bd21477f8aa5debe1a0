@@ -1,0 +1,55 @@
+Web Server Attacks – Apache Modules, Log Management and RELM
+
+New year, same tricks, mostly because they work. That’s how we’re kicking off the new year folks.
+In September of 2012, Dennis, of Unmask Parasites, first wrote about rogue apache modules being injected into web servers. It has since been all the rave. It seems every week we’re handling more and more cases, from private servers to large enterprises, being impacted by the same issue. As for the vector, in a good number of instances it comes down to access and in others vulnerabilities in software, software like PLESK.
+What we have started to see is an evolution in these attacks. In one such case we saw two modules injected into the server. One was legitimate and  was referencing another illegitimate module. Normal tactics failed to disclose it’s location. Monitoring the traffic of the server using tools like TCPDUMP did in fact show the infection was still present. We briefly wrote about some of these evolutions in a recent post, in which we articulate some of the things we are seeing. Fortunately, a lot of this comes down to the basics of knowing what your servers are running and what they are designed to do.
+It’s for this reason that we’re pleading with organizations to apply better practice when managing their web servers. These servers are sitting between you, your environment, and your followers. They are prime targets and less and less focus is being placed on them.
+Things you need to be doing:
+
+Monitor your httpd.conf file (e.g., /etc/httpd/conf/httpd.conf)
+Check the modules being loaded in your modules directory
+Become vigilant with your logs
+Practice the art of isolation
+
+The Nitty Gritty
+In terms of isolation, at a very high level, run only the essentials. When was the last time you checks the processes running on the box? Or checked which ports are open to the world? A number of applications will force you to open things you don’t require for it to function. Here is something that you can quickly run to see what ports are open and what processes are running on them:
+
+netstat -tanep |grep LIST
+
+You’re looking for things that are open to the world, like this for instance 0.0.0.0:22. In other words, port 22, often default for SFTP/SSH, is open for all the world to see. Bare this in mind – Deny everything, accept a few.
+Note: If working off a tiered box it’s good to do this on all your boxes, not just your web server.
+When checking your Apache modules there are a few things you can do to stay on top of things:
+
+##What modules are being loaded
+# apachectl -t -D DUMP_MODULES
+##Verify the modules in httpd.conf
+# cat /etc/httpd/conf/httpd.conf | grep “LoadModule”
+##Verify all the modules are owned by a package
+# rpm -qf /etc/httpd/modules/
+
+If you find something that is not owned by a package do a quick Google search. You’ll be surprised with what you find, here are a few known bad modules to watch out for:
+
+mod_spm_headers.so
+mod_spm_mem.so
+mod_log.so
+mod_security.so
+mod_load_filter.so
+libwutfa.so.2
+libhdast.so.1
+libcehf.so.7
+mod_chart_version.so
+mod_view_version.so
+
+These modules can be very painful, they do a number of things to avoid detection – highly conditional. Some are situating their responses based on agents, location, IP ranges, time, etc.. One of the best things to do is run something to monitor your network traffic. Here is an example:
+
+tcpdump -i eth1 -nn -A -s 0 tcp port 80 |grep -B 1 ‘”[some payload]”‘
+
+This will allow you to see what is leaving your box, regardless of condition.
+The final thing is to become vigilant with your logs. Time and time again we work with an organization that has logs going back 24, 48 hours, maybe 7 days if we’re lucky. The discussion is always the same, “Oh, but we don’t have the ability to store all that data for all our sites.” Our response is usually the same, “Then we’re not sure what it is you’d like us to do for you.”
+To effectively perform forensics on any box[es], a team needs to know what is going on. Logs facilitate this need. It tells the team things like:who has logged in, who has logged out, what configurations have been adjusted, what activities have been performed by each user, etc… All very critical elements, but often the biggest oversight in enterprises of all sizes.
+All is Not Lost – RELM to The Rescue
+The easiest solution to this dilemma is to employ a host-based intrusion detection system (HIDS), like OSSEC. If you’re not familiar with OSSEC, it’s an open-source platform designed for the correlation and aggregation of all your server logs. It’s most powerful when it’s configured into all facets of your network (e.g., load balancers, routers, NIDS, etc..). If it generates a log, OSSEC can consume the data. It also brings with it a few cherries, things like active response and rootkit detection, etc… But I digress.
+If you have a server, you have the need to better protect and enable yourself to react to attacks and compromises. OSSEC is a perfect solution and it’s also free and well supported. The best news of all is that you can use it to better analyze your environment and find these module injections with the creation of a few rules.
+If you are one that would prefer not to mess with any of this nonsense, that’s ok too. We have a product called the Realtime Enterprise Log Management (RELM) solution. It will do everything I mentioned above, and more. It comes with a simple user interface where you can watch your logs if you so desire, but the real power of it will come in that all the data will be tied into our RELM Command & Control center. Logs are monitored by trained intrusion analysts that will help guide you through the noise. Within the C&C we also correlate data for all the networks we monitor and have the ability to respond accordingly; things that happen on one network get applied to all networks we’re monitoring. Yes, this solution is powered by OSSEC, along with a number of customizations and tools designed to address today’s attacks on web servers and websites.
+If you’re wondering why, the answer is simple. You may not realize this, but our Founder, Daniel Cid, is also the Founder of the OSSEC project. The roots of what we do come from large enterprise management and incident handling. Additionally, as web attacks continue to evolve so will our services, looking at the website is no longer as effective as it needs to be, attacks are evolving and penetrating deeper into the servers and so are we.
+If you’re interested or have questions send them to info@sucuri.net.

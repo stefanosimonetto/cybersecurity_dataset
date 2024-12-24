@@ -1,0 +1,58 @@
+Beyond good ol’ Run key, Part 37
+March 26, 2016 in Anti-Forensics, Autostart (Persistence), Compromise Detection, Forensic Analysis, Incident Response, Malware Analysis
+
+The technique I will describe today is extremely old and well-known yet I don’t recall writing about it in detail and would probably forget about it completely if not for Nick who pinged me about it a whiiiiiiiile ago 🙂 Thanks Nick!
+The path interception is a vulnerability type which is abused by both malware and pentesters. The most common example of this vulnerability on Windows platform relies on dropping “c:\program.exe” and waiting for a service or other application to be launched from a path that was not quoted. When quotes are not used the given path is traversed and anytime a blank character is encountered the OS will attempt to execute any program that happens to be matching the substring being part of the traversed path.  Sounds complicated.
+In other words.
+
+“C:\program Files\foo bar\file.exe”
+
+is not equal to
+
+C:\program Files\foo bar\file.exe
+
+In a first case, the path is given in a precise way with no room for error. OS will attempt to launch only one program.
+In a second, the OS will attempt to launch:
+
+C:\program.exe
+
+first, then:
+
+C:\program Files\foo.exe
+
+and eventually:
+
+C:\program Files\foo bar\file.exe
+
+Nowadays users can’t freely write to these paths, so to leverage it one needs to explore all the existing autostart locations on the system and find a combo of both an unquoted path + a writable directory that enable the exploit to work.
+It’s a simple, yet powerful way not only to gain persistence, but in some cases to elevate privileges as well.
+A DLL variant of this vulnerability can rely on adding a new startup entry (or leveraging an existing one) that would point to clean components only (f.ex. a clean rundll32.exe loading an existing, clean system DLL).
+Let’s look at an example – we could add something like this to HKCU\…\Run:
+
+rundll32.exe c:\Program Files\Internet Explorer\ieproxy.dll
+
+and then drop:
+
+c:\Program.dll
+
+or
+
+c:\Program Files\Internet.dll
+
+which rundll32.exe would then hopefully load for us.
+There is a little caveat though, the rundll32.exe checks if the second token (obtained by splitting the command line arguments using blank characters as a delimiter – and in our case ‘Files\Internet.dll’) contains a path separator character (‘\’, or ‘/’). If it does, rundll32 assumes it is an incorrect command line and exits. So, the above example doesn’t work.
+To bypass it, one could use a root path with more than one space. The old folder name ‘C:\Document and Settings’ works perfectly here, but it is a legacy path that may not be the best choice for new systems. For these systems (and since most of new computers are now 64-bit) we can use ‘c:\Program Files (x86)’ (first token: ‘c:\Program’, second token: ‘Files’).
+If you see a string like the below in the Registry under HKCU\…\RUN:
+
+“C:\Windows\System32\rundll32.exe” c:\Program Files\Internet Explorer\ieproxy.dll
+
+it may not raise the immediate suspicion. The real-case scenario could go even further and use even more ambiguous path f.ex. one belonging to a graphic card, or a sound card.
+Running the aforementioned entry from a command line will get you the following message:
+
+This is because rundll32.exe attempts to load C:\program.dll.
+
+As such, dropping c:\<DLL name exploiting path truncation>.dll will give you a lame persistence (lame, because you still need to either find an existing, or add a clean entry to a startup location + need to write to C:\ drive – this could have worked 10 years ago, but not today 🙂 ).
+
+Comments Off on Beyond good ol’ Run key, Part 37
+
+Comments are closed.

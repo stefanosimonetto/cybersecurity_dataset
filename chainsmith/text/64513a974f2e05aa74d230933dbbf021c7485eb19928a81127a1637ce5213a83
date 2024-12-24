@@ -1,0 +1,59 @@
+Layer 7 DDOS –  Blocking HTTP Flood Attacks
+
+There are many types of Distributed Denial of Service (DDOS) attacks that can affect and bring down a website, and they vary in complexity and size. The most well known attacks are the good old SYN-flood, followed by the Layer 3/4 UDP and DNS amplification attacks.
+Today though, we’re going to spend a little time looking at Layer 7, or what we call an HTTP Flood Attack.
+
+An HTTP flood attack is a type of Layer 7 application attack that utilizes the standard valid GET/POST requests used to fetch information, as in typical URL data retrievals (images, information, etc.) during SSL sessions. An HTTP GET/POST flood is a volumetric attack that does not use malformed packets, spoofing or reflection techniques. – DDoSAttacks.biz
+If you’re wondering, yes, we deal with these every day, and we protect our client websites via our Website Firewall.
+Today I’m going to share with you some details on a rather large DDoS attack that leveraged the following HTTP request flood attack to wreak havoc on a clients website. I’ll also share the steps we took to mitigate the issue.
+Layer 7 DDoS – HTTP Flood Attacks
+The first thing to understand about Layer 7 attacks is that they require more understanding about the website and how it operates. The attacker has to do some homework and create a specially crafted attack to achieve their goal. Because of this, these types of DDoS attacks require less bandwidth to take the site down and are harder to detect and block.
+Layer 7 DDoS – Part 1: Random URLs
+This specific client came to us after his site was down for almost a week. They tried other services to protect their website with not much luck. As soon as he switched his DNS to us, we gained a much deeper appreciation and started to see why.
+He was getting thousands of requests like these every second:
+75.118.29.205 - - [20/Jan/2014:19:32:06 -0500] "GET /?458739416183768700 HTTP/1.1" 200 440 "http://movies.netflix.com/WiPlayer?movieid=70136122&trkid=7882978&t=Weeds" ""
+
+173.245.56.201 - - [20/Jan/2014:19:32:06 -0500] "GET /?458726993617499500 HTTP/1.1" 200 440 "http://landing.pcwhatsap.com/1/?offer_id=3534&aff=1788&url_id=5618&sub_id=whatsapp_pop" ""
+
+79.19.41.22 - - [20/Jan/2014:19:32:06 -0500] "GET /?458741338856272200 HTTP/1.1" 200 440 "http://www.rumoreweb.it/index.php?option=com_news_portal&view=category&id=21&Itemid=259" ""
+
+190.121.64.3 - - [20/Jan/2014:19:32:06 -0500] "GET /?458722169268652700 HTTP/1.1" 200 440 "http://www.eldivisadero.cl/noticias/?task=show&id=37352" ""
+
+186.54.141.146 - - [20/Jan/2014:19:32:06 -0500] "GET /?458741274224646000 HTTP/1.1" 200 440 "http://badoo.com/01244944965/?r=37.4&p=1" ""
+
+To be more exact, he was getting 5,233 HTTP requests every single second. From different IP addresses around the world.
+What is important to note here is how this worked against the client’s platform. The client’s website was built on WordPress. The uniqueness of the requests were bypassing the caching system, forcing the system to render and respond to every request. This was bringing about system failures as the server quickly became overwhelmed by the requests.
+For illustration purposes, here is a quick geographic distribution of the IP’s hitting the site. This is for 1 second in the attack. Yes, every second these IP’s were changing.
+
+Stopping the DDoS: Once we identified the type of attack, blocking was easy enough. By default, they were not passing our anomaly check, causing the requests to get blocked at the firewall. One of the many anomalies we look for are valid user agents, and if you look carefully you see that the requests didn’t have one. Hopefully, you’ll also noticed that the referrers were dynamic and the packets were the same size, another very interesting signature. Needless to say, this triggered one of our rules, and within minutes his site was back and the attack blocked.
+Layer 7 DDoS – Part 2: Random Searches
+After we blocked the original requests and banned the IP addresses involved, everything went quiet, at least for a day. In less than 24 hours though the attacks resumed with a higher intensity. To be quite honest, they came back with a vengeance. This time however, they adapted their attack to hit the built-in WordPress search (i.e., leveraging the ?s option). It looked something like this:
+Request 1: site.com/?s=keyword
+Request 2: site.com/?s=keyword2
+Request 3: site.com/?s=keyword3
+...
+
+Remember the caching bypass discussion above? Well, it happened again, and this time it wasn’t blocked automatically as it was operating as a wolf in sheep’s skin.
+This is what it looked like in the logs:
+83.21.152.106 - - [20/Jan/2014:19:40:08 -0500] "GET /?s=wikipedia HTTP/1.1" 200 440 "http://pl.wikipedia.org/wiki/Tr%C4%85dzik_m%C5%82odzie%C5%84czy" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.97 Safari/537.11"
+
+179.9.92.22 - - [20/Jan/2014:19:40:08 -0500] "GET /?s=joy HTTP/1.1" 200 440 "http://www.joyspizza.cl/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_5_8) AppleWebKit/537.1 (KHTML, like Gecko) Chrome/21.0.1180.90 Safari/537.1"
+
+186.105.238.41 - - [20/Jan/2014:19:40:08 -0500] "GET /?s=santander HTTP/1.1" 200 440 "http://www.santander.cl/" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.76 Safari/537.36"
+
+188.49.39.166 - - [20/Jan/2014:19:40:08 -0500] "GET /?s=news HTTP/1.1" 200 440 "http://www.uaeinteract.com/news/default3.asp?ID=260" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.76 Safari/537.36"
+
+190.67.180.172 - - [20/Jan/2014:19:40:08 -0500] "GET /?s=gov HTTP/1.1" 200 440 "http://www.cartagena.gov.co/" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.76 Safari/537.36"
+
+200.94.168.60 - - [20/Jan/2014:19:40:08 -0500] "GET /?s=faith HTTP/1.1" 200 440 "http://seriescoreanas.com/online/faith/faith-capitulo-17.html" "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:26.0) Gecko/20100101 Firefox/26.0"
+
+If you are not familiar with web logs, the first entry is the IP address, followed by the date, the page requested, the result (success or failure), the referrer, and then the browser.
+What the logs show us is that the attack was doing random searches for dictionary keywords (eg: news, gov, faith, etc ). This time they were using a valid browser (Firefox, Chrome, Safari, etc), user agents, and a valid referrer.
+It was a bit tricky blocking this attack. You see, they were leveraging normal user search habits. How do you block valid search requests without blocking valid users? We weren’t about to force JavaScript checks or anything like that, but at the same time we needed to avoid passing all the requests back to the clients server. If not, we would have ended up in the same predicament we were in when they first signed up.
+Stopping this DDOS: After what felt like hours, but was actually seconds (OK, maybe minutes) we noticed another anomaly, or what we’d classify as a signature in the new DDoS pattern. The attacker was rotating IP’s within a few seconds of each other, rotating referrers and user agents, all the while performing search requests. Finally, something we could build a rule for, thanks for that. Now each time we see the same IP with a different user agent / referrer within a small period of time, we’re able to block access. Within minutes, the attack was contained.
+How we’re able to do this comes down to the technology around our Website Firewall. Like an onion, we’ve built the Sucuri WAF with multiple layers that moves us away from traditional event based attacks, something most of today’s WAF products use. We have introduced new concepts around application profiling and correlation analysis, allowing intelligence to be built into protecting your website.
+But enough of that boring stuff…
+It’s All About Persistence
+What kind of attacker would you be if you weren’t persistent? Well, this attacker obviously took that to heart; this specific attack lasted a little over 2 weeks. Every day thousands of IP addresses (likely compromised) were being used to DDoS this site.
+Just in the block list created by our log correlation tool, we banned 9,673 IP Addresses in the first few hours. During the following days the list grew to almost 40,000 different IP addresses. That’s quite a respectable botnet.
+Have you ever faced a DDOS like this? What techniques did you use to block it? Note that this type of DDOS blocking service is included in all our Website Firewall plans, and we’re here to protect you and your business!

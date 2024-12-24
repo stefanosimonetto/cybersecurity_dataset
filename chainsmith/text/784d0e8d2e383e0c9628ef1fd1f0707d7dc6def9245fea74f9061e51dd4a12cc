@@ -1,0 +1,19 @@
+Backscatter Detected
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+March 21, 2007
+
+Recently I posted a conclusion to my backscatter investigation, where people were reporting backscatter from SYN and other DoS attacks to SANS ISC.  When you monitor your own cable modem it's not common to see this sort of traffic unless you go explicitly looking for it.  Today however I saw the following using Sguil.Count:2 Event#1.204541 2007-03-20 18:04:19BLEEDING-EDGE DROP Known Bot C&C Server Traffic (group 1)69.143.202.28 -> 193.109.122.67IPVer=4 hlen=5 tos=0 dlen=40 ID=2644 flags=2 offset=0 ttl=64 chksum=58655Protocol: 6 sport=1024 -> dport=6667Seq=2934031229 Ack=0 Off=5 Res=0 Flags=*****R** Win=0 urp=54297 chksum=0Payload:None.What got my attention at first was an alert indicating my host (possibly some box behind my NAT gateway) appeared to initiate a connection to port 6667 TCP (IRC) on an IP that was a "Known Bot" IP for command and control.  Looking at the packet data in the alert and seeing the RST flag, I guessed this wasn't a problem.  Still, I wanted to know why one of my boxes would send a RST.  Could that be some sort of phone-home method designed to elude uber-packet monkeys?  (Conspiracy theory hat on!)I decided to query for session data to see if I could find any other sessions involving 193.109.122.67 (ede.nl.eu.undernet.org):------------------------------------------------------------------------Sensor:cel433 Session ID:5044069116374886360Start Time:2007-03-20 18:04:19 End Time:2007-03-20 18:04:19193.109.122.67:6667 -> 69.143.202.28:1024Source Packets:1 Bytes:0Dest Packets:1 Bytes:0------------------------------------------------------------------------Sensor:cel433 Session ID:5044103368738397945Start Time:2007-03-20 20:17:14 End Time:2007-03-20 20:17:14193.109.122.67:6667 -> 69.143.202.28:3072Source Packets:1 Bytes:0Dest Packets:1 Bytes:0All I found were the two sessions indicated by the aggregated Snort alerts.  Notice the session data shows the source and destination each sent one packet.  Interesting.  One of the nice aspects of SANCP is that it can report a summary of the TCP flags seen during a session.  That information is shown below.
+
+This shows the source sent a SYN ACK and the dest sent a RST.  The RST caused the alert.  The SYN ACK triggered the RST.Finally we can look at the full content:14:04:19.731091 IP 193.109.122.67.6667 > 69.143.202.28.1024: S 4257997451:4257997451(0) ack 2934031229 win 2048 14:04:19.731429 IP 69.143.202.28.1024 > 193.109.122.67.6667: R 2934031229:2934031229(0) win 0This doesn't tell us anything we didn't already know, but it's nice to see exactly what happened on the wire.  Remember that if we weren't collecting independent, content-neutral, non-alert-triggered full content data, we wouldn't have the first SYN ACK packet.  That is the key to knowing this is a backscatter event.  Some unknown party spoofed my IP, 69.143.202.28, and SYN flooded 192.109.122.67 on port 6667 TCP.  The SYN ACK was sent back to me, and my NAT gateway replied with a RST.  Simple -- and no conspiracy.  Hat off.

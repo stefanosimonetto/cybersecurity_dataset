@@ -1,0 +1,80 @@
+Apache Web Server Attacks Continue to Evolve
+
+For the past few months we have seen a gradual increase in server-level compromises. In fact, every week it seems we’re handling half a dozen or so and it continues to increase. It’s one of the reasons that I have started including this as a trend in my most recent Website Security presentations.
+Just last week we talked about some very sneaky hacks that targeted the Apache binaries directly in the place of the modules, contrary to what we had been seeing. Fortunately, the more sophisticated attack are still far and few in between leaving us to deal with rogue modules more often than not.
+
+The purpose of this image is to provide a logical representation of the evolution of website attacks. While websites are still the number one distribution mechanism, attackers are making a big effort to improve their attacks by going after server level applications in the place of the website itself, and it’s application (i.e., Custom ASP/PHP, WordPress, Joomla, etc..). The beauty of this is that the attacks becomes platform agnostic, in terms of the platform the end-user is utilizing.
+
+We’ve provided guidance in the past on how to identify these things both on CentOS / RedHat and Debian distro’s. That guidance is still the same, but I do want to add some more information around what the attackers are doing to make remediation more of a challenge lately.
+Two Specific Trends
+We’ll talk about two specific trends we’re seeing, in addition to the complex attacks targeting Apache binaries and modules. These are not as complex and easier to deploy, but still as dangerous and effective. They also raise concern because to accomplish either you’re looking at a user with administrative privileges, often root.
+1. Appending Malware to Outgoing Data via Configuration Files
+Found by our Analyst Cosmin Strimbu and Senior Analyst Fio Cavallari
+A few months back, February 19th to be exact, I wrote about some sneaky JavaScript infections in which .htaccess was being used to add, what I like to call, junk in the trunk. But what’s the obvious downside here?
+Well if the server has many sites on it you have to do it on each one, how annoying is that. Well the attackers agree, so they’ve move their attack one layer down as well. No need to get fancy with Apache modules either, nah, let’s just use the configuration files and do the same thing we were doing in .htaccess. Yes, that’s sarcasm in my tone, and yes, that’s what they’re doing.
+In a specific instance this is what they did:
+They modified this configuration file: /etc/httpd/conf.d/php.conf :
+And they added:
+
+<files ~ “.js$”>
+AddHandler php5-script .js
+php_value auto_prepend_file /usr/local/lib/php.lib
+php_flag display_errors Off
+</files>
+
+Her it’s treating all JavaSscript files as PHP and appending the payload found in this file: /usr/local/lib/php.lib to the outgoing traffic. Then it’s turning off any errors that PHP might throw to avoid detection. The next obvious question is, what’s in that php.lib.
+Here is what we found in the file: /usr/local/lib/php.lib
+
+This is what Google was blacklisting:
+
+From the code above you can see that the target of this attack was Internet Explorer. If the right user agent was identified then the attacker was generating a random subdomain on the statistic-online website and sending the user to the malicious payload. Unfortunately we didn’t pull the payload down in time, so hard to say exactly what it was attempting.
+2. Disabling Root Changes on Infected Files
+Yes, there is a way to take away the administrators ability to modify files, any file, on your server. It’s known as making a file immutable and you accomplish this by changing the files attribution, and it’s accomplished using the chattr command. The command is very similar to the attrib command on DOS and Microsoft Windows.
+A good sign that you might be dealing with this is if you’re logged into your server as root, or with a user that has administrator permissions, and when you make a change you see:
+
+W10: Warning: Changing a read-only file
+
+Or if you try to save and you see:
+
+/etc/httpd/conf.d/ssl.conf” E212: Can’t open file for writing
+
+This is a good time to make use of the list command, but append the attr option so that it looks like this:
+
+# lsattr filename
+– in my example it’d be
+# lsattr /etc/httpd/conf.d/ssl.conf
+
+You’re likely to see something like this:
+
+—-ia——- /etc/httpd/conf.d/ssl.conf
+
+The i and a attributes both mean something unique. The i set it to immutable so no-one can mess with it, but the a option makes it so that you can append to an existing file but you can’t modify existing data. You should make note however that the only user that can modify these attributes is your root user, so this is a good sign that it’s likely compromised.
+Regardless, if this is the case, you can, thankfully, remove the restriction by doing:
+
+# chattr -ia /etc/httpd/conf.d/ssl.conf
+
+In this case the – will remove the restriction while the + will add it. Once that is done you should see this:
+
+# lsattr /etc/httpd/conf.d/ssl.conf
+————- /etc/httpd/conf.d/ssl.conf
+
+Now you’re back in business and removing things like this:
+
+LoadModule uni_config_module modules/mod/mod_uni_config.so
+
+I can’t remember the last time we found the LoadModule call being referenced in the httpd.conf, this means that they’re loading it via other configuration files so it’s a good thing to crawl through all your configuration files in /etc/httpd/conf.d as they are being loaded when Apache runs. A quick an easy way to do this:
+
+# grep -ri “LoadModule” /etc/
+
+I’d start in your /etc/ directory, it’s the default location for most distros, but in some instances you might need to look elsewhere, just depends on your distribution and configuration.
+Don’t forget to remove the module as well, not just the LoadModule call:
+
+# rm -rf /etc/httpd/modules/mod_uni_config.so
+
+And reset the immutable attribute on your configuration files so that automated attacks are stopped in their tracks, but remove the append attribute.
+
+# chattr +i /etc/httpd/conf.d/ssl.conf
+
+Do remember that both these changes were made as a user with administrative privileges. This means that removing or making these changes is just half the battle. If you cannot definitively identify the vector, it might be time to reimage the box or migrate to a new one. It will not do you much good if you remove it but leave everything else in place, they’ll likely continue to gain access. The frist thing I’d recommend is purging all accounts that have access. I’d then ensure that I’m not longer using passwords to authenticate and start adding a few layers of defense.
+What Does This Tell Us?
+We’re in for a treat, I’m perhaps most concerned about attack on the Apache binaries more so than anything as it’s so difficult to detect and fix, it does tell us that we’re in for some interesting times. We know that websites are high value targets for attackers and that they make up for 90% of the unknown malware to traditional AV’s. One very common trend in all these attacks is how they’re all being used to distributed payloads created by the BlackHole Exploit Kit. This shows a level of sophistication in that segment of attackers that we are not seeing with other groups.

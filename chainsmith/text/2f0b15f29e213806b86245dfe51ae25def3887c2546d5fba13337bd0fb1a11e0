@@ -1,0 +1,52 @@
+IDA, function alignment and signatures that don’t work…
+December 27, 2016 in IDA/Hex-Rays, Malware Analysis, Reversing
+
+More and more malware is compiled with the more recent Visual Studio versions and often as 64-bit portable executables. It’s a commonly known fact that the official flirt signatures may not be yet available for some of these libraries. To address this, I often compile my own sigs based on available SDK and VS libraries. I have done it a few times before and since I recently came across a standard function that my libs didn’t recognize I decided to build yet another sig file.
+A standard, routine task.
+I quickly identified the version of VC the portable executable was built with, got the appropriate libcmt.lib, built the .pat file, confirmed the signature is present and matches ‘my’ unrecognized function, and compiled the final .sig file.
+To my surprise, the sigs didn’t work and despite my efforts I couldn’t make them work. I eventually asked Hex-Rays for support and in the end they provided a detailed explanation as they identified the root cause of the issue: the alignment bytes (Thanks to Ilfak for help).
+To explain what it is, you have to look at the following example of the memset function:
+The code is an excerpt from a memset .obj file inside the libcmt.lib.
+You can immediately notice that there is a sequence of bytes prefixed with CC (int 3) at the top of the file.
+When you create a .pat signature file for it it will look like this:
+CCCCCCCCCCCC66660F1F840000000000488BC14983F80872530FB6D249B90101
+DA B01D 00FA :0010 memset :003E@ mset10 :004E@ mset20 :0060@ mset30
+:006C@ mset40 :0071@ mset50 :007B@ mset60 :0087@ mset70 :0090@
+mset80 :00C0@ mset90
+—
+As you can see the signature includes the alignment bytes (these few CCs at the front of the sig).
+If you now create a .sig file from such a .pat file you will get a signature file that will not work for many static occurrences of memset. If you run IDA with the -z4 option you may get messages stating that the function was skipped (‘skip func’).
+The reason for this behavior is that the alignment is present not only in the .obj files, but also inside the portable executable files.
+As such, you may come across a code sequence like this (inside a sample):
+The actual memset function is prefixed with an alignment added by a compiler (but different than the one inside the .obj file), and this particular alignment sequence was already recognized by IDA – it has been properly named and wrapped up. However, this wrapped-up alignment overlaps with the full code of the actual function (remember from the .pat file that it has to be prefixed with that CC sequence representing the alignment inside the .obj file!). So, as a result of this overlap, the flirt signature will fail to recognize the memset function.
+Let’s look at the binary one more time:
+This is how memset is ‘remembered’ by the .sig/.pat files (from the .obj file):
+And this is how it is present inside the sample – the highlighted part is the actual alignment that IDA already recognized and wrapped up for this particular sample:
+– that wrapped-up alignment basically ‘stole’ a few bytes that would normally be part of the ‘remembered’ alignment of the memset function recognizable by the .sig.
+There are two solutions at least:
+
+create signatures w/o alignment bytes (need a fix to the IDA pcf.exe tool)
+undefine the alignments done by IDA
+
+The first one may be addressed in the future versions of IDA. The second option is actually very easy – if you come across a similar situation consider running the below script first. It’s a quick & ugly hack that removes the alignments that IDA adds automatically. Once these are removed, the sigs should work (unless the issue is completely different, of course).
+import idaapi
+import idautils
+
+for s in Segments():
+segname = str(idc.SegName(s)).rstrip('\x00')
+print "Segment %s" % segname
+i = idc.SegStart(s)
+
+while i<idc.SegEnd(s):
+b = Byte (i)
+if b==0xCC:
+a = GetDisasm(i)
+if a.startswith('align'):
+print "%08lX: %s, %x" % (i, a,b)
+MakeUnkn(i,0)
+i=i+1
+print "Done"
+
+Comments Off on IDA, function alignment and signatures that don’t work…
+
+Comments are closed.

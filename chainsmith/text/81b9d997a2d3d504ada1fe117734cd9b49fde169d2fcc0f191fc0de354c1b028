@@ -1,0 +1,56 @@
+WordPress Sites Leveraged in Layer 7 DDoS Campaigns
+
+We first disclosed that the WordPress pingback method was being misused to perform massive layer 7 Distributed Denial of Service (DDoS) attacks back in March 2014. The problem being that any WordPress website with the pingback feature enabled (its default setting) could be used to attack the availability of other websites. The attacks would inundate the web server with Layer 7 requests resulting in very large DDoS attacks.
+If you are not familiar with the terminology, Layer 7 attacks (also known as http flood attacks) are a type DDoS attack that disrupts your server by exhausting its resources at the application layer, instead of the network layer. They do not require as many requests or as much bandwidth to cause damage; they are able to force a large consumption of memory and CPU on most PHP applications, CMSs and databases. We provide a more in depth explanation in our previous article – Analyzing Popular Layer 7 Application DDoS Attacks.
+In the past, many high profile websites have fallen victim to such attacks, receiving thousands of requests per second against their properties.
+Pingback DDoS
+These pingback DDoS attacks have remained popular and we attribute them to 13% of all DDoS attacks we track on our clients. We have noticed that the use of this technique is reducing, likely attributed to a change that was pushed with WordPress a few versions ago:
+WordPress/4.3.3; http://168.63.218.68; verifying pingback from 185.130.5.209
+Starting in version 3.9, WordPress started to record the IP address of where the pingback request originated. That diminished the value of using WordPress as part of an attack; the platform would now record the attackers original IP address and it would show up in the log user agent.
+Looking at a little sample log from an attack, we can see where the attacker was coming from:
+120.25.253.23 – – [16/Feb/2016:23:45:57 -0500] “GET / HTTP/1.0” 403 5301 “-” “WordPress/4.2.7; http://www.fluxstudio-sh.com; verifying pingback from 185.130.5.247”
+58.137.222.186 – – [16/Feb/2016:23:45:58 -0500] “GET / HTTP/1.0” 403 5301 “-” “WordPress/4.3.1; http://deals.shinee.com; verifying pingback from 185.130.5.247”
+54.179.180.62 – – [16/Feb/2016:23:45:57 -0500] “GET / HTTP/1.0” 403 5301 “-” “WordPress/4.0; http://goodhealthtpa.com; verifying pingback from 185.130.5.209”
+128.199.67.254 – – [16/Feb/2016:23:45:57 -0500] “GET / HTTP/1.0” 403 5301 “-” “WordPress/4.3.3; http://readymixbeton.com; verifying pingback from 185.130.5.247”
+52.24.54.204 – – [16/Feb/2016:23:45:57 -0500] “GET / HTTP/1.0” 403 5301 “-” “WordPress/4.3; http://healthcare.org; verifying pingback from 185.130.5.247”
+112.74.214.142 – – [16/Feb/2016:23:45:57 -0500] “GET / HTTP/1.0” 403 5301 “-” “WordPress/4.4.2; http://112.74.214.142; verifying pingback from 185.130.5.247”
+54.64.67.51 – – [16/Feb/2016:23:45:58 -0500] “GET / HTTP/1.0” 403 5301 “-” “WordPress/3.9.6; http://blog.will-online-account.com; verifying pingback from 185.130.5.247“
+You can see the IP’s WHOIS information below:
+person:         ANTONIO JORDAN
+org:            ORG-HSL27-RIPE
+address:        USA 9420 MEADOWMONT VIEW DR,CHARLOTTE, NC.28269
+phone:          +37167885767
+
+org-name:       Hosting solutions 4you Ltd.
+org-type:       Other
+address:        USA 9420 MEADOWMONT VIEW DR,CHARLOTTE, NC.28269
+
+netname:        OHS4YOU_DC
+descr:          Public VPS & dedicated servers in EU ohs4you.net
+country:        DM
+
+The attacker was using multiple IP addresses from the 185.130.5.0/24 range to control the “botnet” of WordPress sites.
+Massive Layer 7 attacks
+Despite the potential reduction in value with the IP logging, attackers are still using this technique. Likely because website owners rarely check the user agent logs to derive the real IP address of visitors. For system administrators I highly recommend referring to it when performing your administrative and forensic tasks.
+Since the attack is coming from thousands of different IP’s, network-based firewalls will do little to stop the attacks as they only do rate limiting per IP address.
+In a recent case we investigated, 26,000 different WordPress sites were generating a sustained rate of 10,000 to 11,000 HTTPS requests per second against one website. At some intervals, the attack would peak to almost 20,000 HTTPS requests per second. The attack started at 1pm (EST) and by midnight it was still ongoing.
+Very few servers would be able to handle such a load, even with proxies and load balancers configured. Especially when talking about HTTPS requests which tend to use more CPU to establish the SSL session.
+Don’t Be Part of the Problem
+Although it is great that WordPress is logging the attacker IP address on newer releases, we still recommend that you disable pingbacks on your site. It won’t protect you from being attacked, but will stop your site from attacking others.
+For example, we ran through the list of IP Addresses during this attack and the majority are sites on popular VPS/Cloud/Dedicated server providers: Amazon AWS, Digital Ocean, Google Cloud, Microsoft Azure, Hetzner, OVH and Linode.
+Here is what the distribution looks like between these service providers:
+
+The best course of action is to disable pingbacks and if possible, disable xmlrpc altogether if you are not using it. If you are, you can make some very small changes to your .htaccess file to allow only whitelisted IPs to access the file. This might be the case with the popular JetPack plugin.
+Here is what it would look like if you were to disable it and only allow known good IPs, where 1.2.3.4 and 5.6.7.8 are the good IPs:
+<FilesMatch "xmlrpc\.php$">
+order deny,allow
+deny from all
+allow from 1.2.3.4
+allow from 5.6.7.8
+</FilesMatch>
+
+You can also create a plugin that adds the following filter:
+add_filter( ‘xmlrpc_methods’, function( $methods ) {
+unset( $methods[‘pingback.ping’] );
+return $methods;
+} );

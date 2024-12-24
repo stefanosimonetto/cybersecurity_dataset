@@ -1,0 +1,139 @@
+The curious case of a Sundown EK variant dropping a Cryptocurrency Miner (updated)
+This post was authored by @hasherezade and Jérôme Segura
+We recently encountered an atypical case of Sundown EK in the wild – usually the landing page is obfuscated, but in this case there was plain JavaScript. The exploit was dropping some malicious payloads that we took for further analysis. It turned out that they are also atypical by many means. In this article, we will describe the details of our investigation.
+Exploit Kit
+[Edit] SpiderLabs has written about this EK and calls it Terror EK.
+This exploit kit has a different serving infrastructure than what we are used to seeing, but it is essentially the same Sundown EK codebase that we know.
+
+In comparison, here’s a fresh Sundown EK, using steganography where we can see that both EKs share the same Flash exploit.
+
+The landing page for this variant has almost no obfuscation, which was a bit of an oddity:
+
+The infrastructure for pushing this EK relies on a few domains all hosted on the same IP address:
+
+The payload URL (pastetext.biz) is also tied to the same EK distributor, hinting at a single actor operation.
+Payload – Cryptocurrency miner
+Analyzed samples
+
+0f597c738f2e1a58c03a69f66825fa80 – original sample, dropped by EK (UPX packed)
+
+22e4113fb0a9d136a56988f7a10c46b8  – payload (miner) – UPX packed
+
+9f2c0ae3cb7ae032bd66f025fcb93f03 – payload (miner) – UPX layer removed
+
+Behavioral analysis
+
+The application does not use any special trick in order to hide itself. It only tries to misguide the user with a process name. In the analyzed case it was called “Windows Backup”:
+
+We can see it establishing some internet connection:
+
+The network communication is pretty straightforward – everything goes in the clear.
+First, the application connects to Pastebin an retrieves the stored note that seems to be set of parameters for some application. Looking at the link and keywords, we can easily guess that it is related to mining cryptocurrency:
+
+Then, it logs itself into the service using login: ‘lovemonero2.worker@hotmail.com’ and a password ‘x’:
+
+Unpacking
+The initial sample is a 64bit PE file. During the initial assessment we found that it is packed by UPX, so I removed this layer using a standard UPX decompressor. As a result, I got the following PE file – with 3 resources:
+
+I started from having a look at the recources, because often they contains (encrypted) payloads. In current case, all of them had structure reminding PE files – just slightly obfuscated:
+
+See the suspicious string from the dumped resource file:
+M."Uijt!qsphsbn!dboopu!cf!svo!jo!EPT!npef
+
+It reminds of the string typical for the DOS stub:
+L.!This program cannot be run in DOS mode
+
+It was easy to deduce what method of obfuscation was used there – to each ASCII character value 1 was added. Knowing this, it was easy to write a decrypting function, i.e.:
+def decode(data):
+maxlen = len(data)
+key = 1
+decoded = bytearray()
+for i in range(0, maxlen):
+dec = (data[i] - key) & 0xFF
+decoded.append(dec)
+return decoded
+
+As a result we got 3 PE files (each of them starts after the data appended at the beginning):
+
+Two of them were legitimate DLLs: MSVCR120.dll – 32bit and 64bit versions. The remaining PE file was the real payload – again UPX compressed. It got it unpacked without any problems with the help of the original tool:
+
+Curious links
+A fast look at the strings referenced by the binary, revealed various commands, explaining the tool’s purpose:
+
+We can easily guess that it is meant for mining some cryptocurrency (the default guess is Bitcoin – but is it really?).
+As well as some curious links:
+
+Following the links lead me to a Pastebin account for a user called “LoveMonero”:
+
+And more interestingly, to his Github account:
+
+The name of the user – LoveMonero – suggests that this application is not used to mine Bitcoins, but another cryptocurrency – Monero. This choice makes sense, because the pool of bitcoins is more and more saturated – and nowadays mining them is much more difficult  and resource-consuming than it was in the past, when this currency was still young.
+He stored there not only the sourcecode of the tool, but also links with parameters (same as at Pastebin and in the binary)
+
+The file was edited just 4 hours ago – it means it is still fresh and actively maintained.
+In the same repo, we can find even the links from where the malware was downloaded during the campaign!
+
+We can see that it is exactly the same link that was used by the Exploit Kit:
+
+Linked executables:
+
+hxxp://158.69.86.203/downloadupdate.exe
+hxxp://158.69.86.203/downloadupdate2.exe
+
+As we can find out, the project is based on an opensource tool for mining cryptocurrencies: ccminer-cryptonight. However, there are some modifications.
+Fetching the repository, we can find all the commits starting from 20-th November 2016:
+
+The initial e-mail: davidgreenwoodjazz@gmail.com (used also for domains registration) was changed to the familiar name – lovemonero:
+
+Inside the code we can find the same string that are referenced in the dropped payload, confirming the guess that this code is related to the dropped application:
+
+From the binary:
+
+However, the stored source code doesn’t seems to be complete.
+Conclusion
+This campaign looks strange to us due to the fact that it has been prepared in an extremely careless way. There were a lot of traces stored in the application as well as the Github profile.
+Since the release of some opensource code of DDoS tools (Mirai) and ransomware (HiddenTear, Eda2) we can see the trend, that more and more novices are trying their luck in cybercrime. This application is yet another example of this tendency.
+IOCs:
+Domains:
+empowernetwork1.us
+empowernetwork2.us
+empowernetwork3.us
+empowernetwork4.us
+empowernetwork5.us
+empowernetwork6.us
+empowernetwork7.us
+empowernetwork8.us
+empowernetwork9.us
+empowernetwork1.biz
+empowernetwork2.biz
+empowernetwork3.biz
+empowernetwork4.biz
+website1.empowernetworkpackage.biz
+website2.empowernetworkpackage.biz
+website3.empowernetworkpackage.biz
+website4.empowernetworkpackage.biz
+website5.empowernetworkpackage.biz
+website6.empowernetworkpackage.biz
+website7.empowernetworkpackage.biz
+website8.empowernetworkpackage.biz
+website9.empowernetworkpackage.biz
+website1.empowernetworksolutions.biz
+website2.empowernetworksolutions.biz
+website3.empowernetworksolutions.biz
+website4.empowernetworksolutions.biz
+website5.empowernetworksolutions.biz
+website6.empowernetworksolutions.biz
+website7.empowernetworksolutions.biz
+website8.empowernetworksolutions.biz
+website9.empowernetworksolutions.biz
+empirenetworksol.com
+kitempowernetwork.com
+empowernetworkpackage.com
+empowernetworksolutions.com
+pastetext.biz
+empowernetworkads.com
+
+IPs:
+149.202.164.86
+158.69.87.196
+158.69.86.203

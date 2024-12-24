@@ -1,0 +1,626 @@
+Where is Waledac?
+2009-06-01
+
+Scott Wu
+Microsoft
+,
+USA
+
+Terry Zink
+Microsoft
+,
+USA
+
+Scott Molenkamp
+Microsoft
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Win32/Waledac is a trojan that is used to send spam. It also has the ability to download and execute arbitrary files, harvest email addresses from the local machine, perform denial of service attacks, proxy network traffic and sniff passwords. Scott Wu, Terry Zink and Scott Molenkamp take a detailed look at the spambot.
+Copyright © 2009 Virus Bulletin
+
+Win32/Waledac [1] is a trojan that is used to send spam. It also has the ability to download and execute arbitrary files, harvest email addresses from the local machine, perform denial of service attacks, proxy network traffic and sniff passwords.
+Waledac first drew significant attention in December 2008 via a Christmas-themed postcard lure. In the six months since, many users have been the recipient of various other eye-catching lures sent by Waledac. From the perennial holiday-themed lures to the more recent ‘Reuters Terror Attack’ or ‘SMS Spy’ themes, downloading a variant of Waledac is only a single, socially engineered step away.
+When it was unleashed in December, Win32/Waledac was by no means an under-developed piece of malware. The authors had been testing and developing the capabilities for at least a year prior to its release. The earliest known binary we were able to find in the wild was from 25 December 2007. The developmental progression of Win32/Waledac can be traced by its internal version numbers. In this case, the version was ‘0’.
+A major point in development came with the release of version 15 in the last week of November 2008. This was the first version to support ‘labels’. The label would essentially provide a mechanism to identify and segment drones and the tasks designated to them. The labels appear to be used as affiliate identifiers.
+Whilst the major distribution vector for Waledac appears to be through the use of spam campaigns and web hosting on compromised machines, the trojan may also be installed via a custom downloader. These custom downloaders are easily recognized as members of the Waledac family because they employ the same downloading technique as the main component. The technique is to decode an encrypted binary appended to a legitimate JPG. The encryption and the marker separating the JPG from the encrypted data are the same for the downloader and the main component.
+We observed that the filename of the JPG retrieved was equivalent to the label contained within the binary itself. Some of the labels observed in samples in the wild have the appearance of a ‘handle’. For example:
+alekseyb
+birdie2
+dekadent
+dmitriy777
+ftpfire
+gorini4
+lynx
+mirabella_exp
+mirabella_site
+prado
+semgold
+shmel
+twist
+ub
+zlv
+59xx39
+Searching on the Internet for these labels produces some circumstantial evidence to support this theory. In some cases, where the number of results yielded is low, there is a bias towards Russian-hosted websites.
+The authors of Waledac appear to have established a relationship of some description with other malware authors. The most notable demonstration of this is by a variant of Win32/Conficker [2]. This particular variant was able to download an encrypted copy of Waledac. The Conficker binary used a private key to decrypt the file from the host ‘goodnewsdigital.com’.
+This suggests a level of co-operation, as the Waledac authors would be required to encrypt a binary to an affiliate’s specifications. An alternative scenario is that affiliates have the privilege to ‘publish’ binaries to the distributed hosting network. Therefore, any additional cryptographic transformations could be performed independently.
+In addition to Conficker, trojan downloaders such as Win32/Bredolab [3] have also been observed to retrieve Waledac binaries hosted at ‘goodnewsdigital.com’. The label of the Waledac variant downloaded by Conficker was ‘twist’. The label of the binary downloaded by Bredolab was ‘dmitriy777’.
+Waledac has the ability to update itself by downloading and executing a newer version from the Internet. This downloading capability is also leveraged to install other malware such as Win32/Rugzip, though perhaps the most interesting piece of malware downloaded recently is Win32/FakeSpypro [4]. The fact that Waledac has installed rogue security applications demonstrates that there is money to be made from affected users.
+Figure 1. Win32/FakeSpypro – the fact that Win32/Waledac has installed rogue security applications demonstrates that there is money to be made from affected users.
+
+The telemetry
+Now let’s take a look at the MSRT (Malicious Software Removal Tool) [5] telemetry from April, the month in which Waledac was added to the MSRT. Waledac was the twenty-fourth-most prevalent family during this month. More than 24,000 distinct machines were reported with a Waledac infection worldwide. Waledac is deployed mostly on Windows XP (see ).Figure 2 Note this is not normalized. As of today, the MSRT installation base on Vista is about 37% the size of that on Windows XP.
+Figure 2. Waledac infection breakdown by OS.
+If we take another step to normalize the infection rate by OS, factoring in the MSRT install base, Figure 3 shows that Windows XP has the largest number of computers cleaned per thousand MSRT executions (CCM). Here, CCM is a metric for infection rate based on the MSRT data widely used in the Microsoft Security Intelligence Report [6].
+Figure 3. Waledac computers cleaned per thousand (CCM) by platform.
+Breaking down the reports by country and performing the same normalization with the MSRT install base, we derive the following table for infection rate. The table presents the top 25 most ‘infected’ countries, ranked by CCM. Turkey has the highest infection rate, followed by Hungary, Russia and the United States:
+Country/Region
+Infected machines
+MSRT executions
+CCM
+Turkey
+931
+5,903,320
+0.158
+Hungary
+233
+1,895,020
+0.123
+Russia
+615
+5,554,600
+0.111
+United States
+13,739
+124,595,720
+0.110
+Poland
+453
+6,390,100
+0.071
+Norway
+198
+2,810,480
+0.070
+Greece
+127
+1,808,840
+0.070
+The Netherlands
+495
+8,443,520
+0.059
+Sweden
+269
+4,626,080
+0.058
+Czech Republic
+158
+2,893,520
+0.055
+Finland
+126
+2,382,400
+0.053
+Portugal
+148
+2,918,880
+0.051
+France
+963
+20,042,000
+0.048
+Spain
+498
+11,281,800
+0.044
+Australia
+334
+7,612,860
+0.044
+Denmark
+136
+3,362,960
+0.040
+United Kingdom
+863
+23,238,480
+0.037
+Belgium
+118
+3,618,320
+0.033
+Brazil
+399
+13,736,700
+0.029
+Canada
+399
+14,682,640
+0.027
+Mexico
+176
+7,065,520
+0.025
+Korea
+353
+14,182,700
+0.025
+Italy
+288
+13,001,040
+0.022
+Japan
+707
+34,302,520
+0.021
+Germany
+384
+26,684,400
+0.014
+Waledac is highly polymorphic. From over 24,000 infected machines there were 2,452 unique Waledac binaries. The following table shows the top 10 reported Waledac hashes. The top six files reported are internal version 34, which was the most recent at the time of the April MSRT release.
+MD5
+Infected machines
+Internal file version
+Binary label
+02782ddfbd851ce17c68dce078dde190
+2,454
+34
+dmitriy777
+82008273fc6eff975e0cf3bfc0e2396f
+2,344
+34
+mirabella
+fdd5c061cda0e205e00a849a8e8e6f7a
+1,693
+34
+dmitriy777
+10868273a15688d11ccb584653542833
+1,132
+34
+birdie2
+223111097b81773822a45b73bac1370a
+858
+34
+ub
+55cd9f80b39b1b566d9bbde5815c0969
+788
+34
+dmitriy777
+cdee7ff3d373ec38f8b67accdfc1ffe4
+540
+22
+59xx39
+dd3de6413bfe3e442d85fdef82297c84
+497
+31
+mirabella
+b7db1a54faa4d7b9800393407c0f4dfe
+450
+33
+dmitriy777
+4ada90839a8ac31d4f828e9229dfa24f
+440
+34
+ub
+
+The spam data
+Over the period 16–21 April 2009, Forefront Online Security for Exchange (FOSE) tracked data on Waledac-related spam. In the study, the following domains were tracked:
+bestgoodnews.com
+breakinggoodnews.com
+bchinamobilesms.com
+bsmspianeta.com
+bfreeservesms.com
+bmiosmsclub.com
+bsmsclubnet.com
+By observing FOSE customers’ incoming mail containing these links, it was possible to capture all of the IPs that sent this mail. These IPs were analysed and the sum total of all mail sent from these IPs was calculated (not just the mail containing the Waledac spam links). Next, a geographical distribution was sketched showing the allocation of the IPs according to their sending source.
+One of the characteristics of the Waledac botnet is that it sends a high proportion of mail with an empty MAIL FROM < > field. Empty senders are not included in either the total spam count or the total mail count, but they are included in the average number of mails sent per IP. Empty sender mail could be spam (such as that occurring in Waledac spam) or it could be backscatter mail. This distinction is not made in the statistics below.
+Region
+Total spam
+Total mail
+Empty sender mail
+Distinct IPs
+Avg. mail/IP
+North America
+25,786,958
+72,756,248
+4,220,617
+1,801
+42,741
+Europe
+3,976,965
+9,491,166
+4,013,400
+1,561
+8,651
+Asia
+838,969
+1,661,167
+1,417,824
+3,079
+1,000
+Oceania
+58,338
+329,307
+104,024
+477
+908
+South America
+88,794
+267,936
+60,187
+156
+2,103
+Central America
+3,226
+13,292
+2,035
+25
+613
+Africa
+9,554
+10,323
+897
+4
+2,805
+Total
+30,762,804
+84,529,439
+9,818,984
+7,103
+13,283
+As a proportion of total overall mail, showing the percentages:
+Region
+Total spam
+Total mail
+Empty sender mail
+Distinct IPs
+North America
+83.83%
+86.07%
+42.98%
+25.36%
+Europe
+12.93%
+11.23%
+40.87%
+21.98%
+Asia
+2.73%
+1.97%
+14.44%
+43.35%
+Oceania
+0.19%
+0.39%
+1.06%
+6.72%
+South America
+0.29%
+0.32%
+0.61%
+2.20%
+Central America
+0.01%
+0.02%
+0.02%
+0.35%
+Africa
+0.03%
+0.01%
+0.01%
+0.06%
+From the above tables, observe that total spam is only a small proportion of the total mail. Slightly more than a third of North America’s mail is marked as spam, and the numbers are not dissimilar for the other regions. This implies that the Waledac botnet is spread very widely on machines that do not typically send high volumes of spam. In other words, the sending machines are compromised, but the amount of mail sent per bot is sufficiently small so as to hide it within a larger, overall good mail stream.
+The next table shows the IP distribution per country, sorted by the total amount of empty sender mail. Manual inspection of a number of Waledac-related spam messages confirmed that much of the spam was sent with empty MAIL FROMs. The average mail/IP includes the empty sender count.
+Country
+Total spam
+Total mail
+Empty sender mail
+Distinct IPs
+Avg. mail/IP
+United States
+25,365,150
+71,436,463
+4,051,357
+1,704
+44,300
+Great Britain
+1,011,802
+2,675,004
+1,348,016
+195
+20,631
+France
+1,468,165
+2,853,418
+1,222,272
+74
+55,077
+Japan
+616,498
+1,128,727
+754,919
+229
+8,226
+Austria
+10,306
+102,285
+411,946
+34
+15,124
+Sweden
+265,132
+831,033
+353,551
+20
+59,229
+Germany
+517,055
+1,234,721
+281,833
+108
+14,042
+Canada
+329,430
+1,188,341
+164,631
+81
+16,703
+Australia
+55,625
+320,178
+102,928
+137
+3,088
+Italy
+78,813
+167,939
+95,768
+137
+1,925
+China
+16,272
+47,370
+81,395
+1,306
+99
+Switzerland
+48,594
+94,724
+72,574
+23
+7,274
+Singapore
+44,113
+166,315
+68,674
+37
+6,351
+United Arab Emirates
+35,473
+186,411
+47,622
+14
+16,717
+The Netherlands
+52,613
+347,000
+47,094
+77
+5,118
+Spain
+114,743
+134,229
+32,941
+103
+1,623
+Argentina
+35,942
+63,445
+28,202
+132
+694
+Czech Republic
+6,481
+137,183
+27,111
+74
+2,220
+Brazil
+23,694
+161,893
+24,380
+231
+806
+Norway
+10,577
+286,029
+24,363
+15
+20,693
+Ireland
+5,403
+37,722
+16,643
+24
+2,265
+Mexico
+92,378
+131,444
+4,629
+16
+8,505
+Chile
+28,179
+37,434
+966
+23
+1,670
+Belarus
+8,930
+36,362
+380
+1
+36,742
+Slovakia
+301,530
+354,581
+354
+10
+35,494
+All others
+579,784
+889,650
+154,412
+1,358
+769
+As a proportion of relative totals:
+Country
+Total spam
+Total mail
+Empty sender mail
+Distinct IPs
+United States
+82.45%
+84.51%
+41.26%
+23.98%
+Great Britain
+3.29%
+3.16%
+13.73%
+2.74%
+France
+4.77%
+3.38%
+12.45%
+1.04%
+Japan
+2.00%
+1.34%
+7.69%
+3.22%
+Austria
+0.03%
+0.12%
+4.20%
+0.48%
+Sweden
+0.86%
+0.98%
+3.60%
+0.28%
+Germany
+1.68%
+1.46%
+2.87%
+1.52%
+Canada
+1.07%
+1.41%
+1.68%
+1.14%
+Australia
+0.18%
+0.38%
+1.05%
+1.93%
+Italy
+0.26%
+0.20%
+0.98%
+1.93%
+China
+0.05%
+0.06%
+0.83%
+18.38%
+Switzerland
+0.16%
+0.11%
+0.74%
+0.32%
+Singapore
+0.14%
+0.20%
+0.70%
+0.52%
+United Arab Emirates
+0.12%
+0.22%
+0.48%
+0.20%
+The Netherlands
+0.17%
+0.41%
+0.48%
+1.08%
+Spain
+0.37%
+0.16%
+0.34%
+1.45%
+Argentina
+0.12%
+0.08%
+0.29%
+1.86%
+Czech Republic
+0.02%
+0.16%
+0.28%
+1.04%
+Brazil
+0.08%
+0.19%
+0.25%
+3.25%
+Norway
+0.03%
+0.34%
+0.25%
+0.21%
+Ireland
+0.02%
+0.04%
+0.17%
+0.34%
+Mexico
+0.30%
+0.16%
+0.05%
+0.23%
+Chile
+0.09%
+0.04%
+0.01%
+0.32%
+Belarus
+0.03%
+0.04%
+0.00%
+0.01%
+Slovakia
+0.98%
+0.42%
+0.00%
+0.14%
+All 85 others
+0.71%
+0.44%
+5.65%
+32.37%
+The United States is first in this list and it appears to send a disproportionate amount of spam compared to the number of distinct IPs associated with it, but if we compare it to the others like France, Sweden and Belarus, it is not the worst offender. One surprise finding in this list is China, which ranks eleventh in the list. Even though it accounts for nearly one fifth of all the IPs found in the botnet, it accounts for less than 1% of the spam sent. In fact, looking at both sets of data, by continent and by country, Waledac is more likely to be found in the western hemisphere than in the eastern hemisphere.
+If we compare North America to Europe, we see that substantially more mail comes from North America than from Europe if we exclude empty sender mail. Yet, if we isolate only that particular type of mail, then the two regions are very similar to each other.
+
+Bibliography
+[1] Waledac MMPC encyclopedia. http://www.microsoft.com/security/portal/Entry.aspx?Name=Win32%2fWaledac.
+[2] Conficker MMPC encyclopedia. http://www.microsoft.com/security/portal/Entry.aspx?Name=Win32%2fConficker.
+[3] Bredolab MMPC encyclopedia. http://www.microsoft.com/security/portal/Entry.aspx?Name=TrojanDownloader%3aWin32%2fBredolab.
+[4] FakeSpypro MMPC encyclopedia. http://www.microsoft.com/security/portal/Entry.aspx?Name=Trojan%3aWin32%2fFakeSpypro.
+[5] The Microsoft Windows Malicious Software Removal Tool Knowledgebase 890830. http://support.microsoft.com/?kbid=890830.
+[6] Microsoft Security Intelligence Report. http://www.microsoft.com/security/portal/sir.aspx.

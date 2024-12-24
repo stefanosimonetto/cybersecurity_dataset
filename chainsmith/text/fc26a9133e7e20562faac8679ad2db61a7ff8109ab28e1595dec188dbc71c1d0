@@ -1,0 +1,34 @@
+The Importance of logging for web applications – Security talk
+
+If you think that your logs are only useful when something crashes or when you need to troubleshoot errors on your web application, think again!
+At our Sucuri Labs, we have multiple online tools and we have good logging on all of them. We not only log errors, but also successful requests. For example, on our Application to get the real URL from a shortened one, this is how it looks when someone uses it:
+2010-03-04 05:56:54 [srcip] Check URL for http://bit.ly/XYZ.2010-03-04 05:57:01 [srcip] Check URL for http://bit.ly/ABC.
+Yes,that gets logged on our internal success log. When something fails, or someone gives us an invalid URL, thats how it looks like:
+2010-03-04 06:45:37 [srcip] Check URL: Invalid domain name ‘google’..
+That gives us an overview of what our users are doing and what mistakes they make more often. In this case, the user tried the domain “google”, without the .com at the end.
+That’s very useful from a usability stand point, but from a security perspective, logs can be much more useful. We use those web application logs for at least 3 things:
+
+Detect attacks
+Detect application misuse
+Detect errors (loss of availability)
+
+1 – Detecting attacks
+Users are curious. Most of them are not malicious, but they certainly like to play around and look for vulnerabilities. One user we noticed tried our web scanner against his web site.
+2010-02-21 06:52:14 115.49.x.y scanner: Site: www.xx.it
+A few minutes after, he started to poke around looking for SQL injections:
+2010-02-21 06:52:34 115.49.x.y scanner: Invalid site: www.xx.it’`([{^~’2010-02-21 06:52:41 115.49.x.y scanner: Invalid site: www.xx.it aND 8=8′2010-02-21 06:52:41 115.49.x.y scanner: Invalid site: www.xx.it aND 8=3′2010-02-21 06:52:49 115.49.x.y scanner: Invalid site: www.xx.it’ aND ‘8’=’8′2010-02-21 06:52:57 115.49.x.y scanner: Invalid site: www.xx.it’ aND ‘8’=’8′2010-02-21 06:53:09 115.49.x.y scanner: Invalid site: www.xx.it/**/aND/**/8=8′2010-02-21 06:53:35 115.49.x.y scanner: Invalid site: www.xx.it%’ aND ‘8%’=’8’2010-02-21 06:53:48 115.49.x.y scanner: Invalid site: www.xx.it XoR 8=8′
+He then got blocked automatically by our system. Without those logs, he could have tried and tried forever and we would never notice that. Our application was safe against it, but why let an attacker play around? To block those attacks, we use OSSEC with their active response, which blocks an attacker after 10 invalid attempts.
+That’s how our OSSEC rule looks like:
+
+Invalid site: User provided an invalid site. 100906  Warning: Multiple invalid sites provided.
+
+The first rule generates a low level event for each invalid site provided and the second one, actually blocks and generates an alert if it happens more than 10 times from the same source ip.
+2 – Detecting application misuse
+Detecting application misuse is very similar to detect attacks. Except that in this case the user is not trying to hack us, but use our application in ways we don’t allow. For example:
+2010-02-24 07:22:50 129.21.a.b scanner: Invalid site: ‘site:22’..2010-02-24 07:30:47 129.21.a.b scanner: Invalid site: ‘site:25’..
+Instead of giving us a valid domain, the user was trying to give us a port to scan (in this case 22 for ssh and 25 for smtp). We were safe against this, but it raises our awareness of possible ways to misuse our application.
+So, why not add some good logs to your application? We didn’t go over detecting errors, because everyone does that already, but you also need to log successful attempts and invalid user input too! A simple write_log function before you print any error back to the user, should do it. For example:
+
+function write_log($msg){  $INT_LOGFILE = "/var/logs/myapp/myapp.log";  if ($handle = fopen($INT_LOGFILE, 'a'))  {    fwrite($handle, date('Y-m-d h:i:s ').$_SERVER['REMOTE_ADDR']." ".$msg. ".n");    fclose($handle);  }}
+
+Just remember to log outside your web directory! You don’t want anyone else accessing your logs!

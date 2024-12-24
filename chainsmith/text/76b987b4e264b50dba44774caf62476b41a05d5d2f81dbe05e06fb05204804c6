@@ -1,0 +1,102 @@
+Exploit identification
+2010-11-01
+
+Mark Davis
+Editor:
+Helen
+
+Martin
+Abstract
+In previous articles Mark Davis introduced exploit frameworks such as Fragus, Tornado, and others, and described how to analyse them using LAMP/WAMP servers. Here, he walks through a Tornado kit, start to finish, showing the process required to identify exploits in the kit.
+Copyright © 2010 Virus Bulletin
+
+My previous articles (see VB, April 2010, p.21, May 2010, p.17 and August 2010, p.8) have introduced exploit frameworks like Fragus, Tornado, and many others, and described how to analyse them using LAMP/WAMP servers. This article walks through a Tornado kit, start to finish, showing the process required to identify exploits in the kit. Principles from this example are applicable to the research of all such exploit frameworks. It begins with script or netflow analysis, decoding, more analysis, and continued correlation and testing, until reasonable confidence for exploit identification is acquired.
+
+Approaching the kit
+The first step is awareness of the kit. An analyst may perform multiple queries and coordinate in both public and private arenas to get an idea of what is already known about a kit. This can greatly expedite research angles and context for a researcher when analysing a kit. For example, an analyst may get an idea of how long a kit has been in the wild, the exploit vectors expected and/or deep kit analysis performed by others, and more.
+For this demonstration a copy of the Tornado exploit kit was captured in the wild. A few directories exist along with a few files at the root level of the kit:
+Data/
+Exploits/
+Include/
+Stats/
+.htaccess
+Count.php
+Dump.sql
+Getexe.exe
+Familiarity with the context of exploit kits (see previous articles) helps the analyst to assume the following about each element of the kit:
+Data/ Contains possible log files for the kit itself, stolen data, or support media for the kit.
+Exploits/ Probably contains exploits, but if this is a demo version, only a few common vectors will be present (demos usually exclude the important exploits).
+Include/ Contains elements required for the kit set-up, normally including MySQL configuration, GeoIP, crypting, and similar configuration files.
+Stats/ Contains statistics related to the kit, used to display in the kit (e.g. number of infections per country).
+.htaccess This is probably an Apache distributed configuration file used to control access to the kit when on a web server.
+Count.php This is probably a PHP file that is used to track something.
+Dump.sql This is probably a sample SQL database file used in a demonstration of the kit or possibly containing full abuse data.
+Getexe.exe This is probably the payload for the kit and what will be seen in URLs when exploitation is successful.
+To identify the exploits the analyst immediately navigates to the exploits directory and finds files named ‘x1.php’ through ‘x16b.php’. This is a sequential naming convention that suggests that exploits are carefully managed by a unique number and/or letter variant. An analyst that is paying attention to this pattern will realize that online abuse data may point to other exploits, like 17.php or others not found in the demonstration kit. If this is the case, the analyst can work with the demonstration exploits and then correlate abuse data to suspected vectors of exploitation for 17.php and above to obtain a very solid concept of what the kit is confirmed to exploit and its likely exploits. This also gives the analyst the ability to configure behavioural environments to perform live tests against new Tornado exploit kits to confirm suspected exploit vectors for 17.php+ and higher.
+Inspection of the content of the exploit files should first take place inside Notepad ++ or other similar safe viewing utility. All files contain the same ‘Zend’ header data and obfuscated content as shown in the snippet below from x1.php:
+Zend
+2006022801 2 0 3 1477 3349 xùŸ2­Wmo£FŽTU:9RÂ‰ò¡Á²—îæ¥>Nâõúár9Ån¯jÓÖw¬sq£|éÏí¯è,`»é%ªjÙvž™ }
+At this point the analyst realizes that deobfuscation of the data is required before analysis, but may not understand the ‘Zend’ header. It is clear that all files are ‘Zended’, so a Google query may help to clarify this. Google queries such as ‘zend header’, ‘zend php files’ or ‘zend obfuscation’ may reveal content to help the analyst understand what he is dealing with and how to deobfuscate it. In this example, the analyst probably finds zend.com rather rapidly and learns of a commercial solution for working with PHP management and code. Next, a more descriptive Google query like ‘zend php file obfuscation’ is appropriate, leading to pages that discuss obfuscated PHP code and how to decode such files. Within a few minutes the analyst is able to understand the origin of Zend header files and that there are a variety of tools that can be used to deobfuscate such ‘zended’ scripts.
+Several utilities exist online to de-zend scripts, such as http://old.boem.me/dezend/. However, analysts should never blindly trust any such utility, and should only use them inside a safe lab or virtualized environment rather than on a production machine. Some tools require terminal line interaction while others are GUIs, but eventually a tool can be found that successfully decodes the obfuscated PHP files. In this case, de-zending tools and success may vary based on the version of PHP being worked with, such as PHP4 or PHP5. Trial and error may be required to eventually find a successful vector for deobfuscating the code.
+Now, a copy of the files exists on the analyst’s machine, de-zended and in the clear. x1.php now has introductory content as shown in the snippet below:
+<?php
+/*********************/
+/*          */
+/* Dezend for PHP5 */
+/*     NWS    */
+/*   Nulled.WS  */
+/*          */
+/*********************/
+
+if ( defined( “GRANTED” ) )
+{
+exit( );
+}
+echo “var exeurl=url+’1’;\nfunction CreateO(o,n)
+The first part of this script contains a header injected by the de-zending tool. The important part is the ‘if’ statement and below, which clearly shows hostile JavaScript. At this point the analyst may quickly scan the document for important clues such as CLSID values, eval statements, strings that may be unique to an exploit, or strings used by the actor that may reveal the identity of the exploit. When performing this kind of visual review of a script, analysts should use Notepad ++ or a programming package so that line numbers and colour-coding of the elements can be viewed. This greatly aids in reviewing data when compared to Notepad viewing. An example of this is shown in Figure 1.
+Figure 1. Colour coding in Notepad ++ helps the analyst.
+In reviewing x1.php de-zended scripts, we can see that multiple strings exist in the document, providing clues to possible exploit functionality:
+ADODB.Stream
+BD96C556-65A3-11D0-983A-00C04FC29E36
+BD96C556-65A3-11D0-983A-00C04FC29E30
+AB9BCEDD-EC7E-47E1-9322-D4A210617116
+0006F033-0000-0000-C000-000000000046
+0006F03A-0000-0000-C000-000000000046
+6e32070a-766d-4ee6-879c-dc1fa91d2fc3
+6414512B-B978-451D-A0D8-FCFDF33E833C
+7F5B7F63-F06F-4331-8A26-339E03C0AE3D
+06723E09-F4C2-43c8-8358-09FCD1DB0766
+639F725F-1B2D-4831-A9FD-874847682010
+BA018599-1DB3-44f9-83B4-461454C84BF8
+D0C07D56-7C69-43F1-B4A0-25F5A11FAB19
+E8CCCDDF-CA28-496b-B050-6C07C962476B
+BD96C556-65A3-11D0-983A-00C04FC29E36
+An Internet search for possible exploits and/or exploit examples related to the above strings and CLSID values can now be undertaken by the analyst. Unique to this first example is the large number of CLSID values and the string ‘ADODB.Stream’, which is not common among exploit files (most contain just one to three such strings). By combining terms and looking for exploits, the analyst can run the following query on Google: ‘adodb.stream BD96C556-65A3-11D0-983A-00C04FC29E36 exploit’. The first result from this query refers to an MDAC MS06-014 exploit:
+Internet Explorer (MDAC) Remote Code Execution Exploit (MS06-014 ...
+
+DataSpace’, ‘{BD96C556-65A3-11D0-983A-00C04FC29E36}’], .... var s =
+CreateO(a, “WScript.Shell”); var o = CreateO(a, “ADODB.Stream”); var e = s. ...
+securityreason.com/exploitalert/975 -
+Browsing the first page of search results reveals lots of information about the MDAC vulnerability, articles on attacks in the wild using the MDAC vulnerability, several behavioural analysis and anti-virus reports related to the vector and strings queried, and exploit files used by bad actors to exploit the MDAC vulnerability. If an analyst is not familiar with this exploit, each of these leads can be followed up until reasonable certainty is obtained as to the identity of the exploit. This often involves a few security reports followed up by a Milw0rm or Metasploit script analysis to accurately identify the structure and context of exploits compared to the file under analysis.
+Conclusive identification of an exploit can only take place with the following actions taken after initial research is performed:
+An exact copy of a known identified exploit online matches that of the exploit being analysed.
+A minor copy of an exploit is identified, with no major changes in core functionality of the exploit vector.
+Carefully controlled behavioural analysis of a specific exploit vector is employed against the suspected vector inside a LAMP/WAMP server or against a remote live server. This may involve fully patching a system and then removing the patch suspected to be the fix for the vector being targeted by the exploit file.
+An expert in exploitation analysis qualifies the initial findings.
+Another item that analysts should look for when performing kit analysis is the bad actor’s comments and marketing media. The authors of exploit kits often use slang when referring to specific common vectors of attack, such as ‘MDAC, Snapshot, qt’ and so on. Learning the common slang terms used can serve as a pointer to an analyst investigating an exploit script within a kit.
+In reviewing the de-zended Tornado scripts, many hours may pass before key elements of each script are identified, researched, correlated, and/or confirmed. When done with such research it is common to have some vectors of exploitation that have been identified conclusively, while others are found to be highly likely, and others still may be unconfirmed but highly likely based upon both local lab tests and correlation to patterns and remote data that suggest full functionality of a kit. In the case of Tornado, the following exploit vectors can be identified in the aforementioned PHP files:
+x1: CVE-2006-0003. Microsoft Windows Server 2003 Service Pack 1 RDS.Dataspace ActiveX Control Access Control Vulnerability (Microsoft Data Access Components – MDAC)
+x2: CVE-2006-3730. WebViewFolderIcon (WVF)
+x3: CVE-2007-0024. Vulnerability in Vector Markup Language Could Allow Remote Code Execution (929969) (VML)
+x4: CVE-2007-0015. Buffer overflow in Apple QuickTime 7.1.3
+x5, x6: CVE-2006-0005. Microsoft Windows Media Player Plugin Buffer Overflow Vulnerability (WMP Plugin for Opera/FireFox Embed).
+x7, x7b: CVE-2007-6166. QuickTime RTSP Response vulnerability
+x8: CVE-2006-6884. WinZip FileView ActiveX controls CreateNewFolderFromName() Method Buffer Overflow
+x9: CVE-2007-2987. Zenturi ProgramChecker ActiveX (sasatl.dll) Remote Buffer Overflow
+x10: CVE-2007-3147, CVE-2007-3148. Yahoo! Webcam view Utilities ActiveX Control Vulnerable to Arbitrary Code Execution
+x11: CVE-2009-1930. Microsoft Windows Server 2008 Service Pack 2 Telnet Server Unspecified Vulnerability (Opera 9.25 and earlier; TN3270)
+x12: CVE-2006-5745. Vulnerability in Microsoft XML Core Services Could Allow Remote Code Execution (928088)
+x15, x15b: CVE-2003-0111. Java ByteCode Verifier / Flaw in Microsoft VM
+x16, x16b: CVE-2007-0038. Microsoft Windows Animated Cursor Remote Code Execution Vulnerability (925902) (ANI) Vulnerability in Microsoft Management Console Could Allow Remote Code Execution (917008; MS06-044). Publicly reported but not confirmed in lab samples: CVE-2006-3643.
+Once research has been completed the analyst can perform follow-up kit analysis by tracking common strings, CLSID values and other components that led to a successful identification of an exploit vector. This greatly expedites future kit analysis since many of the vectors used in a kit are widely used by many kits. As such, once the steep learning curve of kit analysis has been completed the analyst will be able to identify new kits easily and rapidly, and more importantly, identify new exploit vectors used by a kit in the wild. As an example, common slang terms like ‘TN3270’ or ‘TN 3270’ are commonly used to refer to a Telnet server vulnerability ‘Microsoft Windows Server 2008 Service Pack 2 Telnet Server Unspecified Vulnerability (Opera 9.25 and earlier; TN3270)’, CVE-2009-1930, MS09-042.
+To apply what you have learned in this article try to identify the exploit using this CLSID: 10072CEC-8CC1-11D1-986E-00A0C955B42E. You should be able to get an idea of what the exploit vector is within 15 seconds or less, tied to an exploitation that first began in 2006 and 2007 in the wild.

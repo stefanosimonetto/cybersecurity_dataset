@@ -1,0 +1,134 @@
+The Story of an Expired WHOIS Server
+
+We write quite often about SEO spam injections on compromised websites, but this is the first time we have seen this blackhat tactic spreading into the WHOIS results for a domain name.
+If you are not familiar with “WHOIS“, it is a protocol used to check who owns a specific domain name. These simple text records are publicly available and usually contain contact details for the website owner, i.e. their name, address, and phone number (unless the website owner purchased a WHOIS protection service).
+Anatomy of a WHOIS Hack
+A customer of ours was concerned about recent changes to their WHOIS records and email notifications containing spam content. We investigated further and discovered that attackers had taken advantage of domain expiration by purchasing a previously legitimate WHOIS server. They managed to insert arbitrary ads into the old South African WHOIS server records.
+South Africa uses the country code .co.za for its official top-level domain. When we looked up where the official WHOIS server was for the client, we got a response like this:
+dig co.za.whois-servers.net +noall +answer
+; <<>> DiG 9.8.3-P1 <<>> co.za.whois-servers.net +noall +answer
+;; global options: +cmd
+co.za.whois-servers.net. 537   IN   CNAME whois.coza.net.za.
+whois.coza.net.za.   7138 IN   A                206.223.136.172
+Everything looks fine so far – coza[.]net.za is the official registrar for all co.za domains. Nothing appears to be wrong here.
+However, the WHOIS record change notifications also contained information about what was changed.
+Spam Content in WHOIS Records
+Each notification email showed a new set of spam links in the WHOIS changelog. These alerts gave us the information we needed to dig deeper.
+The emails he received looked something like this:
+< [3]Your Lucky Day: Become A Millionaire!
+<        Spin The Lucky Slots 80 Free Spins! Jackpot is over USD
+<        $9,909,349.05
+<        [4]hxxp://www.facebook .com/myVegas
+—
+> [3]You are a Winner!
+>        One of Your Prizes: iPad mini SmartTV 65″. Participation Required
+>        [4]hxxp://helpfulhint .net/Free_iPad
+29c28
+<        [6]hxxp://www.survey-prizes .com/
+—
+[6]hxxp://www.apple .com/survey-prizes
+34,39c33
+<        [8]hxxp://www.apple .com/survey-prizes
+<      *
+<    1. http://whois.co.za/search/redirect.php?f=http%3A%2F
+%2Fvq91811.com%2Fctrd%2Fclick%2Fnewjump1.do%3Faffiliate%3
+D45549%26subid%3D2237%26terms%3Dwhois%26ai%3DWYYX6a9Q-
+bLvuf4evYbPo_QfbnqRDklozolZrIvUL510Q0neMlFqafM9UdsF5048H
+tcW64dny_HKi5wSpE4QR2_5qQO-gOfJ4CR6rcb4exg_77tsOkTWvX1
+OcLIYZRmzP475….. (truncated)
+This was clearly spam, but there was a small clue at the end of the message. Why would queries go to whois.co.za instead of whois.coza.net.za?
+Querying the WHOIS Server
+I went in Terminal and ran this query to find out:
+whois victim-site.co.za
+whois: za.whois-servers.net: nodename nor servname provided, or not known
+Seeing this tipped me off that there is definitely something going on with this domain name.
+In order to find the root cause of these issues, I installed Brew and used it to download an updated version of WHOIS. I was able to install WHOIS version 5.2.12 and simply ran the same command, but this time I had a different outcome (client information has been redacted).
+./whois victim-site.co.za
+Domain Name:
+victim-site.co.za
+Registrant:
+[redacted]
+Email: [redacted]
+Tel: [redacted]
+Fax: None
+Registrant's Address:
+[redacted]
+Johannesburg
+Gauteng
+ZA
+[redacted]
+Registrar:
+Internet Solutions
+Relevant Dates:
+Registration Date: 1997-07-04
+Renewal Date:      2016-07-04
+Domain Status:
+Registered until renewal date
+Pending Timer Events:
+None
+Name Servers:
+jupiter.is.co.za [ redacted IP ]
+titan.is.co.za [ redacted IP ]
+demeter.is.co.za [ redacted IP ]
+WHOIS lookup made at 2016-05-08 04:55 UTC
+--
+The use of this Whois facility is subject to the following terms and
+conditions. https://registry.net.za/whois_terms
+Copyright (c) ZACR 1995-2016
+Bingo, a correct result!
+Still, this didn’t tell me what the issue was exactly.
+Browsing The Registry Website
+I opened my browser and visited the site for the WHOIS server:
+hxxp://whois[.]co.za
+… I was immediately redirected to https://www.registry.net.za/whois/ – which is fine. It’s a legitimate website.
+However when I went to:
+hxxp://www.whois[.]co.za
+… this time, I was redirected elsewhere, and a bunch of ads started popping up on my browser. GOTCHA!
+This tells me something is wrong with the whois.co.za domain – and naturally, I needed to find out! I kept on checking using dig and found the following DNS records:
+whois.co.za.            560   IN    A     206.223.136.238
+www.whois.co.za.        573   IN    A     72.52.4.120
+The bare domain and the www subdomain are pointed to different servers. You get a clean version when you simply use hxxp://whois[.]co.za and a spam-filled one if you use hxxp://www.whois[.]co.za.
+When I simply ran another WHOIS query, this time I specifically told the WHOIS command which server to use:
+$ whois -h  whois.registry.net.za whois.co.za
+Domain Name:
+whois.co.za
+Registrant:
+HR Staffing
+Email: hrstaffingfl@gmail.com
+Tel: +1.7274786000
+Fax: +1.7274786001
+Registrant's Address:
+7335 US Highway N
+New Port Richey
+Florida
+US
+34652
+Registrar:
+HR Staffing
+Relevant Dates:
+Registration Date: 2016-04-22
+Renewal Date:      2017-04-22
+Domain Status:
+serverDeleteProhibited, serverTransferProhibited, serverUpdateProhibited
+Pending Timer Events:
+None
+Name Servers:
+ns1.sedoparking.com
+ns2.sedoparking.com
+WHOIS lookup made at 2016-05-06 15:34 UTC
+There you go! Someone got a hold of the domain whois.co.za and renewed it on April 22nd. Our client started seeing ads in their notification emails ever since.
+I tried to replicate the issue using a virtual machine and ran the WHOIS command there:
+[me@vm-centos6 ~]$ whois whois.co.za
+[Querying http://whois.co.za/cgi-bin/whois.sh]
+The whois.sh script code renders an HTML page with – yes, you guessed it – lots of ads.
+Outdated WHOIS Version
+Here is the tricky part. The issue does not happen to everyone.
+It only happens with the versions of WHOIS older than 5.0.19.
+My colleague, Joao, found the GitHub changelog for the WHOIS package of Debian which offers reasons why there is such a difference in these versions of WHOIS.
+Expired WHOIS Servers
+Essentially, the whois[.]co.za domain was removed in version 4.7.33 back in 2009 because the domain was being taken down. This necessitated changes to the co.za ccTLD domains that affected WHOIS lookups.
+Reading more about this on the IANA website revealed changes submitted in 2005 that affected the .co.za domains and the WHOIS servers. As a consequence of these changes, whois[.]co.za was removed from the official list of WHOIS servers for co.za domains – and whois.coza.net.za was its replacement.
+An attacker capitalized on this after the domain expired by purchasing it and using it to serve advertisements instead of valid WHOIS information.
+This means that all UNIX systems using a WHOIS version older than 5.0.19 will still see the deprecated (and now malicious) WHOIS server when querying co.za domains.
+I reported this to the South African registrar, but unfortunately, I haven’t received a reply from them.
+It’s important to keep an eye on your WHOIS records to ensure hackers don’t make unauthorized changes or compromise your WHOIS server. Our WHOIS monitoring service will notify you so you can verify the changes are legitimate or address any unauthorized changes.

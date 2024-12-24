@@ -1,0 +1,66 @@
+Enter Sandbox – part 5: In search for Deus Ex Machina II
+June 17, 2015 in Batch Analysis, Clustering, Malware Analysis
+
+My last post focused on limitations that are typically a result of ingenuity of software developers and malware authors. It is also a result of our inability to comprehend the vast number and a variety of files created en masse every day. Apart from evasions, these quirky productions are what is often limiting sandboxes’ ability to clearly distinguish what’s good and bad. But that’s not all.
+Today we will talk about limitations that are enforced by a sandbox running the best way it can. So well it does its job that it may lead malware to explore only a single path of execution – one that will prohibit other paths to be explored. A perfect example here is Upatre malware (I am talking about its slightly older versions from last year). When such Upatre sample is ran inside a sandbox it attempts to download a second part – the actual payload (e.g. Dyreza). To do so, it contacts a list of sites that host the payload. If one of the sites is down the malware will attempt to download from another. Usually, it stores 2-3 different URLs inside its body and would walk through them one by one in order to (attempt to) download the payload.
+Since most of sandboxes allow online connectivity (typically proxied/anonymized) a successful download of the payload from the first domain will lead to payload execution and other domains will never get accessed. Has the sample been executed offline, sandbox could observe attempts to download from more different domains. The result could be that all of them could get blacklisted, and the potential behavioral rule “downloads from more than one domain” could have triggered. Otherwise the behavior is no that different from a typical legitimate downloader.
+The below example shows a log of connection attempts of one such Upatre sample running offline:
+InternetConnectW: 62[.]210[.]204[.]149:80
+HttpOpenRequestW: GET, /0912uk11/<hostname>/0/51-SP3/0/
+HttpOpenRequestW: GET, /0912uk11/<hostname>/1/0/0/
+InternetConnectW: coimbatoreholidays(.)com:80
+HttpOpenRequestW: GET, /images/viny11.pnd
+InternetConnectW: macintoshfilerecovery(.)biz:80
+HttpOpenRequestW: GET, /images/viny11.pnd
+InternetConnectW: coimbatoreholidays(.)com:80
+HttpOpenRequestW: GET, /images/viny11.pnd
+InternetConnectW: macintoshfilerecovery(.)biz:80
+HttpOpenRequestW: GET, /images/viny11.pnd
+And this is an excerpt from a behavioral log from VT:
+HTTP requests
+URL: hxxp://coimbatoreholidays(.)com/images/viny11.pnd
+TYPE: GET
+USER AGENT: rupdate
+URL: hxxp://www(.)coimbatoreholidays(.)com/images/viny11.pnd
+TYPE: GET
+USER AGENT: rupdate
+DNS requests
+coimbatoreholidays(.)com (192[.]185[.]97[.]96)
+www(.)coimbatoreholidays(.)com (192[.]185[.]97[.]96)
+The macintoshfilerecovery(.)biz domain is not mentioned at all.
+Interestingly, the log from virscan.org shows both coimbatoreholidays and macintoshfilerecovery. It could be either that they test the sample offline, or the domain coimbatoreholidays.com died as a payload provider at the time the sample was tested.
+This may lead us to the following conclusion: a good sandbox should test samples both online and offline.
+But. Let’s remember that this is just one of many conditional layers.
+Nowadays samples are executed on a variety of systems. Gone are days when you could just run it inside Windows XP and you would extract all the juice. Nowadays payloads include hybrid binaries targeting Windows XP, Windows 7, 32-bit and 64-bit platforms. That gives us 3 (xp 64 not included) OSs extra to cover at least. Windows 8.x is already out there for quite some time and Windows 10 is around the corner as well. They do have their quirks and some malware targeting them won’t work on older systems. With regards to XP – some samples compiled with modern compilers won’t even run on it anymore since their internal PE headers set a requirement for the OS to be at least Windows Vista/7 or newer (an example is JackPOS described by Josh in this post from Feb, 2014). Others simply statically link to APIs not present on older OS versions. And it’s often done w/o malicious purpose – people who write code often don’t even realize that they are breaking the compatibility with older OSses by simply using APIs that are introduced in newer OS versions (f.ex. ransomware is often linked with bcrypt.dll library that is not present on XP).
+Back to a discussion about what sandbox does so well – which is also its weakness.
+Logging in the sandbox is everything. And logging takes time. The more you hook/intercept, the more you see, but the slower it gets. No shortcuts here. Hook NT functions for .NET, Visual Basic application or Autoit executable, and you end up with gazillion of logs, malware not even partially executed and session ending w/o reaching the actual payload (let alone a proper decision about its ‘badness’). Hook and log a function that is executed 100000 for stalling purposes, and malware wins. And so on and so forth. One can extend a session time, but this is a naive concept. If you happen to log a wrong function, it will take forever to execute (examples include Visual Basic-based wrappers that do a lot of string operations before building a shellcode launching RunPE payload).
+In other words: to log, or not to log is a really hard puzzle to crack.
+Take processes as an example: every new process spawn – add for monitoring (more logging to come). The problem is that it’s often not necessary. A sample spawning cmd.exe, net.exe, reg.exe to do some simple task is very common and hooking such processes doesn’t add any value to analysis. Quite the opposite, the logs grow exponentially and nothing good comes out of it. And for automated analysis it is a very difficult problem to handle.
+Still, should we monitor, or not?
+One could build a whitelist of processes (or more precisely: processes and recognized command lines) one doesn’t want to monitor, but this is much harder than one may think and would probably immediately get exploited by malware authors who could leverage such non-monitored processes for some evasion purposes. With regards to troubles with building such a white list consider the following:
+
+additional blank characters
+multiple commands in one go (separated by ampersands, or using conditions)
+batch files instead of command executed directly
+presence of file extensions in the command (or a lack of)
+capitalization of letters that form the commands
+multiple alternatives to do the same thing (del/erase, net/net1/sc, regedit/reg, copy/xcopy, etc.)
+commands requiring command line switches can be shuffled around
+commands executing processes only to run DDE commands (yes, it still happens 🙂 )
+processes launched using shell verbs and their variety
+paths used by the commands can be obfuscated and played around with in many ways (e.g. environmental variables, ‘/’ in paths work as a replacement for ‘\’, substed paths, junctions, etc.)
+new commands introduced with new OSes (cacls, xcacls, icacls, etc.)
+
+Still, it might be worth building a list of ‘safe’ non-monitored processes f.ex.
+
+netsh firewall set allowedprogram …
+net stop …
+taskkill …
+iexplore www_getwindowinfo
+
+Of course, to be useful, each command would require a dedicated parser or rules to extract juicy information for the high-level report.
+Last, but not least – the variety of problems sandboxes witness when they try to execute random samples and actually make them do something is a reason why a compensating approach a.k.a. yara rules or any other signature-based approach must be taken to ensure detection of ‘difficult cases’. I always refer to yara sigs as “poor man’s AV engine”. They are extremely handy, easy to write, but they do not scale well since each sig is a separate entity w/o any optimization and are extremely FP-prone since testing is typically done on a very limited sample set. Antivirus engines are doing the very same thing, but in a highly optimized fashion and with a much lower FP rate. Whether we like it or not sandbox needs to rely on signatures, or rule-based classification. Maybe it is what it is and perhaps a good sandbox needs to work like a good antivirus first.
+
+Comments Off on Enter Sandbox – part 5: In search for Deus Ex Machina II
+
+Comments are closed.

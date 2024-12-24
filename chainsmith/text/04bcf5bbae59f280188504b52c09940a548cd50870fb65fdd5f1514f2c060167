@@ -1,0 +1,47 @@
+csrss.exe and its manifests
+December 5, 2020 in Archaeology, Undocumented Windows Internals, Windows 10
+
+This is yet another odd behavior I spotted using Procmon. I was curious what .manifest files may be missing on my test Windows 10 system. The idea was that if I could find ‘phantom manifests’ I could use them as a persistence trick, or to escalate privileges.
+To my surprise, one of the first findings was csrss.exe constantly trying to access Microsoft.Windows.Common-Controls.MANIFEST. So intensive are these efforts that the process is looking for this file in a couple of locations:
+C:\WINDOWS\SysWOW64\en-US\Microsoft.Windows.Common-Controls.mui\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\WINDOWS\SysWOW64\en-US\Microsoft.Windows.Common-Controls\Microsoft.Windows.Common-Controls.MANIFESTC:\WINDOWS\SysWOW64\en\Microsoft.Windows.Common-Controls.mui\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\WINDOWS\SysWOW64\en\Microsoft.Windows.Common-Controls\Microsoft.Windows.Common-Controls.MANIFESTC:\WINDOWS\en-US\Microsoft.Windows.Common-Controls.mui\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\WINDOWS\en-US\Microsoft.Windows.Common-Controls\Microsoft.Windows.Common-Controls.MANIFESTC:\WINDOWS\system32\en-US\Microsoft.Windows.Common-Controls.mui\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\WINDOWS\system32\en-US\Microsoft.Windows.Common-Controls\Microsoft.Windows.Common-Controls.MANIFESTC:\WINDOWS\system32\en\Microsoft.Windows.Common-Controls.mui\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\WINDOWS\system32\en\Microsoft.Windows.Common-Controls\Microsoft.Windows.Common-Controls.MANIFESTC:\Windows\SysWOW64\en-US\Microsoft.Windows.Common-Controls.MANIFESTC:\Windows\SysWOW64\en-US\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\Windows\SysWOW64\en\Microsoft.Windows.Common-Controls.MANIFESTC:\Windows\SysWOW64\en\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\Windows\System32\en-US\Microsoft.Windows.Common-Controls.MANIFESTC:\Windows\System32\en-US\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\Windows\System32\en\Microsoft.Windows.Common-Controls.MANIFESTC:\Windows\System32\en\Microsoft.Windows.Common-Controls.mui.MANIFESTC:\Windows\en-US\Microsoft.Windows.Common-Controls.MANIFESTC:\Windows\en-US\Microsoft.Windows.Common-Controls.mui.MANIFEST
+Note the unusual .mui.MANIFEST file extension as well as the directories: Microsoft.Windows.Common-Controls.mui and Microsoft.Windows.Common-Controls that are being accessed as well.
+After poking around I discovered that the actual code that does all these searches resides inside sxs.dll – it all happens when SxsGenerateActivationContext API is called. One of the functions this API calls is SxspExpandProbingCandidate and this one probes various system locations for a manifest file. Interestingly, some of the SXS code seems to be probing .dll and .mui files found during these searches and checks their resources as well (to see if any matching manifest resource can be found). I guess some more finding to be expected from this portion of code in the future.
+Of course, once I discovered that a specific manifest file csrss.exe is looking for is not present on a system, I immediately created a dummy one. I then restarted the system and it simply hang. That was a good sign :-).
+I then tried to test the whole thing one more time but this time w/o immediate restart and with Procmon running. The manifest file I introduced was using the file tag with a name attribute pointing to my test DLL that was placed in the same directory as manifest file and inside the c:\windows\system32\:
+<file name="test.dll"></file>
+Once I created C:\Windows\en-US\Microsoft.Windows.Common-Controls.MANIFEST, the csrss.exe process could access it and… it did read it. On a surface nothing changed, however, next time I tried running a GUI application i.e. calc.exe, I got this message:
+
+Hmm. This is a nice proof that my manifest file is being taken into account, and it apparently broke something. As expected, removing the .manifest file I introduced removes the issue, plus confirms that this manifest file could be modified during run-time as csrss.exe does not seem to be caching its content.
+As a side note, csrss.exe seems to be accessing C:\Windows\WindowsShell.Manifest as well, so since this one exists on the system by default it could be modified.
+Now, the question is what is the manifest content that could make csrss.exe ‘like’ it.
+Ideas?
+After poking around a bit more I discovered that csrss.exe ‘likes’ manifest files a lot. I let the VM run with the Procmon on. After a while I got a few good hits.  Example paths include:
+C:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\coloader80.dll.manifestC:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\DebuggerProxy.dll.manifestC:\Program Files (x86)\Microsoft Visual Studio 14.0\Common7\IDE\Microsoft.VisualStudio.CompilerHostObjectsProxy.dll.manifest
+A-ha.
+They actually exist on my test system so I can have a peep.
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Copyright (C) 1981-2007 Microsoft Corporation -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+<noInheritable/>
+<assemblyIdentity type="win32" processorArchitecture="x86" name="debuggerproxy.dll" version="1.0.0.0" />
+<file name="debuggerproxy.dll">
+<comClass clsid="{C5621364-87CC-4731-8947-929CAE75323E}" threadingModel="Both"/>
+</file>
+<comInterfaceExternalProxyStub name="CausalityInternal_IAD7ALCausalityEventBridge" iid="{F6A124D7-5BB7-47B2-A9AF-AAB0EEAB60E3}" numMethods="5" proxyStubClsid32="{C5621364-87CC-4731-8947-929CAE75323E}"/>
+OR
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0" copyright="Copyright (c) Microsoft Corporation. All Rights Reserved." xmlns:cmiv2="urn:schemas-microsoft-com:asm.v3" cmiv2:copyright="Copyright (c) Microsoft Corporation. All Rights Reserved."><noInheritable /><assemblyIdentity name="Microsoft.Windows.Common-Controls" version="6.0.18362.1016" processorArchitecture="x86" publicKeyToken="6595b64144ccf1df" type="win32" /><file name="comctl32.dll" cmiv2:importPath="$(build.nttree)\asms\60\msft\windows\common\controls" cmiv2:sourceName=""><windowClass>ToolbarWindow32</windowClass><windowClass>ComboBoxEx32</windowClass>
+So, hmm both file and COM stuff seem to be supported well.
+I guess the file must be signed or something?
+Ideas?
+I followed with the simplest example ever – I put the comctl32.dll as a value of a name attribute inside the manifest file, then placed copy of comctl32.dll inside the same directory. Then I restarted the computer.
+Hello nothingness.
+After restart no Explorer in sight. Task Manager shows as below:
+
+A-ha. Let’s try to run explorer.
+
+Okay, so everything is broken as before. A good sign, I guess.
+Ideas?
+
+Comments Off on csrss.exe and its manifests
+
+Comments are closed.

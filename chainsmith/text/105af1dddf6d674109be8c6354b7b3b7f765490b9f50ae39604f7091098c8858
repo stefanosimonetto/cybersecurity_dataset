@@ -1,0 +1,66 @@
+Locky returned with a new Anti-VM trick
+
+After the recent outage of the Necurs botnet, the Locky developers have used the break in activity to develop some new features for their ransomware. Locky e-mails came back in full force on 21 June, 2016 and now contain virtual machine (VM) and analysis tool countermeasures.
+
+One of the new tricks involves new encryption of the payload that is downloaded by their Javascript downloaders. This prevents analysis tools from analysing the executable from the network traffic. Once decrypted, Locky now also requires a command line parameter in order to run correctly. This second technique prevents sandbox environments from knowing how to run the executable.
+
+But one of the more interesting techniques exploits a tiny discrepancy between a VM and a real machine.
+
+Detection of Virtualisation
+
+When Locky returned on June 21, we saw that it is now using a new mechanism to detect the presence of a VM. We have not quite seen this specific method previously, although the conceptual basis is not a new one.The malware will calculate how long it takes to perform two Windows API calls, GetProcessHeap() and CloseHandle(). It will then compare the ratio of how long it took to execute the first API versus the second API. This is then compared to a known ratio of at least 1:10 that is more likely to indicate a real machine rather than a VM. On a real system, CloseHandle() should be at least 10 times quicker on average to execute when compared with GetProcessHeap(). However, due to how VM products may virtualise the Thread Environment Block (if they are not using hardware acceleration features) GetProcessHeap() may take a lot longer to execute as compared to a real machine.The APIs have been carefully chosen by the developer of the code, who clearly has a very good understanding of fundamental VM behaviour. The mechanism is not perfect however, and may both fail to detect a VM and also result in some false positives on real machines. This is somewhat mitigated by making 10 attempts to pass the ratio threshold. The Locky developers may be aware of this and willing to lose a certain percentage of real victims in order to extend their possible window in which their malware will remain undetected.
+
+Reverse-Engineered Code
+
+The code we found in Locky is represented below:
+
+/*
+This is the Locky anti-VM code from 21 June 2016 (sample SHA1 25f8f920f946887e0fa86ea46842f8e3f4506f53)
+
+Some VM products may behave significantly differently to a real system
+with regards to timing of code execution.
+
+GetProcessHeap() may take significantly longer in a VM than a real env.
+
+Virtualised TSCs can also be problematic.
+
+Multiple processor cores assigned to a VM may also worsen this problem.
+
+See http://blog.badtrace.com/post/rdtsc-x86-instruction-to-detect-vms/
+*/
+
+BOOL passVMCheck()
+{
+unsigned __int64 tsc1;
+unsigned __int64 tsc2;
+unsigned __int64 tsc3;
+int i = 0;
+
+// Try this 10 times in case of small fluctuations
+for (i = 0; i < 10; i++)
+{
+tsc1 = __rdtsc();
+
+// Waste some cycles - should be faster than CloseHandle on bare metal
+GetProcessHeap();
+
+tsc2 = __rdtsc();
+
+// Waste some cycles - slightly longer than GetProcessHeap() on bare metal
+CloseHandle(0);
+
+tsc3 = __rdtsc();
+
+// Did it take at least 10 times more CPU cycles to perform CloseHandle than it took to perform GetProcessHeap()?
+if ( ( LODWORD(tsc3) - LODWORD(tsc2) ) / ( LODWORD(tsc2) - LODWORD(tsc1) ) >= 10)
+return TRUE;
+}
+
+// We consistently saw a small ratio of difference between GetProcessHeap and CloseHandle execution times
+// so we're probably in a VM!
+return FALSE;
+}
+
+The Locky developers are comparing how long it takes to execute the Windows GetProcessHeap API vs the CloseHandle API. The 'normal' (i.e. a real machine) ratio should be at least 1:10 according to whoever wrote this code. But under a VM the ratio may be a lot smaller, usually because the TIB/PEB is being software-virtualised which affects how long it takes to execute GetProcessHeap().
+
+Hardware-accelerated VMs theoretically should not suffer against this trick, but some VM products handle rdtsc operations themselves and may return values that differ significantly from a real machine.

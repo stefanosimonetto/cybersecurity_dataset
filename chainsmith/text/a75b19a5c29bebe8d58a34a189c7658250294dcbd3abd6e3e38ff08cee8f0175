@@ -1,0 +1,41 @@
+When you shouldn’t trust a trusted root certificate
+Root certificates are the cornerstone of authentication and security in software and on the Internet. They’re issued by a certified authority (CA) and, essentially, verify that the software/website owner is who they say they are. We have talked about certificates in general before, but a recent event triggered our desire for further explanation about the ties between malware and certificates.
+In a recent article by RSA FirstWatch, we learned that a popular USB audio driver had silently installed a root certificate. This self-signed root certificate was installed in the Trusted Root Certification Authorities store. Under normal circumstances, you would have to agree to “Always trust software from {this publisher}” before a certificate would be installed there.
+However, the audio driver skipped this step of prompting for approval (hence “silently” installing).  The silent install was designed to accommodate XP users, but it had the same effect in every Windows operating system from XP up to Windows 10. The installer was exactly the same for every Windows version. Ironically enough, the certificate wasn’t even needed to use the software. It was just introduced to complete the installation on Windows XP seamlessly.
+Why is this a bad thing?
+Root certificates can be installed for purposes such as timestamping, server authentication, code-signing, and so on. But this particular driver installed a certificate valid for “All” purposes. So any system with these drivers installed from any of the vendors will trust any certificate issued by the same CA—for “All” purposes. Under normal circumstances, only a certificate issued by Microsoft would have “All” in the root certificates “Intended Purposes” field.
+Having a certificate in the Trusted Root Certification Store for “All” intended purposes on a Windows system gives anyone that has the private key associated with the certificate the ability to completely own the system on which it is installed. The impact is the same as for any Certificate Authority (CA) behind certificates installed on Windows systems.
+
+An exception is that in some instances large companies may choose to do the same with the intent to perform SSL decryption at the perimeter for outbound traffic. So, not only does silently adding a root certificate break the hierarchical trust model of Windows. It also gives any owner of the private key that goes with that certificate a lot of options to perform actions on a computer with that certificate installed.
+How can they be abused?
+An attacker who gets ahold of the private key that belongs to a root certificate can generate certificates for his own purposes and sign them with the private key. Any certificate with the root certificate already in their Trusted Root Certification Store on a Windows system will trust any certificate signed with the same private key for “All” purposes. This applies to software applications, websites, or even email. Anything from a Man-in-the-Middle (MitM) attack to installing malware is possible. And as if this wasn’t bad enough, security researchers at the University of Maryland found that simply copying an authenticode signature from a legitimate file to a known malware sample can cause antivirus products to stop detecting it, even though it results in an invalid signature.
+Methods of abuse
+There are several ways of abusing certificates by criminals. They can:
+
+Abuse existing certificates to appear legitimate, which can be disastrous if the threat actors have the private key.
+Drop legitimate certificates in the Untrusted Certificate store, so legitimate programs are no longer able to run, or certain websites are no longer accessible.
+Create or buy bogus certificates for code-signing.
+
+Of all these methods, it stands to reason that stolen certificates, especially those intended for “All” purposes, are the most dangerous. So introducing one of these just because you want to install a driver or to enable easier customer support, and not letting the user know, is inadvisable at best.
+If you think that the number of certificates in use by malware authors can’t be that large, have a look at the suspects that have been reported at the CCSS forum.
+How can I remove certificates I don’t need or trust?
+A list of known signing certificates that are being abused by threat actors has been made available at signedmalware.org. As explained earlier, using signing certificates gives criminals a lot of options to bypass system protection mechanisms, which is why you might want to remove those from your machine. There is also a test site where you can check if any of the software programs that are open to an MitM attack are active on your system.
+To delete a trusted root certificate:
+
+Open the certificates snap-in for a user, computer, or service. You can do this by running certmgr.msc from your Run/Searchprograms box or from a command prompt.
+Select Trusted Root Certification Authorities.
+Under this selection, open the Certificates store.
+In the details pane on the right-hand side, select the line of the certificate that you want to delete. (To select multiple certificates, hold down control and click each certificate.)
+Right click the selection you made and in the action menu, click delete.
+Confirm your choice by clicking yes if you are completely sure that you want to permanently delete the certificate.
+
+Please note that user certificates can be managed by the user or by an administrator. Certificates issued to a computer or service can only be managed by an administrator or user who has been given the appropriate permissions.
+You might want to back up the certificate by exporting it before you delete it. For the procedure to export a certificate, see export a certificate.
+If you want to look at the Thumbprint, aka serial number, of the certificates, you can use this Powershell command to list the non-Microsoft certificates in the Trusted Root Certification Authorities:
+
+Get-ChildItem -Path cert:\currentuser\AuthRoot -Recurse | select Thumbprint, FriendlyName, Subject | ConvertTo-Html | Set-Content c:\users\public\desktop\certificates.html
+This will create a html file on the public desktop that shows the list by Thumbprint (in reverse order) and where you can look up the Friendly Name and Subject that belongs to a Thumbprint.
+
+For those that do like to keep an eye on things, there is a guide by Xavier Mertens for a piece of code that alerts you about changes in the certificate store.
+Conclusion
+Since root certificates are intended to heighten security, it should be clear to those issuing them that they should be treated as such, and not as something that they can install willy-nilly whenever it suits their needs. The whole point of prompting users is to establish a chain of trust that they should be able to rely on. And in this case, the prompt was bypassed only to enable installation on a no-longer-supported operating system. That both ruins user trust and introduces unnecessary security risk for a rather shallow reason.

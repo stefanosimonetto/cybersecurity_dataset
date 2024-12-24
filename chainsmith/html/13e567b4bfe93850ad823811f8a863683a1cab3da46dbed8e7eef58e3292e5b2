@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: VB2019 paper: Play fuzzing machine – hunting iOS/macOS kernel vulnerabilities automatically and smartly</title>
+<meta name="description" content="Since iOS 10, Apple has released the unpacked/decrypted kernel cache (*.ipsw), but the system source code, in particular the kernel and driver part, remain close-sourced. What is more, symbol info in the binary (kernel cache) has been greatly removed, which makes reverse engineering more difficult. A challenge means a chance. The truth in security research is that the more attack interface you expose, and the more implementation you do, the greater the probability of finding a zero-day vulnerability. The relatively good news is that, in every iOS/MacOS system update or new hardware release (e.g. the touch bar in MacPro), there is always a lot of change in interface and implementation code (e.g. more selectors exposed in the driver service via IOUserClient). Hence, we plan to expose the typical workflow and thinking in order to explore and analyse the new (kernel) attack interface using reverse engineering and dynamic analysis. We will not only share the relative tool chain used to explore the attack interfaces but also the public kernel vulnerability finding system that is based on enhanced passive fuzzing. Finally, we will describe some of the vulnerabilities we have found using these methodologies." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 6663;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/blocks/expand_collapse_toc/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/blocks/expand_collapse_toc/js/jquery.color.js"></script>
+<script type="text/javascript" src="/blocks/expand_collapse_toc/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/blocks/expand_collapse_toc/js/expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<h1><a class="chapter" name="h1-vb2019-paper-play-fuzzing-machine-hunting-iosmacos-kernel-vulnerabilities-automatically-and-smartly"></a>VB2019 paper: Play fuzzing machine – hunting iOS/macOS kernel vulnerabilities automatically and smartly</h1>
+<h3><a class="chapter" name="h3-lilang-wu-amp-moony-li"></a>Lilang Wu &amp; Moony Li</h3>
+<p><em>Trend Micro, China</em></p>
+<hr />
+<p> </p>
+<div class="ccm-expand-collapse-toc">
+<div id="ccm-expand-collapse-toc-title-15039" class="ccm-expand-collapse-toc-title ccm-expand-collapse-toc-closed" data-expander-speed="500">Table of contents</div><div id="ccm-expand-collapse-toc-content-15039" class="ccm-expand-collapse-toc-content"><p><a class="toc-level2" href="#h2-abstract">Abstract</a><br /> <a class="toc-level2" href="#h2-1-solution-overview">1. Solution overview</a><br /> <a class="toc-level2" href="#h2-2-reverse-engineering-automatically-kernel-attack-interface">2. Reverse engineering automatically for kernel attack interface</a><br /> <a class="toc-level3" href="#h3-21-kernel-and-kexts-automatic-analysis">2.1 Kernel and kexts automatic analysis</a><br /> <a class="toc-level4" href="#h4-211-classmethod-names-refined-through-inheritance">2.1.1 Class/method names refined through inheritance</a><br /> <a class="toc-level4" href="#h4-212-methodology-finding-iokit-service-connection-types-and-their-user-client-vector">2.1.2 Methodology for finding IOKit service connection types and their user client vector</a><br /> <a class="toc-level4" href="#h4-213-methodology-finding-user-client-external-methods-automatically">2.1.3 Methodology for finding user client external methods automatically</a><br /> <a class="toc-level5" href="#h5-2131-defined-global-or-local-constant-array">2.1.3.1 Defined as global or local constant array</a><br /> <a class="toc-level5" href="#h5-2132-defined-code-logic">2.1.3.2 Defined in the code logic</a><br /> <a class="toc-level4" href="#h4-214-implementation-automatic-tools">2.1.4 Implementation for automatic tools</a><br /> <a class="toc-level5" href="#h5-2141-analysis-assembly-instructions">2.1.4.1 Analysis of assembly instructions</a><br /> <a class="toc-level5" href="#h5-2142-parse-kexts-mach-o-file">2.1.4.2 Parse the kexts Mach-O file</a><br /> <a class="toc-level4" href="#h4-215-best-practice">2.1.5 Best practice</a><br /> <a class="toc-level5" href="#h5-2151-assembly-instruction-set-emulation">2.1.5.1 Assembly instruction set emulation</a><br /> <a class="toc-level5" href="#h5-2152-parse-binary-contents-according-different-structure">2.1.5.2 Parse binary contents according different structure</a><br /> <a class="toc-level3" href="#h3-22-kernel-and-kexts-diff-analysis">2.2 Kernel and kexts diff analysis</a><br /> <a class="toc-level4" href="#h4-221-kernel-diff-methodology">2.2.1 Kernel diff methodology</a><br /> <a class="toc-level4" href="#h4-222-driver-diff-methodology">2.2.2 Driver diff methodology</a><br /> <a class="toc-level4" href="#h4-223-best-practice">2.2.3 Best practice</a><br /> <a class="toc-level5" href="#h5-2231-find-user-mode-entry-updated-functions">2.2.3.1 Find the user-mode entry for updated functions</a><br /> <a class="toc-level5" href="#h5-2232-new-attack-interfaces-introduced-ios-12">2.2.3.2 New attack interfaces introduced by iOS 12</a><br /> <a class="toc-level5" href="#h5-2233-new-attack-interfaces-introduced-macos-1014-applehdakext">2.2.3.3 New attack interfaces introduced by macOS 10.14 AppleHDA.kext</a><br /> <a class="toc-level2" href="#h2-3-dynamic-analysis-kernel-attack-interface">3. Dynamic analysis for kernel attack interface</a><br /> <a class="toc-level3" href="#h3-31-frida-hook-user-mode">3.1 Frida hook in user mode</a><br /> <a class="toc-level3" href="#h3-32-dtrace-kernel-mode">3.2 Dtrace in kernel mode</a><br /> <a class="toc-level3" href="#h3-33-misc">3.3 Misc</a><br /> <a class="toc-level2" href="#h2-4-enhanced-passive-fuzzing-solution">4. Enhanced passive fuzzing solution</a><br /> <a class="toc-level3" href="#h3-41-kasan-iososx-kernel">4.1 KASAN in iOS/OSX kernel</a><br /> <a class="toc-level3" href="#h3-42-inline-hook-and-fuzz-kernel">4.2 Inline hook and fuzz in kernel</a><br /> <a class="toc-level3" href="#h3-43-future-plan">4.3 Future plan</a><br /> <a class="toc-level4" href="#h4-431-syzkaller-fuzzing-kernel-mode">4.3.1 Syzkaller-like fuzzing in kernel mode</a><br /> <a class="toc-level4" href="#h4-432-porting-kasankmsan-closed-source-driver">4.3.2 Porting KASAN/KMSAN for a closed-source driver</a><br /> <a class="toc-level2" href="#h2-5-hunt-0-day-vulnerabilities">5. Hunt for 0-day vulnerabilities</a><br /> <a class="toc-level3" href="#h3-51-cve-2018-4462-integer-overflow-vulnerability-which-can-leak-kernel-information-found-amdframebuffer-driver">5.1 CVE-2018-4462 – an integer overflow vulnerability which can leak kernel information found in the AMDFramebuffer driver</a><br /> <a class="toc-level4" href="#h4-511-root-cause">5.1.1 Root cause</a><br /> <a class="toc-level3" href="#h3-52-untrusted-pointer-de-reference-issue-found-intelaccelerator">5.2 Untrusted pointer de-reference issue found in IntelAccelerator</a><br /> <a class="toc-level4" href="#h4-521-root-cause">5.2.1 Root cause</a><br /> <a class="toc-level3" href="#h3-53-overflow-issue-due-no-boundary-check-iousbfamily-extension">5.3 OverFlow issue due to no boundary check in IOUSBFamily extension</a><br /> <a class="toc-level4" href="#h4-531-root-cause">5.3.1 Root cause</a><br /> <a class="toc-level3" href="#h3-54-divide-zero-issue-found-amdradeonx4000-amdaccelresource-class">5.4 Divide zero issue found in AMDRadeonX4000_AMDAccelResource class</a><br /> <a class="toc-level4" href="#h4-541-root-cause">5.4.1 Root cause</a><br /> <a class="toc-level3" href="#h3-55-oob-read-amdradeonx4000-extension">5.5 OOB read in AMDRadeonX4000 extension</a><br /> <a class="toc-level4" href="#h4-551-root-cause">5.5.1 Root cause</a><br /> <a class="toc-level2" href="#h2-references">References</a></p><p>&nbsp;</p></div></div>
+<h2><a class="chapter" name="h2-abstract"></a>Abstract</h2>
+<p>As we all know, <em>Apple</em>’s <em>iOS</em> and <em>MacOS</em> systems have gained much popularity with the huge success of the <em>iPhone</em> and the <em>MacPro</em>. System security vulnerabilities in <em>iOS</em> and <em>MacOS</em> have been developed and abused by hackers, and have also begun to attract more attention from security researchers.</p>
+<p>The more you know about your enemy, the easier it is to defeat him. But how? Since <em>iOS 10</em>, <em>Apple</em> has released the unpacked/decrypted kernel cache (*.ipsw), but the system source code, in particular the kernel and driver part, remain close-sourced. What is more, symbol info in the binary (kernel cache) has been greatly removed, which makes reverse engineering more difficult.</p>
+<p>A challenge means a chance. The truth in security research is that the more attack interface you expose, and the more implementation you do, the greater the probability of finding a zero-day vulnerability. The relatively good news is that, in every <em>iOS</em>/<em>MacOS</em> system update or new hardware release (e.g. the touch bar in <em>MacPro</em>), there is always a lot of change in interface and implementation code (e.g. more selectors exposed in the driver service via IOUserClient).</p>
+<p>Hence, we plan to expose the typical workflow and thinking in order to explore and analyse the new (kernel) attack interface using reverse engineering and dynamic analysis. We will not only share the relative tool chain used to explore the attack interfaces but also the public kernel vulnerability finding system that is based on enhanced passive fuzzing. Finally, we will describe some of the vulnerabilities we have found using these methodologies.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-1-solution-overview"></a>1. Solution overview</h2>
+<p>The basic work flow can be separated into the three parts where the architecture or implementation of the <em>iOS</em>/<em>OSX</em> system kernel has potentially changed: identification of attack interfaces using reverse analysis (static analysis), use of dynamic analysis for the kernel attack interface, and use of a passive kernel fuzzing system, accordingly.</p>
+<p>Typically, the occurrence of a change in kernel code would coincide with an <em>iOS</em>/<em>OSX</em> version being released following a public security bulletin(s), <em>Apple</em> adding new hardware equipment (e.g. touch bar equipment for <em>MacOS</em>, A12 CPU update for <em>iPhone</em>, new graphic I/O devices, etc.), and so on.</p>
+<p>After obtaining the whole kernel cache binary, the first step would normally be to identify the modification or new attack interface using reverse engineering. Since we focus on the kernel part in this paper, we should disassemble the Mach-O code in order to identify the driver extension module, classes, external methods, metadata, user clients, system call and other data structures for the kernel attack interface. Moreover, after a XUN and kexts diff and call graphic analysis, the entries list vector for those updated functions, which is used in the following steps, can be obtained quickly and exactly.</p>
+<p>As part of our research, we would like to know not only the module/API information but also the context at runtime when these APIs are called. As the second step of the whole work flow, typically, dynamic analysis would try to get the call stack (with function name symbol and argument value) both in user mode and kernel mode, and determine how an object related to the kernel API is created (e.g. how the service is opened for IoConnectCallMethod), and so on.</p>
+<p>Finally, as the third step, we would carry out (passive) fuzzing of these kernel attack interfaces to hunt for zero-day vulnerabilities. The key to fuzzing system design is to touch as many possible execution paths (or as much code coverage) as possible, and catch the first spot where a vulnerability is triggered. Hence, we try to hook the attack interface in the kernel and fuzz the data passed through from user mode directly to try to ‘touch’ more execution paths after the restriction check. A kernel address sanitizer mechanism is also introduced in order to catch the point of heap/stack overflow, for example.</p>
+<p>As we can see, the static analysis would identify a new attack interface and dynamic analysis would help to trigger it, while the fuzzing system used on the identified attack interface would hunt for new vulnerabilities (kernel panic/crash) to help find more new attack interfaces.</p>
+<p><a class="zoom-img" title="Figure 1: Basic architecture of the solution." href="/files/2515/7321/9889/figure1.png" target="_blank"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/a75cc5b17ee1c80ae7121d747a02f620_f4039.png" alt="figure1.png" width="840" height="649" /></a><span class="centered-caption">Figure 1: Basic architecture of the solution.</span></p>
+<p> </p>
+<h2><a class="chapter" name="h2-2-reverse-engineering-automatically-kernel-attack-interface"></a>2. Reverse engineering automatically for kernel attack interface</h2>
+<p>Figure 2 show the reverse engineering solution for analysis of a <em>macOS</em>/<em>iOS</em> system. The new attack interfaces generator consists mainly of three parts, the work flow of which can be summarized in the following steps:</p>
+<ul>
+<li>The first step is kernel/kexts analysis, which can get all the attack interfaces from a newly released version including UserClient vector, external method interfaces vector, syscall/sysctl interfaces vector and traps/MIGs vector.</li>
+<li>The second step is to diff the XUN project and kexts between two neighbouring versions, which can get the entry list of the updated functions.</li>
+<li>The third step is to filter out those entries which cannot be accessed from user space and save the remaining entries which can be accessed directly.</li>
+<li>Finally, these interfaces are collected and saved into a fuzzing corpus database.</li>
+</ul>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/2115/7322/0503/figure2.png" alt="figure2.png" width="706" height="388" /></p>
+<p class="centered-caption">Figure 2: The reverse engineering solution for kernel and kextentions.</p>
+<p>For the <em>iOS</em> or <em>macOS</em> kernel and kexts analysis, there are already many open-source tools available in <em>GitHub</em>, as shown in Table 1, but there are still some features that are not available for automatic analysis of the kernel or each kext. We introduce p-joker, which is an automatic tool used to analyse the <em>macOS</em> and <em>iOS</em> core module, the most powerful function of which is to get the service connection types and corresponding UserClients’ external dispatch methods automatically.</p>
+<table class="table table-bordered" border="0">
+<tbody>
+<tr>
+<td><strong>Tools</strong></td>
+<td><strong>Symbolicate C++ method tables</strong></td>
+<td><strong>Class hierarchy</strong></td>
+<td><strong>Struct class</strong></td>
+<td><strong>UserClients and open type</strong></td>
+<td><strong>Dispatch method</strong></td>
+</tr>
+<tr>
+<td>iokit-utils</td>
+<td>N</td>
+<td>Y</td>
+<td><span style="color: #ff0000;">N</span></td>
+<td>Y (using IOServiceOpen)</td>
+<td><span style="color: #ff0000;">N</span></td>
+</tr>
+<tr>
+<td>ida_kernelcache</td>
+<td>Y</td>
+<td>Y</td>
+<td>Y</td>
+<td><span style="color: #ff0000;">N</span></td>
+<td><span style="color: #ff0000;">N</span></td>
+</tr>
+<tr>
+<td>ioskextdump</td>
+<td>Y</td>
+<td>Y</td>
+<td><span style="color: #ff0000;">N</span></td>
+<td><span style="color: #ff0000;">N</span></td>
+<td>Y(part)</td>
+</tr>
+<tr>
+<td>Ryuk</td>
+<td>Y</td>
+<td><span style="color: #ff0000;">N</span></td>
+<td>Y</td>
+<td><span style="color: #ff0000;">N</span></td>
+<td><span style="color: #ff0000;">N</span></td>
+</tr>
+<tr>
+<td>p-joker</td>
+<td>Y</td>
+<td>Y</td>
+<td>Y</td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 1: Comparison of open-source tools.</p>
+<p>For the XUN project and kexts implementation diff, we introduce an <em>IDA Pro</em> script, p-diff, which can diff those non-open-source kexts and get a list of changed functions automatically. Then, it analyses the related kext and gets the call graphic for each updated function, and their entry list can be surmised from these calling sequences. In the end, p-diff will reserve those interfaces that can be accessed within a sandbox or by some user-mode privilege process.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-21-kernel-and-kexts-automatic-analysis"></a>2.1 Kernel and kexts automatic analysis</h3>
+<p>Figure 3 is an overview of p-joker implementation. Later, we will introduce how to get the service connection type and how to get the dispatch method. As mentioned before, there are many open‑source tools available, so we will simply introduce those with overlapped content.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/6915/7322/0949/figure3.png" alt="figure3.png" width="550" height="751" /><span class="centered-caption">Figure 3: Overview of the implementation of p-joker.</span></p>
+<p> </p>
+<h4><a class="chapter" name="h4-211-classmethod-names-refined-through-inheritance"></a>2.1.1 Class/method names refined through inheritance</h4>
+<p>The string symbol was stripped from the release version of the system so, for <em>macOS</em>, we can analyse the kernel and driver contained in the Kernel Debug Kit instead of the release one. However, there are no debug kits available for <em>iOS</em>. So we should refine the method names for each OSObject class, including the instance method table and meta method table. We know all the <em>Apple</em> drivers are implemented in C++, all of the services are inherited from the IOService class. So, through the inherited mechanism, many method names can be inferred from their parent class. Figure 4 shows the IOMobileFramebuffer class and the method table of its parent classes.</p>
+<p><a class="zoom-img" title="Figure 4: Refining the method table for the IOMobileFramebuffer class." href="/files/2315/7322/0986/figure4.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/4590b89fc722f5b5abc9ee5f84f991b6_f4042.png" alt="figure4.png" width="840" height="265" /></a><span class="centered-caption">Figure 4: Refining the method table for the IOMobileFramebuffer class.</span></p>
+<p> </p>
+<h4><a class="chapter" name="h4-212-methodology-finding-iokit-service-connection-types-and-their-user-client-vector"></a>2.1.2 Methodology for finding IOKit service connection types and their user client vector</h4>
+<p>The IOKit in the kernel part delivers many MIG interfaces to user space in order to operate different drivers. When one user client is spawned, it should open the corresponding service first. In the user space, the IOServiceOpen function is responsible for spawning the driver’s proxy client according to the given properties dictionary. Figure 5 shows the process to open a service through a MIG interface.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/6e3343d7bb1da79dc7c91f44415f87a4_f4043.png" alt="figure5.png" width="843" height="218" /></p>
+<p><span class="centered-caption">Figure 5: Call graphic of process to open a service in user space</span>.</p>
+<p>During the process to open a service, the system will first call the parent newUserClient method. However, because the IOService class is an abstract class and most of its functions are virtual ones, it will call the subservice that implements it. Figure 6 is an example of spawning an IOFramebuffer user client with connection type 0.</p>
+<p><a class="zoom-img" title="Figure 6: Spawning an IOFramebuffer user client with connection type 1." href="/files/4115/7322/1125/figure6.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/c2eb1054b9ad176fa18ebf3c8dc8cba8_f4044.png" alt="figure6.png" width="840" height="638" /></a></p>
+<p class="centered-caption">Figure 6: Spawning an IOFramebuffer user client with connection type 1.</p>
+<p>So, the steps to find the connection tuple as shown in Figure 6 are the following:</p>
+<ul>
+<li>Locate the newUserClient function address in the driver.</li>
+<li>Enumerate the connection types.</li>
+<li>Analyse the instructions to get the corresponding user client for each connection type.</li>
+</ul>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/7915/7322/1232/figure7.png" alt="figure7.png" width="646" height="115" /></p>
+<p class="centered-caption">Figure 7: Connection types for IOServiceOpen.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-213-methodology-finding-user-client-external-methods-automatically"></a>2.1.3 Methodology for finding user client external methods automatically</h4>
+<p>IOUserClient is a subclass of IOService, which provides a basis for communication between client applications and I/O kit objects. Figure 8 shows the process of executing an external method.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/0cad0cbbbe379501aad46deda6457f9f_f4046.png" alt="figure8.png" width="800" height="517" /> <span class="centered-caption">Figure 8: ‘ExternalMethod’ function workflow.</span></p>
+<p>Clients use the ‘IOUserClient::externalMethod’ function to execute external methods. All the external methods are implemented within drivers and can be indexed by selectors. Drivers also define the methods’ input and output conditions, which are used to check the user-mode input or output in coarse-grained user-mode input. For researchers, it is important to find the corresponding selector and conditions for these external methods.</p>
+<p> </p>
+<h5><a class="chapter" name="h5-2131-defined-global-or-local-constant-array"></a>2.1.3.1 Defined as global or local constant array</h5>
+<p>Generally, subservices will define this information in the externalMethod override function as a dispatch table that is usually a static constant array. If subservices do not override the externalMethod function, it will be defined in the getTargetAndMethodForIndex function or the getAsyncTargetAndMethodForIndex function, and the dispatch structure will be a little different, as shown in Figure 9.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/f43f45e4a766b596ac776bd7c2f4de65_f4047.png" alt="figure9.png" width="840" height="602" /></p>
+<p class="centered-caption">Figure 9: Defined as local constant array in functions.</p>
+<p>But there are also many SubUserClients declared as global arrays, as shown in Figure 10.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/2615/7322/3129/figure10.png" alt="figure10.png" width="472" height="299" /><span class="centered-caption">Figure 10: Defined as global constant array in classes.</span></p>
+<p>Regardless of whether the dispatch table is defined as a local array or a global array, the methodology to find the array is as follows:</p>
+<ol>
+<li>Locate the starting address for each constant array in the symbol table.</li>
+<li>Parse the contents according to the IOExternalMethodDispatch or IOExternalMethod structure from the starting address.</li>
+</ol>
+<p> </p>
+<h5><a class="chapter" name="h5-2132-defined-code-logic"></a>2.1.3.2 Defined in the code logic</h5>
+<p>Some drivers implement the external dispatch method using code logic instead of a constant array, as shown in Figure 11. Therefore, the methodology to find this kind of dispatch is as follows:</p>
+<ol>
+<li>Locate the address of the override externalMethod/getTarget…/getAsyncTarget... function.</li>
+<li>Analyse assembly instructions to get the selector and external methods.</li>
+</ol>
+<p><a class="zoom-img" title="Figure 11: Defined in switch case." href="/files/1615/7322/3203/figure11.png"><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/1f7c5ac8e034b1233306ec1c214291d4_f4050.png" alt="figure11.png" width="840" height="480" /></a></p>
+<p class="centered-caption">Figure 11: Defined in switch case.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-214-implementation-automatic-tools"></a>2.1.4 Implementation for automatic tools</h4>
+<p>Depending on the methodology introduced previously, p-joker typically contains two implementation technologies. One emulates the execution of assembly instructions in order to get connection types and external methods implemented by code logic, while the other parses the symbol table in the driver Mach-O file in order to get the dispatch table defined as a constant array.</p>
+<p> </p>
+<h5><a class="chapter" name="h5-2141-analysis-assembly-instructions"></a>2.1.4.1 Analysis of assembly instructions</h5>
+<p style="padding-left: 30px;">a. Start from scratch</p>
+<p style="padding-left: 30px;">To analyse or emulate all instructions from scratch is hard, however, the functions we care about use only a small instruction set. Figure 12 shows the assembly of the override newUserClient function.</p>
+<p style="padding-left: 30px;">To improve the accuracy, the key point is to ensure the correctness of emulation for control flow and data flow. For control flow, as many instructions as possible should be emulated. For data flow, the integrity and accuracy of registers’ data transfer should be ensured. From Listing 1, it can be seen that connection type is the fourth argument, so during the instruction analysis process, it’s important to analyse the control flow depending on ecx/rcx and related registers.</p>
+<pre>AppleHDAEngine::newUserClient(AppleHDAEngine *this, task *a2, void *a3, int a4, IOUserClient **a5)</pre>
+<p> <span class="monospace centered-caption">Listing 1: The AppleHDAEngine::newUserClient function.</span></p>
+<p> <img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/5215/7322/3196/figure12.png" alt="figure12.png" width="543" height="245" /></p>
+<p class="centered-caption">Figure 12: Assembly of AppleHDAEngine::newUserClient function.</p>
+<p style="padding-left: 30px;">b. Angr or miasm</p>
+<p style="padding-left: 30px;">As an alternative to starting from scratch, there are some excellent binary analysis tools, such as angr [<a href="#ref1">1</a>] and miasm [<a href="#ref2">2</a>], both of which can emulate the x64 or ARM code. Take miasm for example: not only can it emulate the execution of assembly instructions but it also monitors the value in each register.</p>
+<p style="padding-left: 30px;">Figure 13 shows the control flow that can be obtained using the miasm tool, after which the corresponding block can be parsed, with the result shown in Figure 14.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/5515/7322/3705/figure13.png" alt="figure13.png" width="573" height="279" /></p>
+<p class="centered-caption">Figure 13: Control flow of the AppleHDAEngine::newUserClient function obtained using miasm.</p>
+<p> <a class="zoom-img" title="Figure 14: User clients and connection types in the AppleHDA driver." href="/files/5715/7322/3736/figure14.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/dfa263c29b7c79180ffe364b7fd48a73_f4052.png" alt="figure14.png" width="840" height="131" /></a></p>
+<p class="centered-caption">Figure 14: User clients and connection types in the AppleHDA driver.</p>
+<p> </p>
+<h5><a class="chapter" name="h5-2142-parse-kexts-mach-o-file"></a>2.1.4.2 Parse the kexts Mach-O file</h5>
+<p>As we know, the constant variables are saved in the symbol table. So, it’s very convenient to parse this table to get the address for each constant array.</p>
+<p><a class="zoom-img" title="Figure 15: Constant variables in the symbol table." href="/files/2015/7322/4314/figure15.png"><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/d9e42fb3b245136967cd29b7d6a30d92_f4053.png" alt="figure15.png" width="840" height="188" /></a></p>
+<p class="centered-caption">Figure 15: Constant variables in the symbol table.</p>
+<p>After getting the address, the binary contents can simply be parsed with the IOExternalMethodDispatch or IOExternalMethod structure. The results are shown in Figure 16.</p>
+<p>In the end, all the user clients with their connection types and external method dispatches can be obtained through these steps, and saved as interface vectors.</p>
+<p><a class="zoom-img" title="Figure 16: External method dispatch of IOFramebufferUserClient." href="/files/3215/7322/4362/figure16.png"><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/c736326eb530d50ae271f13f7086b50d_f4054.png" alt="figure16.png" width="840" height="246" /></a></p>
+<p class="centered-caption">Figure 16: External method dispatch of IOFramebufferUserClient.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-215-best-practice"></a>2.1.5 Best practice</h4>
+<h5><a class="chapter" name="h5-2151-assembly-instruction-set-emulation"></a>2.1.5.1 Assembly instruction set emulation</h5>
+<p>Figure 17 shows the implementation of the mov, cmp, je, jz and test instructions operation. P-joker implements an API set to operate the register. For emulating more operations, the x64 or ARM architecture reference manual [<a href="#ref3">3</a>] can be referenced.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/6515/7322/4505/figure17.png" alt="figure17.png" width="608" height="514" /><span class="centered-caption">Figure 17: Code snippet for emulating instruction execution from scratch.</span></p>
+<p> </p>
+<h5><a class="chapter" name="h5-2152-parse-binary-contents-according-different-structure"></a>2.1.5.2 Parse binary contents according different structure</h5>
+<p>Figure 18 shows the implementation used to read contents from a Mach-O binary using the IOExternalMethodDispatch or IOExternal structure.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/4615/7322/4532/figure18.png" alt="figure18.png" width="652" height="518" /><span class="centered-caption">Figure 18: Parsing the binary contents using the corresponding structure.</span></p>
+<p> </p>
+<h3><a class="chapter" name="h3-22-kernel-and-kexts-diff-analysis"></a>2.2 Kernel and kexts diff analysis</h3>
+<p><em>Apple</em> has open-sourced its XNU project for both <em>macOS</em> and <em>iOS</em> systems, as well as part of the drivers. For closed-source drivers, automatic reverse engineering methods have already been introduced, therefore all the attack interfaces can be obtained.</p>
+<p>However, in order to find the newest introduced attack interface, researchers need to know which functions have been updated and which services or syscalls are newly added. Once that information has been obtained they also need to know how to access or call these updated or newly added attack interfaces. The following sections will introduce how to find the newly added attack interfaces and list their entry points.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-221-kernel-diff-methodology"></a>2.2.1 Kernel diff methodology</h4>
+<p>MIG interface, syscall, sysctl and traps are implemented in the system kernel. Listing 2 shows their source code in the XNU project.</p>
+<pre>xnu-4570.71.2/<br />|-- bsd<br />|   `-- kern<br />|       |-- kern_sysctl.c                //sysctl<br />|       `-- syscalls.master              //syscall<br />`-- osfmk<br />    |-- device<br />    |   `-- device.defs                 //mig<br />    |-- kern<br />    |   `-- syscall_sw.c                //traps<br />    `-- mach<br />        `-- mach_traps.h               //traps</pre>
+<p><span class="centered-caption">Listing 2: Related implementation files in XNU source code.</span></p>
+<p style="padding-left: 30px;">1. First, coarse-grained parse and diff these files in order to get the new interfaces. These interfaces include the newly added ones and ones in which arguments have changed. Alternatively, the corresponding information can be obtained directly from the kernel binary diff – there are already many excellent tools available, such as joker [<a href="#ref4">4</a>].</p>
+<p style="padding-left: 30px;"><br />2. Next, diff all the files in the XNU project and tag those that have been changed or newly added. Ignore unrelated files, such as test code files and deleted files, take BSD VFS.</p>
+<p><a class="zoom-img" title="Figure 19: Difference between the BSD VFS folders." href="/files/7015/7322/4685/figure19.png"><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/d376af91248be95263f425b0575ebf0a_f4057.png" alt="figure19.png" width="840" height="184" /></a></p>
+<p class="centered-caption">Figure 19: Difference between the BSD VFS folders.</p>
+<p style="padding-left: 30px;">3. Next, compile statistics for changed or newly added functions in those files, and the related function name list.</p>
+<p><a class="zoom-img" title="Figure 20: Changed function ‘getvolattrlist ()’ in the vfs_attrlist.c file." href="/files/2115/7322/4745/figure20.png"><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/8067b7d2783dfe97ee63c9d49a899766_f4058.png" alt="figure20.png" width="840" height="193" /></a><span class="centered-caption">Figure 20: Changed function ‘getvolattrlist ()’ in the vfs_attrlist.c file.</span></p>
+<p style="padding-left: 30px;">4. Next, construct the calling sequence for the changed functions and get the entry functions. This step in p-diff is implemented through an <em>IDA Pro</em> script. There are two functions, ‘CodeRefsTo(ea, flow)’ and ‘CodeRefsFrom(ea, flow)’, available in the idautils.py file [<a href="#ref5">5</a>].</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/12a0706c9fadb8ec4a4e0eec47f5235f_f4059.png" alt="figure21.png" width="840" height="58" /></p>
+<p class="centered-caption">Figure 21: Calling sequence of the ‘getvolattrlist ()’ function.</p>
+<p style="padding-left: 30px;">5. Finally, list the entry functions for each calling sequence, and check if they are interfaces that are exposed to user mode. Table 2 shows the syscalls that can be called from user space. Together with the newly added and changed interfaces, these are the new attack interfaces which should be the main fuzz point.</p>
+<table class="table table-bordered" border="0">
+<tbody>
+<tr class="monospace">
+<td><span style="color: #ffa500;">220</span> AUE_GETATTRLIST ALL <span style="color: #0000a0;">{</span> <span style="color: #800080;">int</span> <span style="color: #ff0000;">getattrlist</span><span style="color: #0000a0;">(</span><span style="color: #800080;">const char</span> <span style="color: #0000a0;">*</span>path<span style="color: #0000a0;">,</span> <span style="color: #800080;">struct</span> attrlist <span style="color: #0000a0;">*</span>alist<span style="color: #0000a0;">,</span> <span style="color: #800080;">void</span> <span style="color: #0000a0;">*</span>attributeBuffer<span style="color: #0000a0;">,</span> <span style="color: #800080;">size_t</span> bufferSize<span style="color: #0000a0;">,</span> u_long options<span style="color: #0000a0;">)</span> NO_SYSCALL_STUB<span style="color: #0000a0;">; }</span></td>
+</tr>
+<tr class="monospace">
+<td><span style="color: #ffa500;">461</span> AUE_GETATTRLISTBULK ALL <span style="color: #0000a0;">{</span> <span style="color: #800080;">int</span> <span style="color: #ff0000;">getattrlistbulk</span><span style="color: #0000a0;">(</span><span style="color: #800080;">int</span> dirfd<span style="color: #0000a0;">,</span> <span style="color: #800080;">struct</span> attrlist <span style="color: #0000a0;">*</span>alist<span style="color: #0000a0;">,</span> <span style="color: #800080;">void</span> <span style="color: #0000a0;">*</span>attributeBuffer<span style="color: #0000a0;">,</span> <span style="color: #800080;">size_t</span> bufferSize<span style="color: #0000a0;">,</span> <span style="color: #800080;">uint64_t</span> options<span style="color: #0000a0;">); }</span></td>
+</tr>
+<tr class="monospace">
+<td><span style="color: #ffa500;">228</span> AUE_FGETATTRLIST ALL <span style="color: #0000a0;">{</span> <span style="color: #800080;">int</span> <span style="color: #ff0000;">fgetattrlist</span><span style="color: #0000a0;">(</span><span style="color: #800080;">int</span> fd<span style="color: #0000a0;">,</span> <span style="color: #800080;">struct</span> attrlist <span style="color: #0000a0;">*</span>alist<span style="color: #0000a0;">,</span> <span style="color: #800080;">void</span> <span style="color: #0000a0;">*</span>attributeBuffer<span style="color: #0000a0;">,</span> <span style="color: #800080;">size_t</span> bufferSize<span style="color: #0000a0;">,</span> u_long options<span style="color: #0000a0;">); }</span></td>
+</tr>
+<tr class="monospace">
+<td><span style="color: #ffa500;">476</span> AUE_GETATTRLISTAT ALL <span style="color: #0000a0;">{</span> <span style="color: #800080;">int</span> <span style="color: #ff0000;">getattrlistat</span><span style="color: #0000a0;">(</span><span style="color: #800080;">int</span> fd<span style="color: #0000a0;">,</span> <span style="color: #800080;">const char</span> <span style="color: #0000a0;">*</span>path<span style="color: #0000a0;">,</span> <span style="color: #800080;">struct</span> attrlist <span style="color: #0000a0;">*</span>alist<span style="color: #0000a0;">,</span> <span style="color: #800080;">void</span> <span style="color: #0000a0;">*</span>attributeBuffer<span style="color: #0000a0;">,</span> <span style="color: #800080;">size_t</span> bufferSize<span style="color: #0000a0;">,</span> u_long options<span style="color: #0000a0;">); }</span></td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 2: Syscalls obtained from the calling sequence in the fourth step.</p>
+<p>In fact, the example we mentioned is the patch for CVE-2018-4243, which was found by Ian Beer. However, using this methodology, researchers can find the newest attack interface quickly. After that, they can update their fuzz corpus accordingly and discover the potential vulnerabilities introduced by the newly added code.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-222-driver-diff-methodology"></a>2.2.2 Driver diff methodology</h4>
+<p>Nearly all the drivers on <em>macOS</em> are closed source, however, the methodology is similar. The only difference is that all the diff operations would be based on binary instead of source code. For binary diff, an <em>IDA Pro</em> script can be used with the BinDiff [<a href="#ref6">6</a>] plug-in.</p>
+<p>All drivers on <em>macOS</em> can be found in the ‘/System/Library/Extensions’ folder. A comparison of the same driver’s binary can be made for different versions. But for <em>iOS</em>, all the drivers are pre-compiled within the kernelcache file. Researchers should split all drivers first using p-joker or an existing tool such as joker. However, the format for <em>iOS</em> kernelcache has changed, leading to the existing tools no longer working. Luckily, p-joker supports the new format – we will push the newest p-joker version to <em>GitHub</em> soon.</p>
+<p><a class="zoom-img" title="Figure 22: Diff results using an IDA Pro script." href="/files/5415/7322/6191/figure22.png"><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/3ab23c25e1fa737392a3f23df8fc50d7_f4060.png" alt="figure22.png" width="840" height="90" /></a></p>
+<p class="centered-caption">Figure 22: Diff results using an IDA Pro script.</p>
+<p>The main purpose of driver diff is to find selectors for the newly added external methods and the external method entries for changed functions. This way, we only get those interfaces that can fuzz the updated code effectively and in a timely way.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/fea2cdeddaf96dbfdbbfae296f7e68e9_f4061.png" alt="figure23.png" width="820" height="235" /></p>
+<p class="centered-caption">Figure 23: Find the entry functions list using p-diff.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-223-best-practice"></a>2.2.3 Best practice</h4>
+<h5><a class="chapter" name="h5-2231-find-user-mode-entry-updated-functions"></a>2.2.3.1 Find the user-mode entry for updated functions</h5>
+<p>After the calling sequences have been obtained, the main job is to find the user-mode entry that can call them. Figure 24 shows a code snippet of p-diff implementation.</p>
+<p><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/3315/7322/6275/figure24.png" alt="figure24.png" width="610" height="347" /></p>
+<p class="centered-caption">Figure 24: Code snippet of p-diff implementation.</p>
+<p> </p>
+<h5><a class="chapter" name="h5-2232-new-attack-interfaces-introduced-ios-12"></a>2.2.3.2 New attack interfaces introduced by iOS 12</h5>
+<p>Some kextensions will have been removed or added in the newest version release. Table 3 shows the updated kernel extensions list.</p>
+<table class="table table-bordered" border="0">
+<tbody>
+<tr>
+<td><strong>Drivers</strong></td>
+<td><strong>Status</strong></td>
+</tr>
+<tr>
+<td>com.apple.driver.ApplePinotLCD</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.AppleARM64ErrorHandler</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.drivers.AppleS7002SPU</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.driver.AppleSMCWirelessCharger</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.driver.usb.AppleUSBHub</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.AppleSMC_Embedded</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.apple.AGXFirmwareKextG10P</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.apple.kext.CoreTrust</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.nke.lttp</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.iokit.IOUSBHostFamily</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.apple.driver.BCMWLANFirmware4357_Hashstore</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.apple.Libm.kext</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.company.driver.modulename</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.AppleHapticsSupportCallan</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.driver.AppleCredentialManager</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.security.AppleImage4</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.AGXFirmwareKextG5P</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.apple.file-systems.hfs.kext</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.apple.driver.AppleAVE</td>
+<td>Changed</td>
+</tr>
+<tr>
+<td>com.apple.iokit.IOReporting</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.driver.AppleEmbeddedAudioLibs</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.driver.AOPTouchKext</td>
+<td>Newly added</td>
+</tr>
+<tr>
+<td>com.apple.drivers.AppleS7002SPUSphere</td>
+<td>Newly added</td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 3: Updated kextensions in iOS 12.0.1.</p>
+<p> </p>
+<h5><a class="chapter" name="h5-2233-new-attack-interfaces-introduced-macos-1014-applehdakext"></a>2.2.3.3 New attack interfaces introduced by macOS 10.14 AppleHDA.kext</h5>
+<p>Due to there being lots of drivers, here we only take the AppleHDA.kext driver as an example. Table 4 shows its external method dispatch details. Table 5 shows the updated functions from <em>macOS</em> 10.13.6 to <em>macOS</em> 10.14, as well as their entry interfaces in user-mode.</p>
+<table class="table table-bordered" border="0">
+<tbody>
+<tr>
+<td><strong>Selector</strong></td>
+<td><strong>Function name</strong></td>
+<td><strong>Scalar InputCount</strong></td>
+<td><strong>Structure InputSize</strong></td>
+<td><strong>Scalar OutputCount</strong></td>
+<td><strong>Structure OutputSize</strong></td>
+</tr>
+<tr>
+<td>0</td>
+<td> getState</td>
+<td>2</td>
+<td>0</td>
+<td>0</td>
+<td>0xfff</td>
+</tr>
+<tr>
+<td>1</td>
+<td> setState</td>
+<td>2</td>
+<td>0xfff </td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>2</td>
+<td> resetDSPToPropertyList</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>3</td>
+<td> isPortPresent</td>
+<td>1</td>
+<td>0</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td>4</td>
+<td> getHardwareVolume</td>
+<td>0</td>
+<td>0</td>
+<td>6</td>
+<td>0</td>
+</tr>
+<tr>
+<td>5</td>
+<td> setHardwareVolume</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>6</td>
+<td> getActiveSpatialChannels</td>
+<td>0</td>
+<td>0</td>
+<td>0x10</td>
+<td>0</td>
+</tr>
+<tr>
+<td>7</td>
+<td> getAudioSnoopEnabled</td>
+<td>0</td>
+<td>0</td>
+<td>3</td>
+<td>0</td>
+</tr>
+<tr>
+<td>8</td>
+<td> setAudioSnoopEnabled</td>
+<td>3</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>9</td>
+<td> setSpatialChannelMute</td>
+<td>2</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 4: External method dispatch details for AppleHDA.kext in macOS 10.14.</p>
+<p> </p>
+<table class="table table-bordered" border="0">
+<tbody>
+<tr class="monospace">
+<td><strong>P-Diff: entry functions for function AppleHDAEngine::resetVolumeFromVolumeCacheForAppleHDAPathSet(AppleHDAPathSet) </strong><br />    AppleHDAEngineUserClient::setStateAction(UserClientData)</td>
+</tr>
+<tr class="monospace">
+<td><strong>P-Diff: entry functions for function AppleHDAEngine::resetSoftwareVolumeFromVolumeCacheForAppleHDAPathSet(</strong><br /><strong>AppleHDAPathSet)</strong> <br />    AppleHDAEngineUserClient::setStateAction(UserClientData)</td>
+</tr>
+<tr class="monospace">
+<td><strong>P-Diff: entry functions for function AppleHDAPath::isWidgetAmplifierMuteCapable()</strong> <br />    AppleHDAEngineUserClient::setSpatialChannelMute()<br />    AppleHDAEngineUserClient::setStateAction(UserClientData)</td>
+</tr>
+<tr>
+<td><strong class="monospace">P-Diff: entry functions for function AppleHDAPath::isWidgetAmplifierGainAdjustable()</strong> <br /><span class="monospace">    AppleHDAEngineUserClient::getHardwareVolume()</span><br /><span class="monospace">    AppleHDAEngineUserClient::getStateAction(UserClientData)</span><br /><span class="monospace">    AppleHDAEngineUserClient::setHardwareVolume()</span><br /><span class="monospace">    AppleHDAEngineUserClient::setStateAction(UserClientData)</span></td>
+</tr>
+<tr class="monospace">
+<td><strong>P-Diff: entry functions for function AppleHDAPath::getWidgetAmplifierGainRange()</strong> <br />    AppleHDAEngineUserClient::getHardwareVolume()<br />    AppleHDAEngineUserClient::getStateAction(UserClientData)</td>
+</tr>
+<tr class="monospace">
+<td><strong>P-Diff: entry functions for function AppleHDAPathSet::isAmplifierGainAdjustable()</strong> <br />    AppleHDAEngineUserClient::getHardwareVolume()<br />    AppleHDAEngineUserClient::getStateAction(UserClientData)<br />    AppleHDAEngineUserClient::setHardwareVolume()<br />    AppleHDAEngineUserClient::setStateAction(UserClientData)</td>
+</tr>
+<tr class="monospace">
+<td><strong>P-Diff: entry functions for function AppleHDAPathSet::isAmplifierMuteCapable()</strong> <br />    AppleHDAEngineUserClient::setSpatialChannelMute()<br />    AppleHDAEngineUserClient::setStateAction(UserClientData)</td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 5: User-mode entry points for changed functions in AppleHDA.kext.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-3-dynamic-analysis-kernel-attack-interface"></a>3. Dynamic analysis for kernel attack interface</h2>
+<p>As we have mentioned before, the key methodology for dynamic analysis is to get the runtime context of the attack interface API in order to help trigger, fuzz or even reproduce the potential vulnerability.</p>
+<p>As our best practice, we would choose Frida to control and trace user-mode context and Dtrace to trace the kernel counterpart. As a manual alternative, debugging (via lldb) both the user and kernel is reasonable.</p>
+<p>Table 6 shows a basic comparison of different typical dynamic traces according to difference dimensions.</p>
+<table class="table table-bordered" border="0">
+<tbody>
+<tr>
+<td> </td>
+<td><strong>User trace</strong></td>
+<td><strong>Kernel trace</strong></td>
+<td><strong>Embedded in OS</strong></td>
+<td><strong>Any privilege?</strong></td>
+<td><strong>Support script?</strong></td>
+<td><strong>Performance</strong></td>
+<td><strong>Platform</strong></td>
+</tr>
+<tr>
+<td>Frida</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Root or Repack</td>
+<td>Yes</td>
+<td>Middle</td>
+<td>iOS/OSX</td>
+</tr>
+<tr>
+<td>Dtrace</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Root</td>
+<td>Yes</td>
+<td>High</td>
+<td>OSX</td>
+</tr>
+<tr>
+<td>lldb</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Root</td>
+<td>Yes</td>
+<td>Low</td>
+<td>iOS/OSX</td>
+</tr>
+<tr>
+<td>Kernel hook</td>
+<td>---</td>
+<td>Yes</td>
+<td>No</td>
+<td>Root</td>
+<td>No</td>
+<td>Middle</td>
+<td>OSX</td>
+</tr>
+</tbody>
+</table>
+<p class="centered-caption">Table 6: Comparison of dynamic traces.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-31-frida-hook-user-mode"></a>3.1 Frida hook in user mode</h3>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/7015/7322/7331/figure25.png" alt="figure25.png" width="693" height="427" /></p>
+<p class="centered-caption">Figure 25: Frida hook in user mode.</p>
+<p>Frida is one of the most popular dynamic instrumentation toolkits on many platforms including <em>MacOS</em> and <em>iOS</em>. One of its advantages is that it allows you to peek at and control every function using well documented JavaScript APIs which include the pre and post event handling. Typically, the retrieved runtime information includes call stack backtrace, thread context, return value, and any other you define. Take the xpc_connection_send_message API context for example, as shown in Listing 3.</p>
+<pre>{"time":"2017-09-18T10:38:32.807Z",<br />"txnType":"moony?",<br />"lib":"libxpc.dylib",<br />"method":"xpc_connection_send_message",<br />"artifact":[{<br />    "name":"connection",<br />    "value":"0x1658d090","argSeq":0}, {"name":"connectioninfo","value":"\tconnection=0x1658d090\tconnectionName=\tconnectionPid=231<br />\tconnectionProcName=Preferences","argSeq":0},<br />    {"name":"retval","value":374477440,"argSeq":-1}<br />]}</pre>
+<p class="centered-caption"> Listing 3: Xpc_connection_send_message API.</p>
+<p>As the basic steps to use Frida, first launch the Frida server under root privilege or repack the Frida gadget in the target application, then you can develop your own JavaScript code for hooking any API you want in the Frida controller. The trace log generated by the Frida server is sent to the Frida controller for further analysis via USB or network.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-32-dtrace-kernel-mode"></a>3.2 Dtrace in kernel mode</h3>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/de0ab73e13511f6a992afbf39bb18780_f4064.png" alt="figure26.png" width="600" height="534" /></p>
+<p class="centered-caption">Figure 26: Dtrace architecture. (Source: Solaris Dynamic Tracing Guide.)</p>
+<p>Dtrace has one the best tracing designs, with high performance and usability in Unix-like systems including <em>OSX</em> (unfortunately, Dtrace is not officially supported on <em>iOS</em> devices), as can be seen from the architecture shown in Figure 26.</p>
+<p>Dtrace also provides multiple probes embedded in the kernel with categories such as sysinfo, syscall, fbt, sdt and so on. The typical system call, IOKit, mach msg, network, disk and file are almost all covered by Dtrace probes. Figure 27 shows the Dtrace providers list.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/1854d1f21aadfb794fa6dfa4e9770699_f4065.png" alt="figure27.png" width="840" height="727" /><span class="centered-caption">Figure 27: Dtrace providers list.</span></p>
+<p>What is more, D language (*.d) in script provides fruitful APIs to intercept pre or post event (e.g. BEGIN,END) and keywords related to runtime process context (e.g. PID, timestamp, filename, exe name and so on). Thus you can see the code pieces for the IOFile probe. Figure 28 shows the Dtrace script for file probe.</p>
+<p><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/a5bd4a56e48f8a6261bd7b9414358483_f4066.png" alt="figure28.png" width="660" height="583" /><span class="centered-caption">Figure 28: Dtrace script for file probe.</span></p>
+<p> </p>
+<h3><a class="chapter" name="h3-33-misc"></a>3.3 Misc</h3>
+<p>Another useful dynamic trace tool is lldb embedded in <em>OSX</em> and <em>iOS</em> systems. Besides typical debugging utilities such as single step, break point, memory read/write operations and thread info, lldb can debug any user-mode service or process and even the whole <em>OSX</em> kernel. Lldb also supports python script to wrap the typical lldb-related objects (e.g. thread, process, module, memory, lldb attach) and operation with good documentation. In fact, we not only traced the API sequences we are interested in dynamically, but we also fuzzed the kernel to reproduce lots of kernel crashes, details of which will be announced in another paper.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-4-enhanced-passive-fuzzing-solution"></a>4. Enhanced passive fuzzing solution</h2>
+<p>We want some kind of enhanced OSX/iOS kernel fuzzing system, which is currently under development since we know the technical details of the kernel interface APIs from the viewpoint of static and dynamic analysis.</p>
+<p>As the key methodology for fuzzing, we would like to touch as much of the execution path (code coverage) as possible and also catch the first spot of the kernel crash.</p>
+<p>The first step of fuzzing is to try to generate a fruitful corpus of kernel interface APIs and call the kernel from the user agent. Besides blind fuzzing using tools like Trinity, we recommend using normal programs which have more opportunities to interact with kernels than the agent. For example, playing 3D games that use openGL or graphics drivers, operating peripheral devices (e.g. Wi-Fi, Bluetooth management), and so on. These kinds of real kernel API call could eventually touch ‘deeper’ kernel code execution paths because the legal input parameters have already bypassed most trick kernel checks.</p>
+<p>As the second step, the passive fuzzer intercepts the typical API in the kernel counterpart usually as an inline hook for pre and post event handling. By fuzzing the input data of the API parameter (usually as buffer content of an argument, or kernel/user shared memory) in special time strategy, you could probably get plenty of kernel crashes.</p>
+<p>The kernel sanitizer mechanism (such as KASAN, kernel address sanitizer) could be useful for improving the quantity and quality of fuzzing. Without a sanitizer mechanism, a crash caused by a memory corruption vulnerability may be handled or dismissed by the kernel code itself. What is more, there would exist instruction sequence disorder between the root cause point and the final instruction pointed to by RIP in one crash, which could cost more analysis effort for researchers.</p>
+<p><a class="zoom-img" title="Figure 29: Enhanced kernel fuzz." href="/files/2315/7322/7693/figure29.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/c4beb096bced84021e0c819d0f819158_f4067.png" alt="figure29.png" width="840" height="493" /></a><span class="centered-caption">Figure 29: Enhanced kernel fuzz.</span></p>
+<p> </p>
+<h3><a class="chapter" name="h3-41-kasan-iososx-kernel"></a>4.1 KASAN in iOS/OSX kernel</h3>
+<p>KASAN (kernel address sanitizer) is one of the standard sanitizers supported by popular operating systems including <em>OSX</em> which could help catch the crash spot so as to identify the root cause of the vulnerability and reproduce it much more easily.</p>
+<p>What is lucky is that the KASAN feature is officially supported in XNU building, so you could build your own XNU kernel like this and replace the original in /System/Library/Kernels/:</p>
+<p class="monospace" style="padding-left: 30px;">make SDKROOT=macosx ARCH_CONFIGS=X86_64 KERNEL_CONFIGS=”KASAN”</p>
+<p>In fact, as the implementation of KASAN in XUN uses extra memory for tracing, it would guard any memory address allocating, freeing and referencing (e.g. memcpy, memcpy, bcopy) in the source code at instruction level such as variable in stack, heap and so on. In this way, the typical memory error such as buffer (stack, heap) overflow and UAF (use after free) in XUN could be caught in the first crash spot. Figure 30 shows the code pieces in __Xio_connect_method in the kernel.</p>
+<p><a class="zoom-img" title="Figure 30: KASAN in __Xio_connect_method." href="/files/6515/7322/7805/figure30.png"><img class="framed" style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/a07990ff26457e4c05c9495e7ef8b858_f4068.png" alt="figure30.png" width="840" height="545" /></a></p>
+<p class="centered-caption">Figure 30: KASAN in __Xio_connect_method.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-42-inline-hook-and-fuzz-kernel"></a>4.2 Inline hook and fuzz in kernel</h3>
+<p>As we have mentioned, we want to touch as much of the execution path (code coverage) as possible. In our experience, the typical kernel API could be one of the best hooking points, which contains IOKit control, memory share, mach msg method and system call.</p>
+<p>When the CPU executes instructions to this kind of kernel API, many routine checks (e.g. send correct message id to the correct user client) have been made, which could reduce the useless blind fuzzing corpus and save fuzzing time.</p>
+<p>Besides simple tampering with the input data, we could introduce a more advanced fuzzing method at this point. As part of our further research, we could locate our agent in kernel mode towards the kernel API and support code coverage feedback by static or dynamic instrumentation. You could imagine it as syzkaller or AFL in kernel mode.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-43-future-plan"></a>4.3 Future plan</h3>
+<h4><a class="chapter" name="h4-431-syzkaller-fuzzing-kernel-mode"></a>4.3.1 Syzkaller-like fuzzing in kernel mode</h4>
+<p>As we know, the runtime environment in the kernel would be complex. There would exist much environment preparation or initialization (e.g. open the correct service, initialize the target devices and send the correct mach message id) before a special kernel API (e.g. IOConnectionCallMethod) could work properly. So why don’t we intercept the kernel API at the proper time under the proper state and fuzz it like AFL does, directly in kernel mode?</p>
+<p> </p>
+<h4><a class="chapter" name="h4-432-porting-kasankmsan-closed-source-driver"></a>4.3.2 Porting KASAN/KMSAN for a closed-source driver</h4>
+<p>In fact, porting a kernel sanitizer mechanism to a closed-source driver on <em>iOS</em>/<em>OSX</em> is possible if we want expand the memory guard for the whole kernel mode. Every kernel module (including driver) would utilize the memory management service provided by the kernel via API (e.g. kmem_alloc, bcopy). Modifying the memory API to asan_* in the import table in the driver module, or patching the code with memory management in the driver to support the kernel sanitizer could be investigated in further research.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-5-hunt-0-day-vulnerabilities"></a>5. Hunt for 0-day vulnerabilities</h2>
+<h3><a class="chapter" name="h3-51-cve-2018-4462-integer-overflow-vulnerability-which-can-leak-kernel-information-found-amdframebuffer-driver"></a>5.1 CVE-2018-4462 – an integer overflow vulnerability which can leak kernel information found in the AMDFramebuffer driver</h3>
+<p>Figure 31 is a backtrace of the crash point. The extGetPixelInformation() method is one of the IOFramebufferUserClient methods whose selector is 1. This method takes three scalar data inputs, which are displayMode, depth and aperture, and returns the pixel information.</p>
+<p><a class="zoom-img" title="Figure 31: Backtrace of the integer overflow." href="/files/9615/7322/8058/figure31.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/9d745d078ca13d43ad5acd5284482fe8_f4069.png" alt="figure31.png" width="840" height="230" /></a></p>
+<p class="centered-caption">Figure 31: Backtrace of the integer overflow.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-511-root-cause"></a>5.1.1 Root cause</h4>
+<p>Figure 32 is an assembly snippet of the crash point which is in the method AMDFramebuffer::getPixelInformationFromTiming(AtiDetailedTimingInformation const&amp;, IOPixelInformation*, int, int). From the code snippet and the debug info, we can see that the register ‘rdi = 0xfffffffff2000001’ is so big it is out of boundary. And after this buffer read operation, this function use the ‘Utilities::str_copy’ function to copy ‘sizeof(IOPixelInformation*)’ bits of pixel information to the caller, so it can leak the kernel information to the user-mode process.</p>
+<p><a class="zoom-img" title="Figure 32: Code snippet for the crash point." href="/index.php/download_file/view_inline/4070"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/f3c2eb65de3b7814373b0ad1bc00554e_f4070.png" alt="figure32.png" width="840" height="238" /></a></p>
+<p class="centered-caption">Figure 32: Code snippet for the crash point.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-52-untrusted-pointer-de-reference-issue-found-intelaccelerator"></a>5.2 Untrusted pointer de-reference issue found in IntelAccelerator</h3>
+<p>Figure 33 shows the backtrace of this untrusted pointer de-reference issue. This vulnerability can be triggered on <em>Mac mini</em>. ‘IntelAccelerator’ is a service delivered by the <em>Intel</em> graphics driver, it can be opened from a user-mode process.</p>
+<p><a class="zoom-img" title="Figure 33: Crash info for the intelAccelerator driver NULL PAGE read operation." href="/files/6515/7322/8177/figure33.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/4cc4c19c1d97d7ff8e48aeffa505d4bd_f4071.png" alt="figure33.png" width="840" height="460" /></a></p>
+<p class="centered-caption">Figure 33: Crash info for the intelAccelerator driver NULL PAGE read operation.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-521-root-cause"></a>5.2.1 Root cause</h4>
+<p>Figure 34 shows the arguments list for the ‘newUserClient’ function when this service is opened. When connection type is 6 and the properties are NULL, this vulnerability will be triggered.</p>
+<p><a class="zoom-img" title="Figure 34: Arguments list for newUserClient function when this bug is triggered." href="/files/3015/7322/8226/figure34.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/80868ac80b220158a0c56d7d953e1bfb_f4072.png" alt="figure34.png" width="840" height="310" /></a> <span class="centered-caption">Figure 34: Arguments list for newUserClient function when this bug is triggered.</span></p>
+<p> </p>
+<h3><a class="chapter" name="h3-53-overflow-issue-due-no-boundary-check-iousbfamily-extension"></a>5.3 OverFlow issue due to no boundary check in IOUSBFamily extension</h3>
+<p>The IOUSBFamily driver provides an external method for a user-mode process which is called IOUSBFamily`IOUSBInterfaceUserClient::LowLatencyPrepareBuffer. This function can be called by IOConnectCallMethod with selector 17. Figure 35 shows the backtrace of the crash point.</p>
+<p><a class="zoom-img" title="Figure 35: Backtrace for the crash point." href="/files/8915/7322/8283/figure35.png"><img style="display: block; margin-left: auto; margin-right: auto;" src="/files/cache/9c774e7478ab200df838eef3a1929103_f4073.png" alt="figure35.png" width="840" height="367" /></a><span class="centered-caption">Figure 35: Backtrace for the crash point.</span></p>
+<p> </p>
+<h4><a class="chapter" name="h4-531-root-cause"></a>5.3.1 Root cause</h4>
+<p>A capacity argument is needed for this function. The IOUSBInterfaceUserClient::_LowLatencyPrepareBuffer function will copy the input_scalar[0~4] data for the IOUSBFamily`IOUSBInterfaceUserClient::LowLatencyPrepareBuffer function directly. But the input scalar content is transferred from user space, so we can control the capacity to a large degree to trigger this bug.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-54-divide-zero-issue-found-amdradeonx4000-amdaccelresource-class"></a>5.4 Divide zero issue found in AMDRadeonX4000_AMDAccelResource class</h3>
+<p>IOAccelCommandQueue is used to process the graphic accelerator command information for 3D rendering. This vulnerability occurred in selector 1 whose function name is ‘IOAccelCommandQueue::s_submit_command_buffers’ with open type 9. When an AMDRadeonX4000 driver processes these command, it will prepare the AMDAccelResource first. However, there are many divide operations in this process, and a lack of zero checking.</p>
+<p>These vulnerabilities were found in the latest <em>MacOS</em> (10.14.3) system. Listing 4 shows the backtrace of this bug.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-541-root-cause"></a>5.4.1 Root cause</h4>
+<p>Listing 5 shows an assembly code snippet of this vulnerable function. The r12d register is initialized with zero. It will be assigned a new value within the omitted code if it meets some condition, but this is not certain, therefore, it will result in a divide zero bug in the place b.</p>
+<pre>__text:00000000000BB75B                 div     esi<br />__text:00000000000BB75D                 mov     r14d, 0<br />__text:00000000000BB763                 mov     r12d, 0          -----init r12d with 0                                 --(a)<br />__text:00000000000BB769                 test    edx, edx<br />  …..<br />  -----omitted code ----<br />  …..<br />__text:00000000000BB93C loc_BB93C:                              ; CODE XREF: BltMgr::HwlOptimizeBufferBltRects(BltInfo *,uint)+3E1j<br />__text:00000000000BB93C                 xor     edx, edx<br />__text:00000000000BB93E                 mov     eax, r13d<br />__text:00000000000BB941                 div     r12d                -----r12d is not always nonzero              ---(b)<br />__text:00000000000BB944                 cmp     eax, r14d<br />__text:00000000000BB947                 jbe     short loc_BB95B<br />__text:00000000000BB949                 mov     dword ptr [rsi+rbx-0Ch], 0<br />__text:00000000000BB951                 mov     [rsi+rbx-4], r12d<br />__text:00000000000BB956                 mov     eax, r14d<br />__text:00000000000BB959                 jmp     short loc_BB97C<br /><br /></pre>
+<p class="centered-caption">Listing 5: Asm code snippet of the BltMgr::HwlOptimizeBufferBltRects function.</p>
+<p> </p>
+<h3><a class="chapter" name="h3-55-oob-read-amdradeonx4000-extension"></a>5.5 OOB read in AMDRadeonX4000 extension</h3>
+<p>AMDRadeonX4000_AMDAccelResource is used to process the graphic accelerator resource information for 3D rendering. This vulnerability occurred in selector 0, whose function name is ‘IOAccelSharedUserClient2::s_new_resource’ with open type 6. This vulnerability was found in the latest <em>MacOS</em> (10.14.3) system.</p>
+<p>Listing 6 shows the backtrace of this OOB bug.</p>
+<pre>* thread #1, stop reason = signal SIGSTOP<br />    * frame #0: 0xffffff7fa00965d3 AMDRadeonX4000'AMDRadeonX4000_AMDAccelResource::initialize(IOAccelNewResourceArgs*, unsigned long long) + 1525<br />     frame #1: 0xffffff7f9fea346b IOAcceleratorFamily2'IOAccelSharedUserClient2::new_resource(IOAccelNewResourceArgs*, IOAccelNewResourceReturnData*, unsigned long long, unsigned int*) + 1893<br />     frame #2: 0xffffff7f9fea4a41 IOAcceleratorFamily2<span style="color: #ff0000;">'IOAccelSharedUserClient2::s_new_resource</span>(IOAccelSharedUserClient2*, void*, IOExternalMethodArguments*) + 151<br />     frame #3: 0xffffff801d625ab8 kernel.development'IOUserClient::externalMethod(this=&lt;unavailable&gt;, selector=&lt;unavailable&gt;, args=0xffffff83dd4b3b58, dispatch=0xffffff7f9fee8260, target=0xffffff80854fd780, reference=0x0000000000000000) at IOUserClient.cpp:5358 [opt]<br />     frame #4: 0xffffff7f9fea4d98 IOAcceleratorFamily2'IOAccelSharedUserClient2::externalMethod(unsigned int, IOExternalMethodArguments*, IOExternalMethodDispatch*, OSObject*, void*) + 120<br />     frame #5: 0xffffff801d62eb7f kernel.development'::<span style="color: #ff0000;">is_io_connect_method(connection=0xffffff80854fd780, selector=0,</span> scalar_input=&lt;unavailable&gt;, scalar_inputCnt=&lt;unavailable&gt;, inband_input=&lt;unavailable&gt;, inband_inputCnt=2424, ool_input=0, ool_input_size=0, inband_output="", inband_outputCnt=0xffffff806ba03e0c, scalar_output=0xffffff83dd4b3ce0, scalar_outputCnt=0xffffff83dd4b3cdc, ool_output=0, ool_output_size=0xffffff8085919d5c) at IOUserClient.cpp:3994 [opt]<br />    frame #6: 0xffffff801cfbbce4 kernel.development'_Xio_connect_method(InHeadP=&lt;unavailable&gt;, OutHeadP=0xffffff806ba03de0) at device_server.c:8379 [opt]<br />     frame #7: 0xffffff801ce8d27d kernel.development'ipc_kobject_server(request=0xffffff8085919000, option=&lt;unavailable&gt;) at ipc_kobject.c:359 [opt]<br />    frame #8: 0xffffff801ce59465 kernel.development'ipc_kmsg_send(kmsg=0xffffff8085919000, option=3, send_timeout=0) at ipc_kmsg.c:1832 [opt]<br />     frame #9: 0xffffff801ce78a75 kernel.development'mach_msg_overwrite_trap(args=&lt;unavailable&gt;) at mach_msg.c:549 [opt]<br />     frame #10: 0xffffff801cff6323 kernel.development'mach_call_munger64(state=0xffffff806ca9c480) at bsd_i386.c:573 [opt]<br />    frame #11: 0xffffff801ce23486 kernel.development'hndl_mach_scall64 + 22</pre>
+<p class="centered-caption">Listing 6: The backtrace of this OOB bug.</p>
+<p> </p>
+<h4><a class="chapter" name="h4-551-root-cause"></a>5.5.1 Root cause</h4>
+<p>As shown in Listing 7, the register of rax is the address of the buffer which is created from the IOMalloc function. The r15 register points to the structureInput buffer which is controlled by user mode. The ecx register stores the length of the IOMalloc buffer. The rdx register is used as an index to copy the structureInput buffer content to the IOMalloc buffer. However, here, ecx is obtained directly from user mode which is structureInput at offset 62 dword. So, if we set ecx to a high value, it will read overflow from the structureInput buffer.</p>
+<pre>__text:000000000000E58E loc_E58E:            ; CODE XREF: AMDRadeonX4000_AMDAccelResource::initialize(IOAccelNewResourceArgs *,ulong long)+58Dj<br />__text:000000000000E58E                 mov     ecx, [r15+0F8h]<br />__text:000000000000E595                 test    rcx, rcx<br />__text:000000000000E598                 jz      short loc_E603<br />__text:000000000000E59A                 shl     rcx, 3<br />__text:000000000000E59E                 lea     rdi, [rcx+rcx*2]<br />__text:000000000000E5A2                 call    _IOMalloc<br />__text:000000000000E5A7                 mov     [r12+178h],<span style="color: #ff0000;"> rax  --- rax== buffer address which create by IOMalloc</span><br />__text:000000000000E5AF                 test    rax, rax<br />__text:000000000000E5B2                 jz      short loc_E62A<br />__text:000000000000E5B4                 or      byte ptr [r12+186h], 8<br />__text:000000000000E5BD                 mov     <span style="color: #ff0000;">ecx,</span> [<span style="color: #ff0000;">r15</span>+0F8h] <span style="color: #ff0000;"> --------r15==structureInput, ecx=( (uint32_t*) structureInput+62)</span><br />__text:000000000000E5C4                 mov     [r12+180h], ecx<br />__text:000000000000E5CC                 <span style="color: #ff0000;">test    rcx, rcx</span><br />__text:000000000000E5CF                 jz      short loc_E639<br />__text:000000000000E5D1                 xor     edx, edx<br />__text:000000000000E5D3<br />__text:000000000000E5D3 loc_E5D3:          ; CODE XREF: AMDRadeonX4000_AMDAccelResource::initialize(IOAccelNewResourceArgs *,ulong long)+621j<br />__text:000000000000E5D3                 mov     rsi, [r15+<span style="color: #ff0000;">rdx</span>+98h]  <span style="color: #ff0000;">---- mov structureInput+rdx+0x98 to rsi</span><br />__text:000000000000E5DB                 mov     [rax+<span style="color: #ff0000;">rdx</span>], rsi  <span style="color: #ff0000;">----mov rsi to rax+rdx, rax== buffer address which create by IOMalloc</span><br />__text:000000000000E5DF                 mov     rsi, [r15+<span style="color: #ff0000;">rdx</span>+0A0h]<br />__text:000000000000E5E7                 mov     [rax+<span style="color: #ff0000;">rdx</span>+8], rsi<br />__text:000000000000E5EC                 mov     esi, [r15+<span style="color: #ff0000;">rdx</span>+0A8h]<br />__text:000000000000E5F4                 mov     [rax+<span style="color: #ff0000;">rdx</span>+10h], esi<br />__text:000000000000E5F8                 <span style="color: #ff0000;">add     rdx, 18h</span><br />__text:000000000000E5FC                 dec     rcx<br />__text:000000000000E5FF                 jnz     short loc_E5D3<br /><br /></pre>
+<p class="centered-caption">Listing 7: Asm code snippet of AMDRadeonX4000_AMDAccelResource::initialize.</p>
+<p> </p>
+<h2><a class="chapter" name="h2-references"></a>References</h2>
+<p><a class=" anchor" name="ref1"></a>[1] Angr. <a href="https://github.com/angr/angr" target="_blank">https://github.com/angr/angr</a>.</p>
+<p><a class=" anchor" name="ref2"></a>[2] Miasm. <a href="https://github.com/cea-sec/miasm" target="_blank">https://github.com/cea-sec/miasm</a>.</p>
+<p><a class=" anchor" name="ref3"></a>[3] ARM Architecture Reference Manual. <a href="https://cs.nyu.edu/courses/spring18/CSCI-GA.2130-001/ARM/arm_arm.pdf" target="_blank">https://cs.nyu.edu/courses/spring18/CSCI-GA.2130-001/ARM/arm_arm.pdf</a>.</p>
+<p><a class=" anchor" name="ref4"></a>[4] Joker. <a href="http://www.newosxbook.com/tools/joker.html" target="_blank">http://www.newosxbook.com/tools/joker.html</a>.</p>
+<p><a class=" anchor" name="ref5"></a>[5] CodeRefsFrom(ea, flow). <a href="https://www.hex-rays.com/products/ida/support/idapython_docs/idautils-module.html#CodeRefsFrom" target="_blank">https://www.hex-rays.com/products/ida/support/idapython_docs/idautils-module.html#CodeRefsFrom</a>.</p>
+<p><a class=" anchor" name="ref6"></a>[6] BinDiff. <a href="https://www.zynamics.com/bindiff.html" target="_blank">https://www.zynamics.com/bindiff.html</a>.</p>
+<p><a class=" anchor" name="ref7"></a>[7] Meld. <a href="http://meldmerge.org/" target="_blank">http://meldmerge.org/</a>.</p>
+<p><a class=" anchor" name="ref8"></a>[8] iOS Security Guide. <a href="https://images.apple.com/business/docs/iOS_Security_Guide.pdf" target="_blank">https://images.apple.com/business/docs/iOS_Security_Guide.pdf</a>.</p>
+<p> </p>
+<p> </p>
+<p> </p> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<p><a href="/uploads/pdf/magazine/2019/VB2019-Wu-Li.pdf" target="_blank"><img src="/uploads/images/buttons/pdf-download-button.jpg" alt="Download PDF" width="262" height="45" /></a></p>
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=VB2019 paper: Play fuzzing machine – hunting iOS/macOS kernel vulnerabilities automatically and smartly&url=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-play-fuzzing-machine-hunting-iosmacos-kernel-vulnerabilities-automatically-and-smartly"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-play-fuzzing-machine-hunting-iosmacos-kernel-vulnerabilities-automatically-and-smartly'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-play-fuzzing-machine-hunting-iosmacos-kernel-vulnerabilities-automatically-and-smartly&title=VB2019 paper: Play fuzzing machine – hunting iOS/macOS kernel vulnerabilities automatically and smartly"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-play-fuzzing-machine-hunting-iosmacos-kernel-vulnerabilities-automatically-and-smartly&t=VB2019 paper: Play fuzzing machine – hunting iOS/macOS kernel vulnerabilities automatically and smartly"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2020/03/vb2019-paper-play-fuzzing-machine-hunting-iosmacos-kernel-vulnerabilities-automatically-and-smartly"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

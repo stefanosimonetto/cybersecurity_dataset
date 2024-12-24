@@ -1,0 +1,35 @@
+From Russia with Ransomware
+
+This week the research team stumbled across a Russian ransomware sample so I decided to take a peek.  The ransom message demands your money (in rubles, actually) and threatens to delete your data if payment isn’t sent within 12 hours.Translation:
+WINDOWS LOCKED!
+
+Microsoft Security Essentials application has recorded illegal access to pornographic materials as well as copying and duplicating videos containing elements of violence or pedophilia. These actions are contrary to the Criminal Code, as well as a violation of the license agreement to use software from Microsoft. For the foregoing reasons, the functioning of the system was suspended.
+To activate the system, you must:
+Fill Beeline phone number: [removed] the amount of 2,000 rubles.
+The calculation is made in any of the terminals for the payment provider. Issued on receipt terminal you will find your personal code. Code must be entered in the field below.
+Earnest request: after activating the system to refrain from repeating the acts contrary to the law and the rules of operation of Windows.
+WARNING! If within 12 hours of the onset of the communication code is not entered, all data, including Windows will be permanently deleted! An attempt to reinstall the system may cause a malfunction of your computer!
+All of this information is, of course, a lie.  In the message you’ll notice a reference to a beeline phone number.  Beeline is a Russian telecommunications company offering various mobile and internet services across Russia.  The ransom message is demanding users fill the criminal’s beeline card.  This can be done from the Beeline website.
+Fortunately, a ransom message in Russian won’t fool much of the western world into believing this is actually from Microsoft.  Nevertheless, it’s keeping you from using your PC, and that’s a problem.  Let’s see what’s going on behind the scenes.
+Technical Analysis
+The Ransomware is twice-packed, first using a Visual Basic (VB) packer stub to conceal a UPX-packed file.  If you’re new to the concept of packing to obfuscate binaries, I talked about it briefly in my last blog post.
+When you load the file in a debugger it gives us a nasty error, but still manages to load successfully.
+The error occurs because file section alignment is off, with the resource (.rsrc) section overlapping the relocations (.reloc).  This causes some PE analysis tools to hang, like CFF Explorer.
+This VB packer works by using a Structured Exception Handling (SEH) function.  An exception occurs within a program when something out of the ordinary happens, like passing a bad parameter to a function.  When an exception occurs, there is a handler that tries to manage the problem.  Malware often abuses the SEH for its own end.
+In this case, some floating point math goes wrong and we wind up in a SEH function that writes a new PE file to the heap.  Instead of writing the new file to disk and executing it, the ransomware creates a clone process, pauses, overwrites original file sections of the clone, and resumes the clone with the original process terminating.  This trick has been seen before in ransomware and malware in general.
+After the UPX code decompresses, we see that the actual ransomware is written in Delphi.  Unlike traditional Delphi code which makes use of its own Visual Component library, this binary uses what’s known as the Key Objects Library (KOL) written by Vladimir Kladov to optimize code and shrink the file size.
+The ransomware makes itself at home with the Windows registry.  If you’re a limited user, the ransomware replaces Windows default shell, explorer.exe; however, if you’re one of the unfortunate few running as an admin, the userinit and UIhost registry keys is replaced by the ransomware.  Below is a path to the key values changed.
+HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Shell
+Admin:
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\userinit
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Shell
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\UIHost
+Once the ransom message appears, the program aggressively targets your Desktop to prevent using Windows.  A hook procedure is set to intercept keyboard messages and effectively disable your keyboard.  Keyboard hooks are typically used with malware when implementing keyloggers, but in this case, special keys (menu, control, etc) and key combinations (alt-tab, etc) are defeated.
+Additionally, the ransom window always remains in-front of other windows and the cursor is set to only be used within the ransom window.  A loop is entered that enumerates system windows and minimizes any that are open besides the ransomware window, while another loop repeatedly kills Explorer.  These functions are called periodically using timers to ensure the system stays locked-down.
+Conclusion
+This ransomware sample isn’t revolutionary, but it offers some powerful API-based features to remove Desktop access.  Ransomware continues to use techniques like these in an effort to leave users no choice but pay the ransom.
+The good news is Malwarebytes Anti-Malware detects this sample as Trojan.Ransom.RV.   If you’re a PRO user, the ransomware won’t be executed on the host thanks to the file execution blocking feature.
+Unfortunately, the bad news is if you’re already infected, removal like this won’t be an option since you’re Desktop has been hijacked.  We recommend using a rescue disk method seen in this blog post, and remember, NEVER pay the ransom.
+Be careful out there.
+_______________________________________________________________________________
+Joshua Cannell is a Malware Intelligence Analyst at Malwarebytes where he performs research and in-depth analysis on current malware threats. He has over 5 years of experience working with US defense intelligence agencies where he analyzed malware and developed defense strategies through reverse engineering techniques.  His articles on the Unpacked blog feature the latest news in malware as well as full-length technical analysis.  Follow him on Twitter @joshcannell

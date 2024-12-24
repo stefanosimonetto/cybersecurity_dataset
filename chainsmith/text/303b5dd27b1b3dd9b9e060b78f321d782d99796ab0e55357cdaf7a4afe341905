@@ -1,0 +1,160 @@
+Electrum Bitcoin wallets under siege
+
+By Adam Thomas and Jérôme Segura, with additional contributions from Vasilios Hioueras and S!Ri
+Since at least late December 2018, many users of the popular Electrum Bitcoin wallet have fallen victim to a series of phishing attacks, which we estimate netted crooks well over 771 Bitcoins—an amount equivalent to approximately $4 million USD at current exchange rates.
+Threat actors were able to trick users into downloading a malicious version of the wallet by exploiting a weakness in the Electrum software.
+As a result, in February the developers behind Electrum decided to exploit the same flaw in their own software in order to redirect users to download the latest patched version. The software was in such trouble that in March, developers began exploiting another vulnerability unknown to the public, essentially attacking vulnerable clients to keep them from connecting to bad nodes.
+Shortly after, a botnet launched distributed denial of service (DDoS) attacks against Electrum servers for what is believed to be retaliation against developers for trying to fix the bug. Attackers reversed the scenario so that legitimate nodes became so overwhelmed that older clients had to connect to malicious nodes.
+In this post, we shed light on the phishing scheme used to push the malicious Electrum update, discuss where the stolen funds have gone, and finally look at the malware infections directly involved with the DDoS botnet.
+Electrum wallet 101
+In order to get a better idea of how these attacks became so successful, it is helpful to have a basic understanding of how the Electrum wallet functions.
+Known as a “lightweight” Bitcoin wallet, Electrum implements a variation of a technique described in Satoshi Nakamoto’s Bitcoin white paper​ called Simplified Payment Verification (SPV). SPV allows​ ​a user to send and receive transactions without downloading a full copy of the Bitcoin blockchain (which is hundreds of gigabytes in size).
+Instead, Electrum operates in a client/server configuration. The wallet (client) is programmed by default to connect to a network of peers (server) in order to verify that transactions are valid.
+While this has historically been a fairly secure method of transacting, attackers have taken advantage of the fact that anyone is allowed to operate as a public Electrum peer. As shown below, there has been a substantial increase in the number of peers active on the Electrum network:
+﻿Source: http://vps.hsmiths.com:49001/munin/hsmiths.com/vps.hsmiths.com/electrumx_peers.html
+Fake Electrum wallet update notification
+On December 26, 2018, the developer of Electrum issued a public warning on the official GitHub page providing some information about an ongoing attack:
+​To users: when you broadcast a transaction, servers can tell you about errors with the transaction. In Electrum versions before 3.3.3, this error is arbitrary text, and what’s worse, it is HTML/rich text (as that is the Qt default). So the server you are connected to can try to trick you by telling you to install malware (disguised as an update). You should update Electrum from the official website so that servers can no longer do this to you. If you see these messages/popups, just make sure you don’t follow them and that you don’t install what they tell you to install. The messages are just messages, they cannot hurt you by themselves.
+The threat actors basically conducted a Sybil attack on the Electrum network by introducing more malicious nodes than honest nodes.
+Legitimate Electrum wallet app showing malicious nodes
+If a user connects to a malicious node (a high likelihood), and attempts to send a transaction through it, it would be blocked due to the weakness in Electrum allowing arbitrary HTML/rich text to be received and displayed, such as the fake update message seen below:
+Phishing code injected into Electrum app when attempting to send Bitcoins
+This second stage of the attack tricks the user into installing a malicious version of the Electrum wallet. Two different rogue projects were active on Github from around December 21 through December 27.
+hxxps://github.com/electrum-project/electrum/releases/tag/3.4.1hxxps://github.com/electrum-wallet/electrum/releases
+Malicious Electrum app repository
+Malicious Electrum wallets
+For practical purposes, we will refer to the following malware as Variant 1 and Variant 2, however, further research has revealed that the actors behind this specific campaign have been in operation for quite some time. Thus, it seems likely that there were other variations of this malware in existence prior to December 21, 2018. Variants 1 and 2 appear to be operated by distinct actors based on several differences in the malware.
+Variant 1
+Variant 1 is unique in the fact that malware authors have implemented a function to upload stolen wallet keys and seed data to a remote server. Additional effort has been made to ensure that this function is kept hidden by obfuscating the data exfiltration code inside a file not normally found in Electrum named initmodules.py.
+Rogue module responsible for data exfiltration
+As mentioned, the exfiltration domains are not visible in the above code and are instead constructed during execution of the malware. This is most likely a technique used by the malware authors in order to make the code contained within initmodules.py appear legitimate.
+In addition to the theft of wallet data, any balance present in the wallet is sent to one of several pre-programmed public addresses under control of the attackers. The destination address chosen is dependent on the address format utilized by the infected users’ Electrum wallet.
+Pay-to-PubkeyHash (P2PKH) addresses are the default in use during setup and likely the most common address type in use by the casual Bitcoin user. This fact is evident when looking up the activity of each address.
+14MVEf1X4Qmrpxx6oASqzYzJQZUwwG7Fb5 (P2PKH address type)Total Received: 202.91141530 BTC ~ 776,243.23 USDbc1q9h36cyfnqcxjeuw629kwmnp5a7k5pky8l2kzww Total Received: 0.01927492 BTC ~ 73.75 USD1rTt8GePHv8LceXnujWqerUd81U29m857Total Received: 0 BTC3CrC4UitJqNqdkXY5XbJfCaGnbxHkKNqzLTotal Received: 15.22210788 BTC ~ 58,239.77 USD1FmxAHft8trWjhRNvDsbjD8JNoSzDX8pfDTotal Received: 0 BTC
+Variant 1 Bitcoin total: 218.1527981 BTCVariant 1 USD total: ~$1,101,034.00
+Sample extended Private Key (xprv) sent to malicious server using HTTP POST
+Sample wallet seed words sent to malicious server using HTTP POST
+All of the malicious data exfiltration domains observed during our analysis of Variant 1 were created at the same time and all have been observed resolving to the IP address 31.31.196.86. This address belongs to Reg.ru, a hosting company based in Moscow, Russia.
+Variant 1 binaries are also unique from later variants due to the fact that its Windows installers have been digitally signed.
+Malicious app using a digital certificate
+Interestingly, the digital certificate used to sign one of the malicious Windows Electrum files (EIZ Ltd) has recently been used to sign an unrelated malware.
+Variant 2
+
+Since Variant 1 was so successful in stealing substantial amounts of Bitcoin, it seemed almost inevitable that additional attacks would be mounted by threat actors looking to cash in on this reasonably easy scheme. Surely enough, a second variant of these malicious Electrum wallets appeared. This variant has attacked quite aggressively, overtaking the Electrum network and resulting in the theft of more Bitcoin than Variant 1.
+Instead of redirecting victims to a malicious Github site, Variant 2 hosts the malicious downloads on a domain with similar spellings as the legitimate Electrum download site. The HTML content is essentially a mirror image.
+Fake website, a copy-cat of the legitimate one
+The threat actors seem to have a good understanding of Electrum and its code. For example, they disabled auto updates, removed prompts, such as “Yes I am sure”, and even took away the ability to perform Replace-by-Fee (RBF) transactions.
+Contents of main_window.py
+Replace-by-Fee is a function that was added to the Bitcoin codebase later on in development that would allow users to essentially create a double spend transaction. In this case, if you knew about this function (and probably few do), you could reverse the stolen funds transfer by double spending the input using a higher fee.
+Replace-by-Fee function commented out in screens.py code
+For example, if you installed the malicious wallet and lost a bunch of Bitcoin, one of the only ways you could get it back would be by attempting a RBF transaction to reverse the malicious one. But you’d have to act quick before the malicious one was confirmed. By disabling this feature, the threat actors made sure this wouldn’t be possible.
+Below is the modified source code of Variant 2, a paytoedit.pyc script file redirecting payment to a hard-coded attacker Bitcoin address:
+Bitcoin address that will receive stolen funds
+bc1qhsrl6ywvwx44zycz2tylpexza4xvtqkv6d903qTotal received: 187.8298 BTC / 941,436 USDbc1q92md7868uun8vplp9te0vaecmxyc5rrphdyvxgTotal received: 55.9948 BTC / 201,326 USDbc1q7hsnpd794pap2hd3htn8hszdfk5hzgsj5md9lzTotal received: 36.7358 BTC / 126,972 USDbc1ql0p2lrnnxkxnw52phyq8tjr7elsqtnncad6mfvTotal received: 75.2927 BTC / 291,342 USDbc1qyjkcthq9whn3e8h9dd26gjr9kd8pxmqdgvajwvTotal received: 21.8628 BTC / 84,678 USDbc1qvr93mxj5ep58wlchdducthe89hcmk3a4uqpw3cTotal received: 27.3636 BTC / 138,733 USDbc1qcla39fm0q8ka8th8ttpq0yxla30r430m4hgu3x Total received: 232.6469 BTC / 1,166,068 USD
+Variant 2 Bitcoin total: 637.7264 BTCVariant 2 USD total: ~$2,950,555.00
+Where have all the coins gone?
+Some simple blockchain analysis on the funds stolen by Variant 1 show us that the attackers have broken the BTC down into smaller amounts. In this case, 48.36 BTC is re-grouped mostly into 3.5 BTC amounts followed by 1.9 BTC amounts.
+Such a pattern is likely evidence that a money laundering technique known as “smurfing” is being used. With 1.9 BTC equal to approximately $7,000 USD, deposits of this amount are unlikely to trigger a currency transaction report (CTR), as this amount is under the $10,000 threshold.
+Smaller chunks of Bitcoin being laundered
+Finally, the 11 outputs seen above are combined with an additional 15 inputs before being sent to 329nUnJxz5zgr4vnNPu8JNwpa3qEJfucQX, an address that feeds into the well-known hot wallet address for the cryptocurrency exchange Bitfinex.
+First step before reaching Bitfinex wallet
+Final step before reaching Bitfinex hot wallet (1Kr6QSydW9bFQG1mXiPNNu6WpJGmUa9i1g)
+On Sunday, April 14, we noticed that the attackers behind Variant 2 had just cashed out their newest wallet for 114.61050153 BTC (over half a million dollars):
+Variant 2 Bitcoin wallet notification
+Many of the movements of stolen funds from Variant 2 appear to follow a similar pattern. Let’s take a look at a recent withdrawal of 38.38517511 BTC from attacker address “bc1qhsrl6ywvwx44zycz2tylpexza4xvtqkv6d903q”. The transaction is always split into 2 outputs:
+Transaction split in two outputs
+Taking note of the transfer of 36.38011271 BTC which we will revisit later, let’s first follow the transfer of 2.0050624 BTC to address “1BCtXcP3gc7FygZMegeKUPsogo68aKRSPA” followed by “1wotccCFTuLQdCv46Bz3zqcosDCDwAWhd”. We see a transaction containing 2 outputs in which address “3DvWYYkzgHbyBgUTSjtPsLmkzs1R9frSrz” consumes all of the funds. The other output named “not-address”, is what is known as an OP_RETURN script opcode. This opcode is typically used to record data on the blockchain.
+OP RETURN script opcode
+Indeed, the transaction contains some encoded data most likely stored as part of a multi-signature transaction:
+
+While the exact purpose of the data stored using OP_RETURN is unknown, it doesn’t matter too much and we can still follow the forward movement of Variant 2 BTC funds in order to learn their destination:
+
+The next largest output, 1.96991794, from the prior transaction, is consumed by transaction ID f5abb14ffc1d57494934d10a2114b2e4fc812b7e18f73d0f6202a995d2bea1be, which contains 445 inputs totaling 100.02103004 BTC.
+
+These 100 BTC are then moved to address 1NDyJtNTjmwk5xPNhjgAMu4HDHigtobu1s, the known hot wallet address for Binance. Let’s take a quick look at the destination of the 36.38011271 BTC which we noted earlier. In the interest of brevity, we follow a similar path forward tracking funds as they are split up in similar fashion as those above:
+
+As we see, 25.8 BTC are sent to the address “3MRqgoPe6vBNVEn9Fo85qK7zvaLb9e9T2x”. Many addresses associated with this wallet appear to be associated with what are seemingly scam websites offering to “double your Bitcoin”.
+3FF1uZ5oEaSZYKCvGbywu39djsknrGeu96 – Continvest3AxHFZ2ivJUBgveyNj1PQak6FsKBcLJ42N – Bitcoin Doubler
+
+Since it is highly unlikely that you can simply double any amount of Bitcoins that you send, it is probable that these websites exist to offer another function such as mixing/laundering of funds for criminals.
+Countermeasures and reprisals
+Faced with such widespread attacks against their user base, the developers behind Electrum decided to exploit the very same vulnerability in order to display a legitimate update notification. However, this was not enough to stop the attackers, so later Electrum decided to run denial of service attacks against their own users to prevent them from connecting to rogue nodes.
+
+Electrum clients older than 3.3 can no longer connect to public electrum servers. We started exploiting a DOS vulnerability in those clients, in order to force their users to upgrade, and to prevent exposure to phishing messages. Linux Tail users should download our Appimage.— Electrum (@ElectrumWallet) March 15, 2019
+
+Criminals began doing the opposite with the help of a botnet.
+
+Over 25k IP addresses are involved in DDoS against Electrum servers. They can be blacklisted by server operators, following these instructions: https://t.co/lEA8lg2X4B— Electrum (@ElectrumWallet) April 10, 2019
+
+A list of attacking IP addresses (consisting of 72,977 machines at the time of writing) is being kept up-to-date. That number almost tripled within the span of the week, confirming that the attacks are ramping up at a fast pace.
+Client IP addresses attacking Electrum servers. List updated every few minutes.
+The malware behind the botnet and DDoS attacks
+Even though the exact size of the botnet is not clearly known, we were able to find out more about how new bots are recruited. We came across the malware behind this botnet from two different infection paths—we assume that there are several more out there. One was via a Smoke Loader instance that downloaded a secondary payload, while the other was from the RIG exploit kit.
+In the latter instance, we saw a malvertising campaign redirecting to the RIG exploit kit and ultimately delivering a loader that may appear as a coin miner, but is in fact malware that turns infected computers into individual bots for denial of service attacks against Electrum servers.
+Malvertising into RIG EK pushing Electrum malware behind DDoS attacks
+We see the loader gathering a list of Electrum nodes to attack using a number of public wallet addresses. Each infected machine will start hammering legitimate Electrum nodes to wreak havoc.
+An analysis of this loader confirms the network activity we observed above:
+Reversing loader shows network artifacts
+It retrieves a large file (>40MB) that is Python-compiled code (transactionservices.exe) for the Electrum wallet and writes it to disk.
+This .exe is a Python-compiled binary
+It also adds a persistence mechanism for a sub-process called  transactionserviceshelper.exe.
+Persistence mechanism via registry’s Run key
+Folder view of malicious Electrum application
+Denial of service attacks against ElectrumX servers
+This attack consists of flooding ElectrumX servers on port 50002 or 50001, as can be seen in the following traffic capture:
+SYN flood attacks observed from packet capture
+We also noticed another type of packet shown as TCP spurious retransmission. This is also known as “needless retransmission,” where the receiver had already acknowledged receipt but the initiator sent it again anyway. However, it’s possible this traffic is a by-product of the SYN flood attacks.
+Large amount of spurious retransmission messages seen in traffic capture
+The IP address of the lab machine we used to detonate the malware ended up being blacklisted in that same up-to-date list of clients attacking the Electrumx servers mentioned above, confirming our temporary presence in this botnet.
+Infected machine participating in attacks against Electrum nodes
+According to our telemetry, this is the distribution of most victims participating in the DDoS during the past few days based on connection attempts to the malware command and control servers.
+Telemetry from infected endpoints reaching to the C2
+Ongoing attacks and still more theft on the horizon
+Anyone keeping track of cryptocurrencies knows they’re in for a wild ride. Determined threat actors exploited a vulnerability in the most popular Bitcoin wallet to create a clever phishing attack that was able to net them over $3 million USD in only a few months. Other criminals will soon take notice.
+When Electrum responded to spare more victims from this theft, the criminals retaliated with sustained DDoS attacks. There most likely was some animosity between the two parties, but as the botnet continues to disable legitimate Electrum nodes, rogue ones get promoted to continue the vicious cycle of pushing the fake update and robbing more victims of their cryptocurrency.
+People running their own Electrum servers can mitigate the DDoS attacks in different ways. They can set up a cron job to download the list of attacking IP addresses and block them. They can also create an iptables rule to rate-limit the connection attempts on the known ports being attacked.
+Electrum wallet users need to update the software to the latest version (3.3.4) from the official repository and be particularly careful with update or other warning messages that could be disguised phishing attempts.
+Malwarebytes detects the malicious wallets for Mac OS X as OSX.ElectrumStealer and Electrum.Stealer for Windows.
+IOCs
+Malicious Electrum wallet binaries
+137e8925667ff75b1c516a97b5d2d3dd205f9302cdeb190fc68855aee2942c22
+1900f4d0a13486f90ff5f82e02d210b8a9db27bca24b88f5de849ef124212f09
+1ef6c9d9d3519769749498631532063967fc7d5e8f0fc75e8a3ff66f57dfab22
+2747c4e43d2652f3ad039e0dc1bf28f5b136a9ac76a4f57320b08b5905e7c4cd
+2cd180e61e36de1be904a02591485ef3321b539cdccca1fd7f1f001770652b14
+307d97a38c6bf21903057eec48c4d3957e10c0097fe05d5a203101d22cd79cc3
+3610c86975ed943b5065bdc65bfcb4035e58a863cd3192865401bc6a70b023ba
+367b620a0a332f693a68230bf21f7036983b7b9e0dee946af5338ed168c16318
+36c3140d73fbfb5710438d7c218013bf6fb8736a98dfe002b0d711fbb39aad41
+41ff4f112d0a8c4bb20a49f7beb5f36c28455a9cebafa8db75277f54f597d6d4
+57f6ef3ea9e497592bdbe9dda201105e0faea8f6668b5701b6b91fbc9e94cd43
+634287c65f018e71ed7bebfb5b21e33bcedf08139e3d924178b4cdfaa12d8b34
+74c2dcf751796cd209755b4e828b6686b2fb38587163b1cbff1295da2d3f0a8c
+87aa1fdf00db2ed94464c2687a0e1011a80af576267c0f88d1216c0cb4d2e310
+9a5b1ffbeb562d772dfa2d49e59e0f72557f6111a5e24d6498f88b77a5d8f10a
+a080444918844e27ff2079b71f20ebd2d1f1836907c854671daa3548dc809e7c
+b20778f69cc959a16c612e75d21a3668aab11f47f2659c3175da5bd80665e225
+c48b7ba2531e4954881388aceb00a2ec36488f1cf70eeb873a97b7cfa32362cb
+c5afedd8a03d2f49e25fb2c568ede20b0e43a4eeebebd202c98324ead9b82732
+df154484a90321407c0e8115df7bf6f598adb6a50255cc58b723db7cc5d3729f
+e8ef9cbeec7cdc7f58e28274c417457c5c8dcf47f4e8409cb2befe9450d3868b
+f736c8fa4a21755020ecfce60a53d0a1cfdaa7061fd7be6efd49d74af9b13e02
+
+Fake domains​
+btc-electrum[.]combtcelectrum[.]orgdownloadelectrum[.]comdownloadelectrum[.]orgeiectrum[.]netelectrum[.]bzelectrumapp[.]orgelectrumapps[.]comelectrumbase[.]comelectrumbase[.]netelectrumbase[.]orgelectrumbitcoin[.]orgelectrumbtc[.]orgelectrumbuild[.]comelectrumcircle[.]comelectrumclient[.]orgelectrumcore[.]comelectrumcore[.]netelectrumdownload[.]comelectrumdownload[.]orgelectrume[.]comelectrume[.]orgelectrumfix[.]comelectrumget[.]comelectrumget[.]com electrumhub[.]comelectrumnet[.]comelectrumofficial[.]comelectrumopen[.]orgelectrumpgrade[.]comelectrumsafe[.]orgelectrumsite[.]comelectrumsource[.]orgelectrumstart[.]orgelectrumtxn[.]comelectrumupdate[.]comelectrumupgrade[.]comelectrumupgrade[.]orgelectrumware[.]comelectrumware[.]orgelectrumweb[.]netgetelectrum[.]comgetelectrum[.]livegetelectrum[.]orggoelectrum[.]commyelectrum[.]org
+Attacker Bitcoin addresses
+
+bc1qhsrl6ywvwx44zycz2tylpexza4xvtqkv6d903qbc1q92md7868uun8vplp9te0vaecmxyc5rrphdyvxgbc1q7hsnpd794pap2hd3htn8hszdfk5hzgsj5md9lzbc1ql0p2lrnnxkxnw52phyq8tjr7elsqtnncad6mfvbc1qyjkcthq9whn3e8h9dd26gjr9kd8pxmqdgvajwvbc1q9h36cyfnqcxjeuw629kwmnp5a7k5pky8l2kzwwbc1qvr93mxj5ep58wlchdducthe89hcmk3a4uqpw3cbc1qcla39fm0q8ka8th8ttpq0yxla30r430m4hgu3x14MVEf1X4Qmrpxx6oASqzYzJQZUwwG7Fb53CrC4UitJqNqdkXY5XbJfCaGnbxHkKNqzL31rTt8GePHv8LceXnujWqerUd81U29m8571FmxAHft8trWjhRNvDsbjD8JNoSzDX8pfD
+Fraudulent/malicious digital certificates (Windows only)
+Name: PRO SOFTS
+Serial Number: 15 8F D7 D2 FB 6E 69 E7 75 AB EE 6E
+
+Name: EIZ Ltd
+Serial Number: 06 6A F7 6B 79 4F 63 79 3C C0 CA 33 78 6F 07 47
+
+RIG EK payload
+9296b210b782faecca8394b2bd7bf720ffa5c122b83c4ed462ba25d3e1b8ce9a
+transactionservices.exe (Electrum wallet)
+c3a7cf30428689a44328090b994ce593bbf2a68141fcbefb899dee4fec336198
+IPs (Electrum wallet host and configs)
+178.159.37[.]113  194.63.143[.]226  217.147.169[.]179188.214.135[.]174

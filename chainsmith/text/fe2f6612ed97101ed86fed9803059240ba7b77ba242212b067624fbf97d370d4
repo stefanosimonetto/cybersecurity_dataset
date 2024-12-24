@@ -1,0 +1,39 @@
+Learning From Buggy WordPress Wp-login Malware
+
+When a site gets hacked, the attack doesn’t end with the malicious payload or spam content. Hackers know that most website administrators will clean up the infection and look no further. Many go on to patch vulnerable software, change their passwords, and perform other post-hack steps. All of this is good, but hackers who follow through the sustainment phase of the attack also leave behind ways to easily reinfect the site.
+After breaking into a website, hackers want to make sure they still have access if the original security hole is closed. Most often, they upload backdoors or create new malicious users. There is also a combination of the two approaches: login bypasses. These allow attackers to gain administrative rights without authentication by using a special parameter in the HTTP request.
+WordPress Login Bypass
+Recently, we found this buggy bypass code injected into a WordPress wp-login.php file.
+Login bypass using the kidsid parameter
+The request was placed inside legitimate comments, which made it more suspicious since this trick is only used by malware.
+The purpose of this code is to provide an admin user ID for the kidsid parameter when requesting wp-login.php. This allows the attacker to access the WordPress dashboard with admin permissions.
+
+For example, with N as the admin user ID:
+httx://infected-site.com/wp-login.php?kidsid=N
+Better than Fake Admins
+This technique has advantages over creating new users that might be noticed and deleted. A legitimate admin user will not be deleted during a cleanup. Hackers don’t even need to know the admin username! Many WordPress sites still have the default admin user created during the installation. This user has ID 1. But attackers don’t have to rely on this fact alone.
+With tools like wpscan, it is easy for anyone to discover WordPress admin user IDs. If the attacker can inject code into wp-login.php, they most likely have enough permissions to execute a simple SQL query and identify all site administrator IDs.
+Buggy Code
+The intention of the bypass is quite clear. However, this particular code will not work for reasons obvious to anyone who is familiar with the WordPress API or even just PHP. The bug is very silly.
+Given that this code is almost completely based on an example that can be found in WordPress Codex, one can suggest that the hacker is a so-called “script kiddie” who can only use third-party scripts and has limited copy/paste skills.
+Moreover, the injection in wp-login.php is doomed to be removed because this file gets overwritten during WordPress updates.
+Hijacking Login Form
+Another way to make sure you always have valid WordPress credentials is to hijack the login form. To do this, hackers typically inject malware into wp-login.php file as we’ve already seen.
+Here’s another recent example:
+Credentials stealer in wp-login.php
+When a user successfully logs into WordPress, this code emails the site URL and user credentials to the attacker.
+Interesting detail: This malware is also buggy.
+If you check line 843 in the screenshot above, you’ll see that the $body concatenation is not completed and it is missing the mandatory semicolon at the end of the line. It looks like the attacker modified that line but forgot to properly terminate it.
+PHP is very forgiving when it comes to these kinds of bugs (which usually results in all sorts of unexpected side effects) and this code actually works. PHP just converts unquoted literals into strings and concatenates $body with the $headers from the next line. As a result, the email text ends with MIME-Version: 1.0 (which should go to email headers) but nonetheless, it works.
+Learning From Malware
+While these samples are buggy and the bypass code is not functional, they teach us a few security lessons.
+
+Make sure your WordPress core files are intact. Integrity monitoring will help you detect such injections.
+Remove the default WordPress admin user with ID 1. The first thing you should do after installation of a new WordPress blog is to create a new administrator with a name that is difficult to guess and then delete the default admin user. Not only will this significantly decrease chances of brute force attacks but also will change the default ID of the administrator.
+Do not publish anything using the admin account. It is easy to figure out IDs of users who publish posts on your blog. Use a special account with the editor or author roles to post on the blog and use the admin account only for site management tasks. This way, attackers will only be able to find limited accounts when they scan your site.
+Get notified when admins log into your site so you will know if your account is compromised. There are a number of plugins that do it.
+Consider restricting access to the WordPress admin area. It can be a password protected area on your server, or you can provide access only to trusted IP addresses. Even if hackers steal your WordPress credentials or inject a bypass code, they still will not be able to use the WordPress admin area.
+Keep regular website backups. Hackers are not the best coders out there. Bugs are not uncommon, both in their tools and in the malware they inject. We regularly see how their bugs corrupt legitimate files. That’s why you always need a good website backup strategy that includes storing backups on a different server.
+
+Of course, this is not a complete list of things that you should do to harden a WordPress site. We highly recommend reading the official Hardening WordPress guide in the WordPress Codex, as well as specialized resources from reputable community members like  Yoast.
+If despite your efforts your site was still compromised, we have a detailed guide on how to clean a hacked WordPress blog.

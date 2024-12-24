@@ -1,0 +1,93 @@
+A fortune fox hunter
+2006-11-01
+
+Kaoru Hayashi
+Symantec Security Response
+,
+Japan
+Editor:
+Helen
+
+Martin
+Abstract
+Kaoru Hayashi has the details of Infostealer.Snifula - a trojan that spies on Firefox.
+Copyright © 2006 Virus Bulletin
+
+Introduction
+On 25 July 2006, we received a report of a new trojan that steals targeted information from compromised computers. An interesting feature of this trojan, Infostealer.Snifula, is that it spies on Firefox.
+
+JS.Ffsniff
+The first threat to target Mozilla Firefox was JS.Ffsniff, which was discovered in March 2006. Once installed as a Firefox extension, JS.Ffsniff runs a sniff function every time a submit event occurs in the browser. The function then sends all the data entered in the web form to a predetermined email address. To establish a connection to an SMTP server directly, JS.Ffsniff uses the following components that are installed with Firefox by default:
+@mozilla.org/network/socket-transport-service
+@mozilla.org/scriptableinputstream
+The domain of both the predetermined email address and the SMTP server used in the threat was 'example.com', which is among the domains reserved for testing purposes as specified in RFC2606 [1]. From this, we can infer that the threat was intended as a proof of concept.
+
+Spam
+A new threat for Firefox, Infostealer.Snifula is downloaded and installed by another threat, Downloader.Traus. The downloader was spammed on 25 July. Just a day earlier, a variant of Backdoor.Haxdoor was spammed as well. Interestingly, the two emails were very alike – the attachment names were identical and the subject and message body were similar (see Figure 1 and Figure 2).
+Figure 1. Spam mail with Backdoor.Haxdoor.
+Figure 2. Spam mail with Downloader.Traus.
+Infostealer.Snifula steals information from three areas: via Firefox, via Internet Explorer and within packets.
+
+XPCOMing
+In Firefox, Infostealer.Snifula uses three components: XPCOM, a browser extension and the trojan itself. XPCOM, the Cross Platform Component Object Module, is a core technology of Gecko. It is similar to Microsoft's COM technology, although there is no compatibility between COM and XPCOM.
+Infostealer.Snifula installs the following files:
+%ProgramFiles%\Mozilla Firefox\components\AppInterConn.dll
+%ProgramFiles%\Mozilla Firefox\components\AppInterConn.xpt
+The DLL file is an XPCOM module that implements code. The XPT file is a typelibrary containing interface descriptions. By using the xpt_dump.exe tool from the Gecko SDK [2] against the XPT file, we obtain the following information:
+Header:
+Major version:  1
+Minor version:  2
+Number of interfaces: 2
+Annotations:
+Annotation #0 is empty.
+
+Interface Directory:
+- ::nsISupports (00000000-0000-0000-c000- 000000000046):
+[Unresolved]
+- ::IAppInterConn (e116c319-c845-4abb-a1a8-123456789000):
+Parent: ::nsISupports
+Flags:
+Scriptable: TRUE
+Function: FALSE
+Methods:
+uint32 SendData(in string, in string);
+Constants:
+No Constants
+The appInterConn.dll has a method called SendData. This method takes two parameters, the first is the WindowClass name and the second parameter is the data to send. The method sends the data to the WindowClass by using the SendMessage API with the WM_COPYDATA option.
+It is the extension that calls the method. The extension masquerades as the well known Firefox extension 'Numbered Links'. However, no code from Numbered Links is appropriated. The extension watches mousedown and keydown events, and gathers form data and the URL when a submit or click event occurs. Then it sends that data to the WindowClass named handler_app_class by calling the SendData method.
+Infostealer.Snifula itself creates handler_app_class WindowClass and waits for data. Once the data arrives, the trojan posts the data to a predetermined website in Russia.
+
+COMing too
+Although it is the Browser Helper Object (BHO) that is used more commonly for the purpose of stealing information, Infostealer.Snifula uses Microsoft's COM technology for spying on Internet Explorer users. Using the ShellWindows COM object, the trojan watches instances of Internet Explorer, enumerates some elements in HTML, and steals the form data if the onsubmit event occurs in the browser.
+The trojan mainly uses the following interfaces:
+IShellWindows
+DShellWindowsEvent
+DWebBrowserEvents2
+IWebBrowser2
+IHTMLWindow2
+IHTMLDocument2
+IHTMLInputElement
+IHTMLFormElement
+IHTMLElement
+IConnectionPointContainer
+
+Sniffing as well
+The trojan sniffs network packets to steal authentication information. Low-level packet capturing such as WinPcap is very powerful but it relies on another component or driver to be installed. However, simple Winsock2.0 sniffing is enough for this trojan author's purpose.
+The trojan creates a socket with the SOCK_RAW parameter and sets it to promiscuous mode, receives packets and filters them against the following strings:
+USER
+PASS
+220
+* OK
++OK
+Login
+As a result, the trojan can obtain the username and password for most POP3, FTP and IMAP4 authentication events. FTP is a simple protocol and uses clear text for authentication. The IMAP4 and POP3 protocols support various forms of secure authentication - however, in many cases, servers and clients will fall back to clear text authentication in the event that a shared secure authentication technique is not available.
+The trojan also attempts to steal username and password information for ICQ. It can identify FLAP packets and get the username and password from SNACK data. Although the password is encrypted with a simple XOR algorithm, the trojan can decrypt it and send it to the author of the trojan. John Canavan described the details of ICQ password encryption at length in his article [3].
+
+Conclusion
+We received a version of Infostealer.Snifula that only had the functions for stealing packets and monitoring Internet Explorer. According to the time stamp in the PE header, it seems the author added Firefox compatibility within 20 days of creating the earlier version. By adding this function to the trojan, the author can steal information from around 90% of web users [4]. Evidently, attackers continue to develop new techniques in the hunt for profit.
+
+Bibliography
+[1] http://rfc.net/rfc2606.html.
+[2] http://developer.mozilla.org/en/docs/Gecko_SDK.
+[3] http://www.virusbtn.com/vba/2006/03/vb200603-imav.
+[4] http://www.w3schools.com/browsers/browsers_stats.asp.

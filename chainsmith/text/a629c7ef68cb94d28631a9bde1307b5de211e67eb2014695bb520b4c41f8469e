@@ -1,0 +1,193 @@
+DLL hijacking
+2011-02-01
+
+Aleksander P. Czarnowski
+AVET INS
+,
+Poland
+Editor:
+Helen
+
+Martin
+Abstract
+There are a few good reasons for taking another look at DLL hijacking - including the fact that we don't learn from our mistakes. Aleksander Czarnowski takes an in-depth look at the DLL hijacking story.
+Copyright © 2011 Virus Bulletin
+
+Is there any good reason to write any more about DLL hijacking? After all, by the time you read this all the hype about those vulnerabilities will (probably) be over… Who needs to read another article about a popular class of vulnerability?
+Well, there are a few good reasons – the best one I can think of is that we don’t learn from our mistakes. The first mistake is that, for a lot of people, security is not risk-driven but hype-driven. Of course it is important to remediate every vulnerability as quickly as possible, and a vulnerability in iTunes will receive more attention than a similar one in an SVN client.
+The second mistake is that clearly documented and well described functionality can, after more than 10 years, suddenly become a vulnerability. Not only that, but it will also trigger a lot of research all around the world. The third mistake is that, while for the last couple of years there have been a few different attempts to build strong vulnerability taxonomies and dictionaries supporting them, we still have not learned how to fully exploit this knowledge.
+Looking at the good old CreateProcess() problems one can easily imagine the DLL hijacking issue. So why did nobody see the danger earlier? In fact, the problem goes back as far as 1999/2000. In 1999, Microsoft published its MS99-006 advisory, and on 18 September 2000 Georgi Guninski posted the ‘Microsoft Windows DLL search path weakness’ advisory to the bugtraq mailing list.
+
+CreateProcess( ) vulnerabilities
+When discussing the DLL hijacking issue one cannot forget about similar problems with CreateProcess(). As the name implies, the aim of this function is to create (and run) a new process. The definition of CreateProcess is as follows:
+BOOL CreateProcess(
+LPCTSTR lpApplicationName,
+LPTSTR lpCommandLine,
+LPSECURITY_ATTRIBUTES lpProcessAttributes,
+LPSECURITY_ATTRIBUTES lpThreadAttributes,
+BOOL bInheritHandles,
+DWORD dwCreationFlags,
+LPVOID lpEnvironment,
+LPCTSTR lpCurrentDirectory,
+LPSTARTUPINFO lpStartupInfo,
+LPPROCESS_INFORMATION lpProcessInformation
+);
+The problem is that lpApplicationName should contain the name of the program (module) to be created by the system loader. Unfortunately, this parameter can also be set to NULL, which causes the system to interpret the first space delimited token from lpCommandLine as the module name. Imagine a call like this:
+BOOL bOk = CreateProcess(NULL, “C:\\Program files\\some_dir\\module.exe”, […]);
+In such a case the system loader will try to expand tokens from lpCommandLine in order to find the first match of executable module location. Therefore dangerous combinations will be checked, such as c:\Program.exe files\some_dir\module.exe
+If Program.exe exists in the c:\ directory it will be executed even though the author of the code wanted to execute module.exe from c:\Program files\some_dir\. This behaviour is clearly described in [1].
+It turns out that such insecure coding practices can lead to serious vulnerabilities, and we’ve seen a stream of exploits for this type of problem.
+
+Importing functions
+On the Windows platform there are two legal ways of importing functions exported by dynamic link libraries:
+By PE file Import Address Table (IAT) – for the sake of this discussion we will omit delay load import tables and late binding.
+By LoadLibrary()/GetProcAddress() calls.
+The Import function does not exist in the caller module but can be loaded into the caller address space. Thus it is the job of the operating system image loader to parse the import table and load dynamic link libraries accordingly before passing execution to the main thread of the newly created process. This process can be observed with help from the Windows Debugging API (more on this later). The system loader finds the IAT by using the OptionalHeader member of the IMAGE_NT_HEADERS structure. The IMAGE_OPTIONAL_HEADER structure contains arrays of the IMAGE_DATA_DIRECTORY structure (there are 16 members). Member 12 contains the Import Address Table. It is worth remembering that some functions are not exported by name, but by ordinal numbers only.
+The second option is based on LoadLibrary/LoadLibraryEx. These Windows API functions enable the loading of dynamic link libraries during runtime regardless of the content of the Import Address Table. GetProcAddress allows the address of the function within the loaded DLL to be acquired.
+Several DLLs of the same name can exist within the filesystem as long as they are located in different folders. Furthermore, Windows even supports such a situation by providing a Dynamic Link Library Redirection mechanism. To enable it the user must create a redirection file which must follow the naming scheme: app_name.local.
+If the application just calls LoadLibrary, passing only the DLL filename without the fully qualified path, then it leads to the DLL hijacking problem.
+
+DLL hijacking vulnerability
+Microsoft provides several aids in loading dynamic link libraries. The most important libraries are specified in the KnownDLLs registry key: HKLM/System/CurrentControlSet/Control/Session Manager/KnownDLLs. In case of legacy 16-bit DLLs the correct key on Windows XP/2000 is: HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\WOW. If an executable module wants to load a library from this list then the system image loader will know where to look for it and load the correct file. Inside KnownDLLs there is a DllDirectory key which specifies where the system should look for known DLLs (%SystemRoot%\system32 by default for 32-bit systems). In fact, this simple mechanism used to be vulnerable on the Windows NT platform (consult Microsoft Security Bulletin MS99-006 [2] for details). The MS99-066 bulletin can be considered one of the grandfathers of the DLL hijacking attack vector.
+DLL hijacking was possible due to the loading algorithm used by Windows in the case of an insecure LoadLibrary() call. Microsoft made the mistake of making the current directory first on the list of places to look for DLLs. This was fixed by the introduction of the SafeDllSearchMode registry value (HKLM\System\CurrentControlSet\Control\Session Manager\SafeDllSearchMode), which allows the DLL search process to be controlled in case the full path is missing. Quoting from MSDN: if SafeDllSearchMode is enabled, the search order is as follows:
+The directory from which the application loaded.
+The system directory. Use the GetSystemDirectory function to get the path of this directory.
+The 16-bit system directory. There is no function that obtains the path of this directory, but it is searched.
+The Windows directory. Use the GetWindowsDirectory function to get the path of this directory.
+The current directory.
+The directories that are listed in the PATH environment variable. Note that this does not include the per-application path specified by the App Paths registry key. The App Paths key is not used when computing the DLL search path.
+If SafeDllSearchMode is disabled, the search order is as follows:
+The directory from which the application loaded.
+The current directory.
+The system directory. Use the GetSystemDirectory function to get the path of this directory.
+The 16-bit system directory. There is no function that obtains the path of this directory, but it is searched.
+The Windows directory. Use the GetWindowsDirectory function to get the path of this directory.
+The directories that are listed in the PATH environment variable. Note that this does not include the per-application path specified by the App Paths registry key. The App Paths key is not used when computing the DLL search path.
+Furthermore, the application can have some additional control on DLL loading either by calling LoadLibraryEX with the LOAD_WITH_ALTERED_SEARCH_PATH flag, or by calling SetDllDirectory. Unfortunately, many applications don’t use either method and lazy programmers issue LoadLibrary with just a DLL name.
+When the first matching DLL filename has been found by the system image loader, Windows abandons any further search. This ‘first find wins’ strategy allows an attacker to plant a DLL in the directory that is searched before the one containing the legal library if the application is loading a DLL only using the filename. What is even more important is that network shares can also be searched for DLLs.
+
+DLL hijacking detection
+In [3] the authors describe detection methods not only for the Windows platform but also for other operating systems. On Windows, detection using dynamic analysis is a simple process thanks to the availability of the Debugging API and a great set of debuggers like OllyDBG and IDA Pro. We just need to hook the LoadLibrary call and inspect the first argument passed to it. The definition of the LoadLibary function is as follows:
+HMODULE WINAPI LoadLibrary(
+__in LPCTSTR lpFileName
+);
+The above definition comes from the Windows platform SDK. However, Kernel32.dll exports two versions of this function:
+LoadLibraryA (ANSI)
+LoadLibraryW (Unicode)
+Therefore we need to hook these function calls (don’t forget about LoadLibraryExW and LoadLibraryExA) in order to catch all possible DLLs loading during runtime. Next we run our module, catch all LoadLibrary* calls and inspect the lpFileName argument for the full, proper path definition. If the path location is invalid or missing we have found a vulnerability. Theoretically, this makes the detection process trivial, allowing almost anyone to find such a vulnerability (which posts to the bugtraq mailing list seem to confirm).
+Unfortunately, finding a vulnerability and proving that there is no such vulnerability in a module are two completely different things. The problem lies in the code coverage and execution flow. Until we can prove that all execution paths that call LoadLibrary* functions have been covered by our analysis, we cannot claim that a module is not vulnerable. This problem can partially be solved with the help of static analysis as we can enumerate all LoadLibrary* calls within the module and then enumerate all cross references to those functions or methods. Most LoadLibrary() calls are made with a static value of lpFileName. If all calls are made with static names (as in Figure 1) than we can perform all checks using only static methods.
+Figure 1. Example of passing a static string as lpFileName to the LoadLibraryA function.
+Returning to a dynamic analysis approach, hooking LoadLibraryA and LoadLibraryW calls is only one possible method. Hooking can be done with Microsoft Detours library, int 3 breakpoints or hardware breakpoints. However, a much better approach is to use the Windows Debugging API:
+Start the debugging process with CreateProcess() with the DEBUG_PROCESS flag.
+Start module execution.
+Process the debug event with WaitForDebugEvent().
+Check for LOAD_DLL_DEBUG_EVENT and process it.
+ContinueDebugEvent() in order to resume process execution.
+When EXIT_PROCESS_DEBUG_EVENT has been caught, quit the debugging loop.
+Another option is proposed in [3], based on the LdrLoadDll function from ntdll.dll. To equip the binary in order to trace system image loader activity we don’t need any special tools besides WinDbg [4]:
+Run gflags.exe from the WinDbg main directory.
+Click on the Image File tab and enter the image filename.
+Press the tab key to enable the checkbox options and select ‘Show loader snaps’, as in Figure 2.
+Click OK to dismiss the dialog box.
+Run WinDbg and select Open Executable (Ctrl+E). In the file dialog box choose notepad.exe and load it.
+You will see the list of loaded modules and then debug information from the system image loader, as shown in Figure 3.
+Figure 2. Select the ‘Show loader snaps’ option.
+Figure 3. Using WinDbg to catch system image loader activity.
+There is one interesting call: LdrLoadDll. Inspection of this function reveals that it calls another function call, LdrpLoadDll. This is the work horse that does most of the work during the loading of the DLL and mapping it into the process address space. The complete list of calls by the LdrLoadDll function is presented in Figure 4.
+Figure 4. LdrLoadDll (Windows XP SP3) call list generated by IDA Pro.
+Another detection option is to use Process Monitor and catch all CreateFile and LoadImage operations with paths containing .dll, .DLL, .sys and .SYS. Exclude events with SUCCESS results and paths that end with pagefile.sys. Now run Process Monitor and look for failed DLL load attempts.
+When considering detection approaches keep in mind that there is a set of applications that ‘dislike’ being debugged. Several copy protection schemes are good examples. The most simple check is to invoke IsDebuggerPresent(), which can easily be bypassed either by patching this function, changing the return value or changing the IsDebuggerPresent flag in the process PEB. Of course there are many other anti-debugging tricks around [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15], [16], [17], [18], [19]. The point here is that some applications cannot be instrumented easily with the Debugging API and other approaches like Process Monitor must be used. However, the best detection option is to search the source code for LoadLibrary* calls.
+
+Exploitation process
+Another thing which makes DLL hijacking or binary planting (as it’s called in the original ACROS advisory) so similar to the CreateProcess() vulnerability is the ease with which it can be exploited. An attacker just needs to ‘plant’ his own DLL in the proper folder so that his library is loaded first (the second – real – one never gets its chance to load). Wouldn’t it be easier simply to overwrite the original DLL file? The answer is yes, and no. An attacker might not have write privilege, or else Windows Resource Protection (the newer version of Windows File Protection on Vista/Windows 2008 Server systems) might protect files from being overwritten. However, the attacker might have write access to a directory which will be searched for DLLs before inspecting those protected by the Windows security model. So, in the end, DLL hijacking can provide some value to the attacker, both for local and remote attacks.
+In order to conduct the attack an attacker needs his own DLL. This can be written in any language supporting DLL files. A simple DLL template written in assembly language is presented below:
+format PE DLL
+entry DllEntryPoint
+include ‘win32ax.inc’
+section ‘.text’ code readable executable
+proc DllEntryPoint hinstDLL,fdwReason,lpvReserved
+cmp [fdwReason], DLL_PROCESS_ATTACH
+je pattach
+cmp [fdwReason], DLL_PROCESS_DETACH
+je pdetach
+cmp [fdwReason], DLL_THREAD_ATTACH
+je tattach
+cmp [fdwReason], DLL_THREAD_DETACH
+je tdetach
+exit:
+mov   eax,TRUE
+ret
+pattach:
+call exploit
+pdetach:
+tattach:
+tdetach:
+jmp exit
+endp
+proc exploit
+mov edi, edi      ;simulate hotpatching entry
+nop   ;make space/call for the debugger or
+int 3 ;detour if not using mov edi, edi for           ;it
+nop
+invoke MessageBox,NULL,’DLL Hijacker: exploit’, ‘Exploited’,MB_ICONERROR+MB_OK
+ret
+endp
+section ‘.idata’ import data readable writeable
+library kernel,’KERNEL32.DLL’,\
+user,’USER32.DLL’
+import user,\
+MessageBox,’MessageBoxA’
+This can be compiled using FASM [20]. Of course, for more complicated DLLs, C/C++ might be a better option. The reason for choosing assembly language in the first place was its small output size and ability to insert shellcode in place of the MessageBox call. However, for testing or demonstrating vulnerabilities, the MessageBox call will do its job perfectly. Now you just need to plant the DLL and find a vulnerable application. The approaches discussed so far should be enough to get started. There are already tools that automate the whole process. A good example is DLLHijackAuditKit v2 from the MetaSploit project [21]. This kit will build test cases for DLLs in your system (01_StartAudit.bat) and generate proof-of-concept ‘exploits’ executing calc.exe for vulnerable cases (02_Analyze.bat).
+
+Defence strategies
+All of the attack vectors mentioned have resulted in the addition of new features to the Windows operating system over time:
+Windows Resource Protection
+The SafeDLLSearchMode registry key
+The SetDllDirectory function
+The SetSearchPath function
+The SetSearchPathMode function
+The CWDIllegalInDllSearch registry key
+SafeDLLSearchMode is enabled by default on recent Windows systems. This key controls the DLL search order. The key HKLM\System\CurrentControlSet\Control\Session Manager\SafeDllSearchMode should be set to 1 to enable this feature. How this setting affects the search order has already been described in the ‘Dll hijacking vulnerability’ section.
+The SetSearchPathMode function is a newly created API to allow IE to force the current directory to be searched after the system location has been checked. Of course, nothing stops programmers from using it in their own applications. Similar to SetSearchPath, SetSearchPathMode affects only the current process and has no impact on other running processes.
+The CWDIllegalInDllSearch registry key enables a system administrator to:
+Remove the current directory from the search path when loading DLLs
+Disable DLL loading from the WebDAV location
+Disable DLL loading from WebDAV and remote UNC address locations.
+The settings above can be applied system-wide or on a per-application basis. To use the CWDIllegalDllSearch key it must be added to:
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager in order to enable it for the whole system
+HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\<application binary name> to enable it for a specified application only.
+Values for this key are described in [22].
+Obviously, the best defence is the secure calling of the LoadLibrary() and LoadLibraryEx() functions. The safeguards mentioned previously will not address all possible vulnerabilities and some options cannot be deployed in certain configurations, for example. This brings us to the point where patching vulnerable applications is the best safeguard possible. In order to fix this type of vulnerability efficiently it must be addressed on a source code level. The following are some tips for developers on using LoadLibrary* API:
+Always specify the fully qualified path.
+Remove the current directory from the DLL search path by using SetDllDirectory with an empty string during application initialization.
+If possible, use DLL redirection or a manifest to ensure the proper DLL will be loaded.
+SearchPath should not be used to locate a DLL unless safe process search mode is enabled. Avoid using SearchPath if possible.
+Never base your assumption about system version/service pack level on successful DLL loading. Use the GetVersionEx() function and base your assumption on its results.
+Enable safe DLL search mode.
+
+Summary
+In the end, the whole DLL hijacking story wasn’t so dull after all. It made me look inside LdrLoadDll and browse through ntdll.dll, which is always fun and you can always learn something new. It also demonstrated a few strong points about security. The most import one – from both a customer’s and a developer’s perspective – is that, while easy to detect, vulnerabilities might not be easy to fix at the operating system level. Secondly, it is possible for automatic or manual detection of simple vulnerabilities to fail and provide false results.
+
+Bibliography
+[1] CreateProcess function. http://msdn.microsoft.com/en-us/library/ms682425.
+[2] Microsoft Security Advisor Program: Microsoft Security Bulletin (MS99-006). http://www.microsoft.com/technet/security/bulletin/ms99-006.mspx.
+[3] Kwon, T.; Su, Z. Automatic Detection of Vulnerable Dynamic Component Loadings, University of California.
+[4] Debugging Tools for Windows. http://www.microsoft.com/whdc/devtools/debugging/default.mspx.
+[5] Ferrie, P. Anti-unpacker tricks. http://pferrie.tripod.com/papers/unpackers.pdf.
+[6] Ferrie, P. Virus Bulletin December 2008. Anti-unpacker tricks – part one. http://www.virusbtn.com/pdf/magazine/2008/200812.pdf.
+[7] Ferrie, P. Virus Bulletin January 2009. Anti-unpacker tricks – part two. http://www.virusbtn.com/pdf/magazine/2009/200901.pdf.
+[8] Ferrie, P. Virus Bulletin February 2009. Anti-unpacker tricks – part three. http://www.virusbtn.com/pdf/magazine/2009/200902.pdf.
+[9] Ferrie, P. Virus Bulletin March 2009. Anti-unpacker tricks – part four. http://www.virusbtn.com/pdf/magazine/2009/200903.pdf.
+[10] Ferrie, P. Virus Bulletin April 2009. Anti-unpacker tricks – part five. http://www.virusbtn.com/pdf/magazine/2009/200904.pdf.
+[11] Ferrie, P. Virus Bulletin May 2009. Anti-unpacker tricks – part six. http://www.virusbtn.com/pdf/magazine/2009/200905.pdf.
+[12] Ferrie, P. Virus Bulletin June 2009. Anti-unpacker tricks – part seven. http://www.virusbtn.com/pdf/magazine/2009/200906.pdf.
+[13] Ferrie, P. Virus Bulletin May 2010. Anti-unpacker tricks – part eight. http://www.virusbtn.com/pdf/magazine/2010/201005.pdf.
+[14] Ferrie, P. Virus Bulletin June 2010. Anti-unpacker tricks – part nine. http://www.virusbtn.com/pdf/magazine/2010/201006.pdf.
+[15] Ferrie, P. Virus Bulletin July 2010. Anti-unpacker tricks – part ten. http://www.virusbtn.com/pdf/magazine/2010/201007.pdf.
+[16] Ferrie, P. Virus Bulletin August 2010. Anti-unpacker tricks – part eleven. http://www.virusbtn.com/pdf/magazine/2010/201008.pdf.
+[17] Ferrie, P. Virus Bulletin September 2010. Anti-unpacker tricks – part twelve. http://www.virusbtn.com/pdf/magazine/2010/201009.pdf.
+[18] Ferrie, P. Virus Bulletin October 2010. Anti-unpacker tricks – part thirteen. http://www.virusbtn.com/pdf/magazine/2010/201010.pdf.
+[19] Ferrie, P. Virus Bulletin November 2010. Anti-unpacker tricks – part fourteen. http://www.virusbtn.com/pdf/magazine/2010/201011.pdf.
+[20] Flat Assembler. http://flatassembler.net/.
+[21] DLLHijackAuditKit. v2 http://blog.metasploit.com/2010/08/better-faster-stronger.html.
+[22] A new CWDIllegalInDllSearch registry entry is available to control the DLL search path algorithm. http://support.microsoft.com/kb/2264107/en-us.

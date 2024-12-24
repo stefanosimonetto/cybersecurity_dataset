@@ -1,0 +1,23 @@
+Anti-forensics – live examples, Part 3
+August 29, 2014 in Anti-Forensics, Forensic Analysis, Malware Analysis
+
+I recently spent some time analysing one of the ransomware samples (CryptoWall, md5=73a9ab2ea9ec4eaf45bce88afc7ee87e; thx to Kernelmode.info guys). Looking at the code I came across an interesting routine that the malware author crafted to release memory allocated by malware during run-time. The routine is interesting, because it releases the allocated buffer in a secure way.
+Let’s have a look.
+The function which I called ZeroFreeDecommitRelease is shown below:
+
+The querymem function it refers to is just a wrapper for ZwQueryVirtualMemory, and the rest is I hope self-explanatory (btw. the code is position independent so you see reference to getAPITableOffset which is basically a  function returning a pointer to the sample’s import table allocated somewhere in memory).
+
+There are a few interesting things here:
+
+When the function ZwQueryVirtualMemory is called, it uses the MemoryInformation block which is allocated on the stack; if the function succeeded the data from the buffer is passed to the caller and then the MemoryInformation block is cleaned up by zeroes (using the memset function)
+The ZeroFreeDecommitRelease function:
+
+Is using the querymem wrapper to retrieve information about the block of memory it tries to free; it then tests its page attributes and if it is one of the attributes associated with a writable page it zeroes it first before decommitting it and then releasing it
+It zeroes the whole region – not necessarily the size of the region requested when the memory was allocated, but the actual region (taking care of page boundaries)
+Taking care of PAGE_WRITECOPY shows attention to details as it is not a page attribute that is often used by your average software / malware and could be omitted saving a few bytes of unnecessary code – the inclusion of this flag makes it look like a proper library function
+
+This highlights not only the fact that some malware authors are seasoned developers, but also the fact they pay more and more attention to memory artifacts – buffers allocated by malware during run-time are full of juicy information and often contribute to finding a smoking gun or help in accessing unprotected/unencrypted code and data (e.g. configs) directly from memory. Limiting exposure of such artifacts is a direct challenge to the Locard’s Exchange Principle. It also makes life hard for forensic analysts – relying on dynamic analysis is obviously a daily bread for all of us, but it is simply not enough.
+
+Comments Off on Anti-forensics – live examples, Part 3
+
+Comments are closed.

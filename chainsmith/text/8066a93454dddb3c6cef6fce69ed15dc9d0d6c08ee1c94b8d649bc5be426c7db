@@ -1,0 +1,149 @@
+Persistency in the wild
+2013-05-03
+
+Raul Alvarez
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+Strong encryption and sophisticated algorithms are not necessarily what make a piece of malware persistent. Rather, it is the use of a cocktail of techniques that ensures the longevity of malware in the wild. Raul Alvarez looks at some of the techniques used by W32/Kolab.
+Copyright © 2013 Virus Bulletin
+
+Strong encryption and sophisticated algorithms are not necessarily what make a piece of malware persistent. Instead, it is the use of a cocktail of techniques that ensures the longevity of malware in the wild.
+In this article we look at an example of a piece of persistent malware, W32/Kolab, and some of the techniques it uses.
+
+Obfuscation
+The strength of a lot of malware lies in its encryption and decryption algorithms. However, Kolab uses a simple decryption algorithm, which is not its strong suit. The following is the code listing of the algorithm:
+1: mov  dl, byte ptr ds:[esi+eax]
+add  ebx,1
+sub  dl, byte ptr ds:[ebx+559c7f]
+and  byte ptr ds:[eax+ecx],00
+or   byte ptr ds:[eax+ecx],dl
+sub  ebx,1
+
+jz   short 2
+
+cmp  ebx,ebx
+
+jz   short 3
+
+2: sub  ebx,ebx
+3: inc  eax
+cmp  eax,edi
+
+j
+b   short 1
+
+After decrypting 44,160 bytes of code, Kolab transfers control to the newly decrypted code, which has been placed in previously allocated memory.
+Initially, the malware parses the TIB (Thread Information Block) and then the PEB (Process Environment Block) to acquire the image bases of kernel32.dll and ntdll.dll.
+This is followed by rearranging the API names. Each letter of each API name is collected using the instruction ‘MOV BYTE PTR SS:[EBP+xxx],(letter),’ – an equivalent of seven bytes per letter. The malware uses this simple form of API obfuscation to avoid detection by anti virus software that relies on API heuristic detection.
+
+API resolution
+From the image base acquired earlier, the malware traverses the export table of kernel32 from the very first API names and searches for a match for the string ‘GetModuleHandleA’. It will keep traversing the export table until it finds a match and grabs the equivalent API address.
+Once the GetModuleHandleA API has been resolved, it uses this API to get the kernel32.dll image base. This action is not strictly necessary, since Kolab already has the image base of kernel32.dll. Nevertheless, the GetModuleHandleA API is used to make sure that the right image base is acquired.
+Afterwards, the same process of traversing the API names is performed to get the address of the GetProcAddress API; the rest of the API addresses the malware needs are then easily acquired using this API.
+
+Compression
+COMPRESSION File or data compression is a process of reducing the size of a given piece of data by eliminating redundant bytes. It is a similar technique to packing and archiving, but using a different data manipulation algorithm. Examples of available compression algorithms include: Huffman encoding, run-length encoding and Lempel-Ziv encoding.
+Lempel-Ziv, also known as LZ, is an algorithm for lossless data compression. The compressed data is a minimized version of the original data.
+Kolab uses COMPRESSION_FORMAT_LZNT1, a variation of Lempel-Ziv compression, to compress part of its code and later decompresses it using the RTLDecompressBuffer API. Once the buffer is decompressed, the malware places the code carefully in the current module’s virtual space by computing the alignment of its sections. Chunks of malware code are copied to each properly aligned section. The first (0x400) 1,024 bytes of the decompressed image, including the MZ/PE header, are copied, byte by byte, to the original image located at 0x400000, the original module’s image base. This is followed by copying the rest of the decompressed code to the original image and arranging it in the appropriate sections.
+The final image is the unpacked and decompressed version of the malware.
+
+Dropped file
+After getting the module handle and module name of the malware, the Windows directory is acquired by using the ExpandEnvironmentStringsA API with the %windir% parameter. Kolab uses a hard coded filename for its dropped file: csdrive32.exe. The malware skips the file dropping routine if the current module is already csdrive32.exe running from the Windows directory. Otherwise, it will copy the current module to the Windows directory using the CopyFileA API and change its properties to hidden using the SetFileAttributesA API.
+This is followed by the creation of two registry keys to ensure the malware is executed during start-up:
+Key: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+Value: Microsoft Driver Setup
+Data: %windir%\csdrive32.exe
+
+Key: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\policies\Explorer\Run
+Value: Microsoft Driver Setup
+Data: %windir%\csdrive32.exe
+
+Configuring the firewall
+Controlling the firewall settings of the victim operating system is an activity that is often seen in malware, and Kolab is no exception. As a COM object, the firewall can be controlled by accessing the CLSID, {304CE942-6E39-40D8-943A-B913C40C9CD4}, that is referencing it. Using the CoCreateInstance API, Kolab successfully takes control of the firewall manager.
+After loading the firewall COM object, Kolab disables the firewall by setting up the following registry entry:
+Key: HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile
+Value: EnableFirewall
+Data: 0
+
+The dropped file, csdrive32.exe, is also added as an authorized application by setting up the following registry entry:
+Key: HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile\AuthorizedApplications\List
+Value: [original path]\[original kolab filename]
+Data: [original path]\[original kolab filename]:*:%windir%\csdrive32.exe
+
+Kolab disables the firewall using the first registry entry, and the second one acts as a back up, in case the user turns the firewall on. However, there is a missing piece of information in the second registry entry, without which the registry entry will not work as the author intended (I won’t give details).
+
+Thread #1
+Kolab creates two threads that perform separate functions. Let’s take a look at the first thread.
+Kolab allocates memory for a list of names of AV and security software. The malware checks if any application on the list is actively running in the system by parsing the process list using a combination of the CreateToolhelp32Snapshot, Process32First and Process32Next APIs. If the target process is found, the malware will effectively terminate it (see Figure 1).
+Figure 1. Kolab creates two threads which check for running AV/security applications and analysis tools.
+(Click here for a larger view of Figure 1.)
+The malware will parse the process list completely and check each process against its list of application names.
+Once every process has been checked against the list of application names, the thread will sleep for 5,203 milliseconds then start its function all over again. This is to make sure that no AV or security applications are running on the system.
+
+Thread #2
+Kolab’s second thread performs a similar function to the first. The only difference is the list of application names. The second thread checks the process list against a list of applications that are used for malware analysis, monitoring, cleaning and debugging. Even the registry editor is not safe. If any of these processes are running in the system, Kolab will terminate them.
+After every process has been checked, it will sleep for 1,189 milliseconds, then perform the thread execution again.
+The two threads will keep running until the main thread has spawned a new process, csdrive32.exe, and terminated itself (i.e. the original executable).
+Once the original executable has been terminated, the AV, security, analysis, and fix tools can run properly again. Figure 1 shows a partial listing of the software names mentioned above.
+
+Spawned csdrive32
+The spawned csdrive32 process performs decryption, API resolution and decompression routines similar to those in the original malware execution discussed earlier.
+Afterwards, the new process generates a new set of APIs by resolving them using a series of calls to the GetProcAddress API. The typical resolution of API addresses also includes the loading of the required DLL into memory using the LoadLibraryA API.
+Kolab also resolves Internet-related APIs if it is sure that the infected machine has an Internet connection.
+After performing these routines, the malware checks if it is running as %windir%\csdrive32.exe. If it is, the dropping of files, the firewall configurations, and the running of the two thread routines will be skipped.
+However, it will create another thread.
+
+Thread #3
+The third thread is invoked by the spawned process. It creates redundant mutexes and also performs the bot related activities of the malware as well as other activities, as described in the last part of this article.
+
+Redundant mutexes
+The new thread creates a mutex named ‘jsg28sdgrg2scj’ to prevent multiple instances of the malware. Interestingly, it then creates a second mutex with the same name, ‘jsg28sdgrg2scj’ – since it is identical to the first, the second mutex is redundant (see Figure 2).
+Figure 2. Two mutexes are created with the same name.
+
+Bot-related activities
+After setting up the mutexes, Kolab starts performing the routine that initiates contact with its C&C server. It sends information taken from the computer including the OS and its locale, among other things. It waits for some IRC-like commands to execute other malicious activities.
+The following is a walk-through of how the bot side is implemented:
+The malware initiates the Winsock DLL using a call to the WSAStartup API. It gets the standard host name of the infected local machine using the GetHostName API and uses the resulting host name to acquire the IP address of the local machine by calling the GetHostByName and inet_ntoa APIs.
+After getting the IP address of the local machine, the malware sets up some IRC-like commands for later use (see Figure 4).
+Kolab initiates contact with the C&C server by sending the infected local host’s information. It uses a combination of the country name taken from the GetLocaleInfoA API, the Windows version from the GetVersionExA API, and seven random numbers generated by the rand function (see Figure 3).
+Figure 3. Kolab sends the infected local host’s information.
+If a successful connection is established, the malware will wait for further instructions from the bot master.
+Kolab uses two types of commands. The first set, as shown in Figure 4, look like regular IRC commands, and the second set of commands are mostly customized for the malware.
+Figure 4. Commands used by Kolab.
+The two sets are:
+IRC-like commands: e.g. KCIK, PASS, QUIT, PONG, PING, PRIVMSG, JOIN, NOTICE, PART, and PRRVMSG (as shown in Figure 4).
+Bot-related commands: e.g. login, logout, lo, rm, download, update, gone, threads, scan, advscan, r.getfile, r.new, r.update and r.upd4te.
+The bot master will issue the commands and the client version of Kolab will perform the appropriate action.
+
+Other malicious activities
+The malware also performs the following activities:
+It creates a batch file in the %temp% directory with the name ‘removeMe[four random digits].bat’, which contains the following commands:
+@echo off
+:Repeat
+del “%windir%\csdrive32.exe” > nul
+if exist “%windir%\csdrive32.exe” goto Repeat
+del “%0”
+
+This batch file is used to remove the malware from the system.
+The malware tries to connect to the C&C server, hiiiiii[removed]er.net, which at the time of writing this article, is no longer active. (Just to be safe, I have removed part of the domain name.)
+Some other domain names found within the code are:
+pppppppppppppppppp[removed]m.us
+ppppppppppppppppppppppp[removed]m.us
+pppppppppppp.p[removed]m.us
+ppppppppp[removed]m.us
+obsoletegpp[removed]m.us
+ppp16ptok2pcomphomepaq[removed]m.us
+1p[removed]m.us
+ppppnipp[removed]m.us
+mob[removed]m.us
+
+Wrap up
+Examples of malware that persist in the wild are resistant to detection simply because they have lots of fire power within their code. They have capabilities and features that are not found in their simpler peers. They also are capable of fast updates and of creating new variants on a regular basis.
+Even though Kolab’s encryption algorithm is relatively simple, it possesses other significant attributes. Using compression, terminating important pieces of software, backing up with C&C, controlling the firewall, and smart timing regarding when to remove itself are a good combination for becoming an infamous piece of malware.
+If we can understand each of these pieces of tenacious malware, we might be able to reduce their persistence in the wild.

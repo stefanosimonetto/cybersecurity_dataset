@@ -1,0 +1,101 @@
+A journey into the Sirefef packer: a research case study
+2012-12-03
+
+Tim Liu
+Microsoft
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Sirefef is a fast-paced malware family. It frequently changes its obfuscated packer layer in order to avoid detection by AV scanners and to impede reverse engineering. Tim Liu present the technical processes he and his team followed during analysis and examines the anti-debug/emulation techniques used.
+Copyright © 2012 Virus Bulletin
+
+Since Alureon, we’ve seen Sirefef rise to become the most prevalent rootkit. One challenge this threat poses for the AV researcher is the packer layer, which not only makes analysis difficult, but tests the limits of emulation in several different ways. This paper focuses on our code analysis of the packer layer of one Sirefef variant, and presents the technical and creative process we followed while analysing this threat. The purpose of this research in particular was to document Sirefef’s novel anti-debug/emulation techniques and how they contribute to the malware evading analysis.
+
+Introduction
+Sirefef is a fast-paced malware family. It frequently changes its obfuscated packer layer in order to avoid detection by AV scanners and to impede reverse engineering. This article focuses on one notable variant as a case study. We present the technical process we followed during analysis and examine the anti-debug/emulation techniques used. The SHA1 is: dba147310e514050e100ac6d22cca7f16b6b7049.
+
+First battle ground
+Sirefef’s packer layer can be divided into three parts. This section will cover the first packer layer. Please note that we have only documented the novel tricks we encountered during the analysis, and have not mentioned the more mundane ones.
+
+The mystery of MemoryWorkingSetList
+NtQueryVirtualMemory() has an undocumented function, [MemoryWorkingSetList], which can be used in an anti-debug technique. Let’s take a closer look at the trick.
+The _MEMORY_WORKING_SET_LIST structure has a DWORD list entry member, WorkingSetList, which records memory entry information. The least significant 12 bits for each entry correspond to flags. If the ninth bit (0x100) is set, it corresponds to ‘not written’, so if you place a breakpoint in the page, the bit inverts. Figure 1 shows the trick.
+Figure 1. MemoryWorkingSet flag checking loop.
+ECX corresponds to the memory flag; the ESI contains the value of the virtual address where Sirefef may modify the binary under certain conditions. The ECX value is different (the ninth bit inverts) if you place a breakpoint into the range checked by the code (which is from 33344000 to 33345000 in this sample). If no breakpoint is set, the ECX value after shift is 1, otherwise it’s 0. This memory range represents all the executable code from the entry point to the end of the code section. If the Sirefef sample executes without a debugger attached, the memory flag value (ECX) will be 0x100. Since software debuggers such as OllyDbg generally set a breakpoint at the code entry point by default, they are trapped every time. Skipping this check function, using other debuggers (such as WinDbg), or setting a system breakpoint in the meantime could help to avoid this trap. See the code example shown in Figure 2.
+Figure 2. Debugger check pseudo code.
+
+Creating child processes using native APIs
+Sirefef creates a child process for debugging at the native level. The actual decoding happens in the child process. It first calls the DbgUiConnectToDbg() and DbgUiGetThreadDebugObject() APIs to get the DebugPort for the current thread, then it calls NtCreateProcess() to initialize a new process instance. Finally, RtlCreateUserThread() starts a new thread in the child process for debugging. Figure 3 shows the technique.
+Figure 3. Creating processes using native APIs.
+
+Debugger impeding at the native API level
+Once the child process has been created, a debugging loop is created for debugging incoming messages from the child. The implementation for the debugger is also at the native level. The following APIs are used for this purpose:
+DbgUiWaitStateChange()
+DbgUiConvertStateChangeStructure()
+DbgUiContinue()
+DbgUiStopDebugging()
+Since only one debugger can be attached to a process, other debuggers are blocked by this trick. To solve this problem, we can set the DebugPort to Null or manually invoke DebugActiveProcessStop() later to detach the debugger.
+
+Complex payload decryption
+The actual decryption occurs in the child process. Three obstacles are used to make the decryption complex:
+Memory hash check
+A hash of a specific code section is calculated by a call to RtlComputeCrc32(); the value is used later as a decryption key (RC4). As we mentioned earlier, if the [MemoryWorkingSetList] trick triggered, or any modification has occurred in memory during the analysis, the wrong hash will be generated. Figure 4 shows the memory CRC calculation.
+Figure 4. Memory CRC calculation.
+We can see that the memory range from 333443db to 33344c34 and 33346020 to 33346096 has been calculated to the CRC value. As a result, any modification that happens within those memory ranges will lead to the wrong CRC value.
+The solution? Don’t set any breakpoints during analysis.
+256 single-step exceptions
+Sirefef also uses 256 single-step exceptions to trigger the decryption handling routine in the parent. The decryption routine calculates the value of the first layer key and returns the value to the child. Control switches 256 times between the parent and child, which means that neither process can be simply detached. From Figure 4, we can see that ECX carries the memory CRC value, then the function, which sets the traceflag. This is identified as follows:
+Figure 5. Traceflag function.
+From Figure 5, we can see that the function sets the TF (trap flag) at line 4, then performs an sbb (subtraction with borrow) between EAX and ECX at line 5. The TF triggers the single-step exception and shifts control to the exception handler in the parent. Figure 6 shows the exception handler.
+Figure 6. 256 single-step exception handler.
+We can see that lpContext.EAX is assigned a new calculated value (see the red box), and the TF is set for the original context. The exception handler modifies the EIP two bytes back, thus executing the sbb again, another 256 times. After this is done, the key is stored in EAX. (We also notice that the EDI value contains another RC4 key buffer [RC_keyBuf in the blue box], which is for further decryption and will be discussed in a later section.)
+The solution is… Wait for the last single-step exception to trigger, then detach the process safely after the decryption is complete.
+RC4 algorithm
+The RC4 algorithm is popular in the virus industry nowadays. Sirefef also uses it for producing the first layer final key.
+With the key, we can correctly decrypt the second layer and move onto the second battle ground.
+
+Second battle ground
+The second battle starts in the child process but ends in the parent. The second layer final key is generated at the end of this battle. We’ve listed some notable tricks below:
+
+Debugging parent
+As we already know, Sirefef creates a child process for debugging. However, this is not one-way debugging. The child process also debugs the parent. The child first checks if any debugger is attached to the parent. If it is, the child detaches the debugger and attaches itself. Figure 7 shows the detail.
+Figure 7. Debugging parent.
+We can see that the return value from ZwQueryInformationProcess() is used for checking the debugger. If found, the debugging APIs that follow are used to detach the debugger. So if you are using a debugger on the parent, you may no longer have control of your attempted debugging process since you’ve been forced to detach. Since the two processes are debugging each other, you can’t attach a debugger to either of them. The solution: after a further look into the child debugging loop, we discovered that the child passes some ‘magic value’ to the parent (we will cover this further in a later section). We can simply disable this child debugging thread and manually provide the value needed by the parent ourselves.
+
+The mystery of Exception_Record
+At the end of the battle with the child process, an exception record structure is used to pass the initial decryption key to the parent. Consider Figure 8:
+Figure 8. Int 2D trick.
+As we can see, the Sirefef child process triggers an exception on int 2D (the code fragment comes from the child debugging loop). Int 2D is one popular technique used for anti-debugging. In this case, the ECX register carries a ‘magic value’, which is the initial decryption key. After the exception triggers, ECX is passed to the Exception_Record->ExceptionInformation[1] (which is the magic value) and the parent handler catches the value for further generation of the second layer final key. Figure 9 shows the Exception_Record related to int 2D.
+Figure 9. Int 2D Exception_Record.
+We can see that after int 2D triggers, the magic value is passed to the Exception_Record->ExceptionParameters[1]. Now let’s take a look at the exception handler:
+Figure 10. Int 2D exception handler.
+(Click here for a larger version of Figure 10.)
+The first line passes the ExceptionParameters[1] to EAX, then the RC4 decryption executes. We also notice that the RC_key has been passed to EAX (see the blue box). Remember the EDI key buffer value (actually the RC_keybuf) initialized in the 256 single-step handler? Yes, this one is contained in EAX and participates in the RC4 decryption.
+In order to bypass this trick, we can manually trigger int 2D when the execution first occurs in the child (doing this means that the parent debugger checking routine we mentioned earlier will also not trigger). We are then able to modify the ExceptionParameters[1] in Figure 10 to supply the magic value to the parent.
+
+Third battle ground
+The third and final battle arena occurs inside the parent.
+
+VEH (Vectored Exception Handler) and secret DLL loading
+Sirefef calls RtlAddVectoredExceptionHandler() to install the VEH for handling exceptions rather than using the more typical SEH (Structured Exception Handler). Figure 11 shows the implementation:
+Figure 11. Vectored Exception Handler (VEH).
+After the VEH is installed, Sirefef sets a hardware breakpoint on NtMapViewOfSection() then calls LdrLoadDll(). Since NtMapViewOfSection() is invoked by LdrLoadDll(), the exception will trigger, and the code control shifts to the VEH. The VEH is in charge of the decryption of the DLL in memory, which is loaded last. After the NtMapViewOfSection() returns, the DLL is available to load.
+Figure 12. Secret DLL loading part 1.
+From Figure 12, we can see that the DLL memory section is created first, then the NtMapViewOfSection() address is passed to the thread Context->Dr3 (hardware breakpoint set), then LdrLoadDll() is called. At this stage, the DLL memory section is empty – the section write occurs in the VEH.
+In Figure 13, we can see that the magic value is passed to RC4 again for decryption. Then the image’s characteristic is modified from EXE to DLL in line 5. After that, the NtProtectVirtualMemory() API is called to make the page writeable and executable. Finally, the decryption occurs, starting from 0x33330200.
+Figure 13. Secret DLL loading part 2.
+The trouble with this trick is that the analysis tracing step can be difficult because the hardware breakpoint is set on a sub-function called from LdrLoadDll(). The solution: since LdrLoadDll() will eventually call all the loaded module’s DllMain() functions, we can set a breakpoint at LdrpCallInitRoutine() to continue analysis.
+
+Conclusions
+This article has focused on some novel anti-debug/emulation techniques used in a Sirefef variant’s packer layer. We recorded these observations during our analysis and documented them in detail as a case study. We hope these details will assist other analysts in understanding Sirefef’s anti-debug/emulation techniques and how it contributes to evading analysis.
+
+Acknowledgements
+I would like to acknowledge the considerable contribution of my colleagues Scott Molenkamp and Peter Ferrie.
+
+Bibliography
+[1] Almeida, A. Kernel and remote debuggers. Developer Fusion. http://www.developerfusion.com/article/84367/kernel-and-remote-debuggers/.
+[2] Ferrie, P. The ‘Ultimate’Anti-Debugging Reference. http://pferrie.host22.com/papers/antidebug.pdf.

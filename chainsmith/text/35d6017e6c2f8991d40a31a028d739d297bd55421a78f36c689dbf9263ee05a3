@@ -1,0 +1,79 @@
+Highly Effective Joomla Backdoor with Small Profile
+
+It feels like every day we’re finding gems, or what appear to be gems to us. We try to balance the use of the term, but I can’t lie – these are truly gems. The methods that attackers are implementing are, in some instances, ingenious. I think you’ll agree that this case falls into that category.
+In short, this is a highly effective backdoor that carries small profile, making it High Speed Low Drag.
+Understanding Attackers
+As we’ve discussed in the past, most attackers have a pretty standard workflow when compromising websites. Here’s that process in its simplest form:
+
+Identify point of entry / weakness.
+Exploit the entry / weakness.
+Ensure that they can retain access.
+Cover your tracks.
+
+I agree, nothing earth shattering, but it does help us understand what it is we need to be looking for.
+Many will make the argument that a site is not clear if you haven’t performed some level of forensics to understand what happened. Often this same analysis will lend itself to items 3 and 4 in the list. Reverse engineering their attempts to clean up their traces and finding those backdoors, diamonds in the ruff.
+Unfortunately, this level of forensics is not for everyone and contrary to popular belief it’s not as simple as looking for simple obfuscation. No, these days the backdoors are becoming highly sophisticated, making use of built-in functions and carry little trace of what you might consider to be traditional backdoors.
+What many also don’t realize is how important the third step is. If done correctly, the attacker is able to bypass all your access control mechanisms and work right off your server with little to stop them.
+This post is an example of that, for instance take into consideration these two images:
+Image #1:
+
+Image #2:
+
+Can you pinpoint the difference, or the backdoor?… Is there a backdoor?
+Joomla Specific Backdoor
+The images above are an example of what we recently found.  It’s unfair for us to ask you to pinpoint the difference in these images, besides, the total change is no greater than 304 bytes.
+For those keen eyes out there, you probably noticed the difference in the if statement near the end of Image #2:
+
+if (!in_array($format, $allowable) && !in_array($format,$ignored))
+
+Versus this:
+
+if ($format == '' || $format == false || (!in_array($format, $allowable) && !in_array($format,$ignored)))
+
+For those that are completely lost, it all comes down to how the $format variable is created. For that we have to look here:
+
+$format = strtolower(JFile::getExt($file['name']));
+
+This tell us that the variable is getting the file extension using a Joomla native function called getExt. This function does this:
+
+function getExt($file) {
+$chunks = explode('.', $file);
+$chunksCount = count($chunks) - 1;
+
+if($chunksCount > 0) {
+return $chunks[$chunksCount];
+}
+
+return false;
+}
+
+This getExt function in turn breaks the file name into pieces based on the position of the dot, returning false if there are no dots. If everything is okay, it returns the group after the last dot (i.e. the extension). This is where the canUpload function will check if the extension is part of the allowed ones or not. This goes back to the very first if clause shared above.
+In the second set, you see two additional conditions, if $format is false if it’s empty. That’s then followed by another .OR. operator just before checking if the extension is allowed.
+In these cases, if the extension is empty, or false, or allowed, the file can be uploaded. This is the same thing, right?
+Wow, that one hurt my head too, sorry.. but hang in there.
+In order to make the $format false, or empty, the attacker would need to add a trailing dot to the end of the file, like backdoor.php.. But it’s not that simple, the upload alone won’t make it useable.
+That brings you to the next obvious question, “Fio, if it’s not usable then why the heck did you take us down this path of riddles man?” Glad you asked…
+First, because I probably had one too many beers while writing this.
+Second, it comes down to this code:
+
+function makeSafe($file) {
+// Remove any trailing dots, as those aren't ever valid file names.
+$file = rtrim($file, '.');
+$regex = array('#(.){2,}#', '#[^A-Za-z0-9._- ]#', '#^.#');
+return preg_replace($regex, '', $file);
+}
+
+I mean seriously, have you ever seen code in better shape than this? The lines, the logic, even the commenting…
+
+// Remove any trailing dots, as those aren’t ever valid file names.
+
+And you have to appreciate the irony in the function name, makeSafe. Make a backdoor safe that is going to do anything but make your website safe.
+Here is the kicker, for those that didn’t catch it, this is a valid function inside ./libraries/joomla/filesystem/file.php, a core file of Joomla. This function, by design, cleans out all odd characters from a filename and returns a safe filename. Sound familiar? Remember that trailing dot? Pretty sure that’s unsafe, Joomla core agrees with us, as such it does what it’s supposed to do, makes a previously unsafe file, safe. Ain’t that something?
+Perfect example of a feature that gets abused for bad when it was designed for good.
+The Ever Evolving Landscape
+I chose to share this little gem with the world because it speaks volumes to the evolution in the attacks that we’re seeing. The website security market has turned into a gold rush as of late, but with that growth we have seen new innovation in the way attackers are 1) attacking websites and 2) how they’re retaining control of those same websites.
+This is forcing us to really look deep into the various detection and remediation technologies to better understand how to prevent scenarios like the one described in this post.
+This attack specifically is not something a signature would have ever picked up, it’s tightly integrated and dependent on what most would categorize as “good” code – and by good I mean it’s part of core and designed to do a good thing. Now extend this line of thinking, think beyond core.
+If attackers are starting to look at how “good” code functions and finding ways to manipulate its use, what is to stop them from extending that thought process to code found in your templates, themes, extensions, plugins? This is a real problem that extends far beyond Joomla and will soon plague other CMS applications, if they are not already.
+If you have something to add or share on the post, use the comments we’d love to get your hear from you.
+If you find yourself in a similar situation, suffering repeated attacks or infections be sure to contact us. Whether  you’re infected and need to be cleared, or prefer not to have to deal with this at all, we have a complete security solution to keep your website clean and safe.

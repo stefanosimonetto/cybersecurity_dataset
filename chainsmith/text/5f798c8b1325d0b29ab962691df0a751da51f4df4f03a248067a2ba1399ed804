@@ -1,0 +1,299 @@
+The ZeroAccess money-generating campaign
+2013-08-01
+
+Chao Chen
+Fortinet
+,
+China
+
+Kyle Yang
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+ZeroAccess has evolved steadily in recent years, taking control of millions of compromised computers around the world. Chao Chen and Kyle Yang take a look at three of the ways in which it generates income: browser redirection, click fraud and Bitcoin mining.
+Copyright © 2013 Virus Bulletin
+
+ZeroAccess has evolved steadily in recent years, and today it is one of the top threats to the security of individuals and corporations. With innovative methods of injection and effective protection provided by its rootkit, ZeroAccess has taken control of millions of compromised computers around the world. Based on its large peer to peer infrastructure and a complicated mechanism consisting of servers for bot control and browser redirection, ZeroAccess has launched a campaign for gaining money through browser redirection, click fraud and Bitcoin mining [1]. In this article, we will focus on a module that plays the combined role of redirecting and clicking, as well as starting a Bitcoin miner on the infected machine.
+
+Install and load
+The ZeroAccess installer carries an encrypted list of IP addresses in the P2P network running on port 16471 [2]. The installer injects a dynamic-link library which serves as a loader for downloading and loading modules into the explorer.exe or services.exe process. All of the loaded modules are dynamic-link libraries – in this article we will focus on the one named ‘[email protected]’.
+Figure 1. Loaded modules.
+This module implements three methods for gaining money. The first is to hijack web browser processes, intercepting keywords the user has searched for on major search engines, and eventually redirecting to various malicious websites. In return for bringing traffic and potential clients/victims, the owners of these malicious sites will pay referral fees to the ZeroAccess botnet herder.
+The second method is to conduct click-fraud on advertising services through invisible browsers created on the compromised computers. A click-bot will simulate the behaviour of an ordinary user, opening web pages and clicking on them. By forging the referrer field of each HTTP GET command, ZeroAccess can obtain a share of the profit of the advertising service.
+The third method is to run a Bitcoin miner which will make the compromised machine work hard to accumulate wealth for the botnet herder.
+
+Redirection working mechanism
+In this section we will discuss the architecture and implementation of the redirect-bot. Besides downloading plug-ins, the loader replaces the system library mswsock.dll with a dropped dynamic-link library named Desktop.ini, from which the WSPStartup API is hooked. The fake API will load the redirect-bot into the residing process and invoke the exported function with ordinal 1 – a unique ordinal number that other plug-in modules do not possess. This means that the redirect-bot can remain in all processes of running web browsers and act as a man-in-the-middle in an interactive game of redirection with the compromised user. The loading procedure of the redirect bot is shown in Figure 2.
+Figure 2. Loading the redirect-bot.
+
+Components for redirection
+Several components are deployed by the redirect-bot in order to redirect a user who is searching on search engines such as Google, Bing, Yahoo!, Ask, AOL or ICQ. The relationship among these components is illustrated in Figure 3.
+Figure 3. ZeroAccess’s components for redirection (marked in blue).
+
+A pair of redirectors
+When the redirect-bot is loaded through its ordinal 1 exported function, it will check the command line of the residing process. If the residing process is a browser (Internet Explorer, Firefox, Google Chrome, Opera, Safari, etc.), it will get the entry of the WSPConnect API passed in as a parameter and hook it. Hooking WSPConnect gives the redirect-bot the capability to hijack every socket connection requested by the browser. For each socket on port 80 (HTTP) or port 443 (HTTPS), a pair of cooperating redirectors created by the redirect-bot will act as middlemen between the browser and the website. Redirector A is directly connected with the browser for monitoring all HTTP GET commands, while Redirector B is directly connected with the website for monitoring all HTTP responses.
+Some essential components of the redirectors are described as follows:
+A function table which points to a group of callback functions executed at a series of important points within a redirector’s life: the point at which a connection is established with a browser or a website, the point at which an HTTP packet is sent or received, and the point at which finalization work should be done. All of these callback functions are scheduled by an asynchronous communication mechanism that has been deployed by ZeroAccess since its early stages.
+A socket used to communicate with the browser or website.
+A buffer for sending and receiving data.
+Pointers to each other so that Redirector A can use Redirector B’s socket to send a packet to the website, while Redirector B can use Redirector A’s socket to send a packet to the browser.
+Redirector B, which connects directly to the website, has three buffers which are used to store HTTP packet header information: the complete URL, referrer and user-agent. A double word of Redirector B will record the CRC32 of the referrer in the header of an HTTP GET command sent from Redirector A to the website.
+
+Communicator
+A kind of object, dubbed a Communicator, is used when either of the Redirectors need to send data to the C&C server.
+When Redirector A receives an HTTP GET command from the browser that represents a search request from a major search engine (such requests often contain the string ‘&p=’ or ‘&q=’ in the required URL), it will send information via a Communicator to tell the C&C server the keyword and specific search engine used in the search request. In response, the C&C server will send one or more lines back. Each line contains a redirection URL and a referrer. These redirection URL/referrer pairs will be stored by the Communicator in a local customized database table.
+Redirector B also uses a Communicator to send information to the C&C server, which may result in the browser opening random pages at random times, as described later.
+
+Local database table
+As mentioned before, the redirection URL/referrer pairs received from the C&C server are stored in a local database table. In fact, besides a redirection URL and a referrer, each entry in the table has another piece of data, which is a CRC32. When the compromised user searches for something on a major search engine other than Google, the CRC32 is generated by running an algorithm on the complete URL in the corresponding HTTP GET command. When the user searches using Google, the CRC32 is generated on the basis of the keyword.
+
+Local keyword record file
+This file stores 10 keywords recently searched by the user.
+
+Redirection servers
+The redirection URLs received from the C&C server reveal the redirection servers of ZeroAccess. In most cases, several servers are involved in the process of redirecting to a malicious site. These servers enhance the flexibility of the redirection infrastructure and also make it more difficult to be traced or taken down.
+
+Case study and analysis
+Some examples of referrers and redirection URLs are shown in Table 1.
+Referrer
+Redirection URL
+http://phrasesearch.net/websearch.php?search=money&BtnS=Search
+http://217.23.3.223/AKy4XvnD7U3M4mo7b173f23d8811260c022f402cf1447c0a06k
+http://searchbusinesslistings.net/websearch.php?search=bitcoin+mining&BtnS=Search
+http://195.3.145.109/ivl3nTiX7T4XjRc92aef0e712082736871dce2472a23dbde36A
+http://searchbusinesslisting.com/websearch.php?search=Mining&BtnS=Search
+http://83.133.127.85/Lvn0w36x776xavS9cde097c02309e1b9edd50e71e6d776bf28c
+http://businesslistingsearch.biz/websearch.php?search=money
+http://217.23.3.223/5zV3fwXL5c4M1ZS516dd0a8f88396c40926c142fcd40907d26A
+Table 1. Example referrers and redirection URLs.
+Most of the referrer sites have a similar appearance (Figure 4). Some of the links placed on the home page of these sites are fake and will not lead anywhere, while others will lead to a fake search engine which returns nothing on a search request.
+Figure 4. Similar appearance of the referrer sites.
+During our observation, most redirection URLs eventually led to malicious websites containing malware or to pornographic sites. In the event that the redirection servers fail to find a malicious or pornographic site to direct to, the browser is redirected to www.google.com/webhp.
+In the latest version of this module, the data received from the C&C server is RC4 encrypted. The encryption/decryption key is a string which is the length of received data. For example, if the length of data received is 123 bytes, the decryption key will be the string ‘123’.
+
+Redirection with given referrer
+
+Case 1: Redirecting for search engines other than Google
+When a user searches using a major search engine other than Google, an HTTP GET command is sent to Redirector A from the browser, and Redirector A will report the keyword and search engine name to the C&C server through a Communicator. The redirection URL and referrer returned by the C&C server will be stored in the local database table, along with the CRC32 of the complete URL in the HTTP GET command header.
+After a while, the user clicks a hyperlink from the search result page and a second GET command is sent through a new socket for which another pair of redirectors is ready to work. When Redirector B receives the HTTP response packet from the website associated with the link clicked by the user, instead of passing the packet to browser, it will check whether an entry with the CRC32 of the second GET command’s referrer exists in the database table. Of course it will succeed because the CRC32 has been stored with a redirection URL/referrer pair when processing the first GET command. It is time for redirection now, and the procedure is as follows:
+Step 1: Redirector B forges an HTTP response, causing the browser to navigate to the URL http://{host}/_ylt=3648C868A1DB;{base64_encoded_referrer}-{base64_encoded_url}. Here, {host} is the domain name of the redirection URL, ‘/_ylt=3648C868A1DB;’ is a special mark, followed by the base64-encoded referrer and redirection URL separated by a ‘-’ character.
+Step 2: When the browser sends a GET command for visiting the forged URL, Redirector A will recognize the special mark and send back to the browser another forged HTTP response containing HTML script:
+<script>location.replace(‘http://{referrer}’);
+</script>
+
+Here, {referrer} is the referrer obtained from the C&C server.
+Step 3: When the browser sends another GET command for visiting http://{referrer}, Redirector A will recognize the special mark in the referrer of the GET command and forge yet another HTTP response containing HTML script:
+<script>location.replace(‘http://{url}’);</script>
+Here, {url} is the redirection URL obtained from the C&C server.
+The browser will now send the crucial HTTP GET command whose URL and referrer are set as those given by the C&C server. A page that is not genuinely wanted by the user will be displayed in the browser.
+
+Case 2: Redirecting Google Ad links
+When a compromised user searches on Google, new entries will be added into the local database table. A minor difference is that the CRC32 in an entry is generated on the basis of the keyword searched, rather than the URL. When a Google Ads link is clicked on, Redirector A will query the database table for the keyword contained in the link. If a matching entry is found, Redirector A will forge an HTTP response navigating the browser to http://{host}/_ylt=3648C868A1DB;{base64_encoded_referrer}-{base64_encoded_url} and follow the same steps as described above.
+
+Open random pages at random times
+When a browser is navigating from one site to another, Redirector B will send information via a Communicator to the C&C server. The information includes the URL and referrer in the HTTP GET command Redirector A received from the browser and the 10 most recently searched keywords stored in the local keyword record file. The response from the C&C server, if any, should contain some redirection URL/referrer pairs. For each pair, the Communicator makes a redirection by forging a special URL: http://{host}/_ylt=3648C868A1DB;{base64_encoded_referrer}-{base64_encoded_url} and asking the browser to open it. The length of time between two redirections is set as a random value.
+
+Injecting JavaScript into pages
+Besides the annoying redirection discussed above, the redirect-bot will also inject web pages with a piece of JavaScript, as shown in Figure 5. In the earlier versions of this module, the script was encrypted and hard-coded in the module. By comparison, new versions will retrieve the script from the C&C server.
+Figure 5. Injected JavaScript.
+This script will download several JavaScript files which were originally deployed by the advertising and content delivery services owned by companies such as Admedia, Akamai and CpcHero. When the downloaded scripts are executed, random advertisements will appear on each page and several words will be highlighted with green double underlines that link to a site called ‘sonicsearchonline.biz’, which is a search site with very limited function. The INCL_checkinternals() function in the injected JavaScript specifies some ‘internal’ sites where the injected JavaScript will do nothing. Ironically, when comparing sonicsearchonline.biz with two internal sites, search.runclips.com and search.searchnowdirect.com, we find that they are all mapped to the same IP address (174.137.155.137). The crude and simple home page is shown in Figure 6.
+Figure 6. A crude search site working for ZeroAccess.
+Obviously the three search sites are owned by the gang behind ZeroAccess. When a user redirected to sonicsearchonline.biz searches for something on it, a results page will be displayed – however, only a few entries are shown and there is not even a ‘next page’ button. It seems that only the most commonly viewed entries retrieved when searching on a major search engine are shown here. If the user clicks on a link from the disguised search result page and navigates to a page owned by an advertiser, the advertiser pays a referral fee to sonicsearchonline.biz.
+
+Click fraud working mechanism
+In this section, we will look at how the module acts as a ‘click bot’ [3] to conduct click-fraud using invisible home made browsers. When a module has been downloaded on a compromised computer, the loader will invoke the module’s exported function with ordinal 2. When the exported function with ordinal 2 is called by the loader, the click-bot will inject a copy of itself into an svchost.exe process with the parameter ‘-k LocalServiceDns’ in the command line and call the injected module’s exported function with ordinal 1. The render mode of IE8 is set for svchost.exe by setting register value ‘HKEY_CURRENT_USER\Software\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION\svchost.exe’ as 8000. In addition, a copy of Adobe Flash Player will be downloaded from fpdownload.macromedia.com and installed if the existing version of Flash Player on the compromised machine is too old.
+Figure 7. Start up of the click-bot.
+
+Targeting advertising services
+In the injected svchost.exe process, the click-bot will get ad redirection URLs and referrers from the C&C server to conduct click-fraud. The ad redirection URLs will lead to publisher sites belonging to various advertising services. The fake sites used as referrers are owned by the gang behind ZeroAccess. The click-bot will visit the publisher sites with forged referrers and click on pages automatically, navigating to the landing pages where the advertisers will pay a fee according to a pay-per-click business model. As the referrers that have led users to the publisher sites, the fake sites owned by the cybercriminals will gain a share of the advertising service profit.
+
+Case study and analysis
+Some examples of referrers and ad redirection URLs are shown in Table 2:
+Referrer
+Ad redirection URL
+http://excellent-information.info/search
+http://195.138.241.94/td?aid=6uwa7a4w&said=302904
+http://myownfind.info/search
+http://76.73.80.106/td?aid=6uwa7a4w&said=305006
+http://trustsearchsite.info/search
+http://31.171.128.73/td?aid=6uwa7a4w&said=302904
+http://myown-search.info/search
+http://195.138.241.94/td?aid=6uwa7a4w&said=305006
+Table 2. Example referrers and ad redirection URLs.
+Almost every fake website used by the click-bot as a referrer disguises itself as a search engine. But when you try to search for something, it will not redirect you to a result page. Clearly, these fake search sites are created only for serving as the referrers in the business of click fraud.
+Figure 8. Fake search sites serving as referrers.
+
+Open ad redirection URL with given referrer
+Now let us have a closer look at how the click-bot loads an ad redirection URL with a given referrer in an invisible browser. Figure 9 shows the procedure.
+Figure 9. Procedure of loading an ad redirection URL.
+
+Step 1: Send 406h message
+In the injected svchost.exe process, the click-bot will register a Manager Window which will keep running in a loop, handling messages sent by the main thread of the click-bot. The main thread will also create a Communicator object which will communicate with the C&C server to get several ad redirection URL/referrer pairs. For each ad redirection URL and referrer pair, the Communicator will send a 406h message to the Manager Window, with the ad redirection URL and referrer as parameters.
+
+Step 2: Create an invisible browser object
+When a 406h message is received by the Manager Window, an object we call Click Controller is created for the ad redirection URL and referrer associated with the message. The Click Controller contains the following essential elements:
+Pointers to IWebBrowser2 and IHTMLDocument2 of an invisible browser.
+Interfaces used for displaying and controlling MSHTML documents in the invisible browser:
+DWebBrowserEvents2
+IServiceProvider
+IOleClientSite
+IOleInPlaceSite
+IOleInPlaceFrame
+IOleInPlaceUIWindow
+IOleWindow
+IDocHostUIHandler
+IDocHostShowUI
+IHostDialogHelper
+INewWindowManager
+HttpSecurity
+IInternetSecurityManager
+IOleCommandTarget
+The handle of the container window of the invisible browser.
+A pointer to a buffer storing the domain name of a website.
+Flink and Blink pointers that link together all Click Controller objects in a double-linked list.
+The maximum number of clicks that can be made on a single page.
+The time point when the object should be released.
+The time point before which the next click on a single page should not be made.
+The maximum number of attempts to find a qualified element on a page for the next click.
+Parameters for randomizing the behaviour of the invisible browser. These parameters define the possibilities for the browser to take some actions such as scrolling on a web page, clicking on a child window of the current page window, clicking on a link to a website other than the one being viewed, etc.
+A browser object without a visible user interface is created by calling the CoCreateInstance API, and the DWebBrowserEvents2 interface is implemented by the Click Controller by calling the AtlAdvise API.
+The IOleObject::SetClientSite method is called, setting the client site of the browser as an object implemented by the Click Controller. Through this object, the click-bot can set the frame and document window of the invisible browser to be the rectangle representing the monitor screen.
+
+Step 3: Load ad redirection URL with fraud referrer
+A URL moniker is created with the ad redirection URL, then the IPersistMoniker::Load method is called to load the ad redirection URL into the invisible browser. Executing this method enables the browser to be guided by ad redirection servers and finally to arrive at an ad publisher site.
+Figure 10. Load ad redirection URL.
+To set the referrer field in an HTTP GET command, the string key ‘__DWNBINDINFO’ of the bind context used as a parameter of IPersistMoniker::Load is associated with an object that implements the BeginningTransaction method of the IHttpNegotiate interface. In this method the referrer given by the C&C server is placed in the header of an HTTP GET command.
+Figure 11. Set referrer of HTTP GET command.
+An example of the traffic generated by executing IPersistMoniker::Load is shown in Figure 12.
+Figure 12. Loading an ad redirection URL.
+
+Step 4: Get container window and check website domain
+When a publisher site is eventually arrived at, a NavigateComplete2 event fires, invoking the IOleWindow::GetWindow method where the click-bot gets the container window of the browser. Some randomly chosen links and/or child windows in this window will be clicked later.
+Figure 13. Get container window.
+Then the Click Controller will check where it has arrived. If it finds that it has arrived at Facebook.com or Google.com, it will stop performing click-fraud and release the corresponding browser object along with owned resources and interfaces.
+If the Click Controller finds that it has arrived at a website included in the list below, it will never scroll on the page before choosing a random element to click:
+hollyscoop.com
+thirdage.com
+gourmandia.com
+videobash.com
+egotv.com
+mevio.com
+eyehandy.com
+dailymotion.com
+37millionminutes.com
+celebrityhearsay.com
+clevercoinsonline.com
+wellhabits.com
+brilliantriches.com
+sciencenewsstories.com
+exerciseglobe.com
+hark.com
+clevershares.com
+mommymixing.com
+driverswhoknow.com
+iamcatwalk.com
+wellentertainment.com
+moneyforgenius.com
+modamob.com
+eatstaydrink.com
+stereotube.com
+onlinejournal.com
+filmamexarticles.com
+
+Click on page
+When the Manager Window is created, it creates a timer. The timer is set for every second. As response to the WM_TIMER message, every invisible browser object that has loaded an ad redirection URL with a given referrer will choose and click on an element from the page it contains. The procedure is as follows:
+Figure 14. Procedure for clicking an element on the page.
+
+Step 1: Send WM_TIMER
+A WM_TIMER message is sent to the Manager Window.
+
+Step 2: Notify invisible browsers
+The Manager Window notifies each invisible browser object to make a click.
+
+Step 3: Click an element on page
+Each invisible browser object will try many times until it finds an effective target to click on. At the beginning of each attempt, a hyperlink or a child window with the tag name ‘object’, ‘iframe’ or ‘embed’ is chosen by a randomly generated coordinate. Three kinds of hyperlinks are excluded:
+Any hyperlink containing a string shown in the following list:
+/register
+/contact
+registration
+/Forgotpassword
+/faq
+/flagcontent
+/tweet
+mailto:
+action=embed-flash
+/login
+/password
+/terms
+Any hyperlink containing the character ‘#’, such as <a href=“#object-name”>name</a>, which is a pointer to another id or name tag on the same page.
+Any hyperlink pointing to a jpg image.
+If a matching element is found, the click-bot will click on it.
+Figure 15. Click an element on the page.
+
+Step 4: Set referrer when opening a pop-up window
+In the INewWindowManager::EvaluateNewWindow method, the click-bot loads the URL corresponding with the clicked element in the same way as it loads an ad redirection URL. This time the referrer is set to the URL of the current document. Therefore the referrer given by the C&C server can be spread when the browser navigates from one site to another through the fraudulent clicks.
+Figure 16. Spreading of referrer (marked in yellow).
+
+Handling video and audio
+The click-bot’s mechanism for handling the video and audio on pages is fulfilled by hooking three APIs: WSPSend, WSPRecv and WSPCloseSocket. On receipt of an HTTP packet whose Content-Type is audio, the click-bot will shut down the socket associated with it. The click-bot will allow a browser to receive a video whose size is less than a given threshold. The socket associated with the video will be shut down once the size of data received has exceeded the given threshold. It should be noted that the threshold is 512KB in ordinary cases, but 15MB for videos related to the following advertising services:
+alphabird.com
+adap.tv
+oggifinogi.com
+/tv2n/
+tidaltv.com
+innovid.com
+rovion.com
+liverail.com
+vastvpaidshim.swf
+realmedia.com
+audiencetv
+videoegg.com
+cvads.cvcdn
+spotxchange.com
+ads/
+mixpo.com
+preroll
+gorillanation.com
+[IMPORT]
+aim4media.com
+pointroll
+fwmrm.net
+yumenetworks.com
+edgesuite.com
+tremormedia.com
+youtube.
+
+Bitcoin mining
+Mining Bitcoins involves lots of calculations for generating SHA256 hashes. In order to perform such a tough task, ZeroAccess utilizes the infected machines in a mining pool controlled by its pool server.
+
+Retrieve Bitcoin miner program
+To perform the Bitcoin mining, another module named ‘[email protected]’ is needed. This is a PE file containing only resources. The resource with name ‘#1’ and type ‘#10’ is a modified copy of Ufasoft Bitcoin Miner [4].
+Figure 17. Bitcoin miner in resource of [email protected]
+
+Inject Bitcoin miner
+The bot module will inject the miner into an svchost.exe process, with the following command line:
+“C:\WINDOWS\System32\svchost.exe” -g no -t %u -o http://ooyohrmebh9qfof.com/ -u %s -p %s
+The meaning of the parameters is as follows:
+-g no: do not use GPU for calculating hashes of blocks used in Bitcoin transactions
+-t %u: number of threads used by the Bitcoin miner
+-o http://ooyohrmebh9qfof.com/: address of the pool server which controls the bots joining the same mining pool
+-u %s -p %s: randomly generated user name and password of a bot joining the mining pool.
+
+Start mining
+The copy of the UPX packed Ufasoft Bitcoin Miner is modified by setting the RVA of the entry point to zero in the PE header. In fact, this RVA is just stolen and placed in an area adjacent to where it is supposed to be.
+Figure 18. RVA of miner’s entry point (marked in red).
+The entry point of the Bitcoin miner will be recovered by the bot module at run time.
+
+Conclusion
+ZeroAccess has established an extensive underground service not only for its own use but also for the malicious sites that pay the gang behind ZeroAccess. While the browser redirections are annoying for end-users, the click fraud causes great economic losses for the advertising services. By exploiting the infected machines for Bitcoin mining, the ZeroAccess herder can accumulate enormous wealth with ease. In light of the fast spread and continuous evolution of ZeroAccess, we must assume that the battle against it has only just begun.
+
+Bibliography
+[1] Wyke, J. The ZeroAccess Botnet – Mining and Fraud for Massive Financial Gain. http://www.sophos.com/en-us/medialibrary/PDFs/technical%20papers/Sophos_ZeroAccess_Botnet.pdf.
+[2] Tan, N.; Yang, K. ZAccess detailed analysis. Virus Bulletin, August 2012, p.4. http://www.virusbtn.com/virusbulletin/archive/2012/08/vb201208-ZAccess.
+[3] Daswani, N.; Stoppelman, M.; and the Google Click Quality and Security Teams. The Anatomy of Click bot.A. http://static.usenix.org/events/hotbots07/tech/full_papers/daswani/daswani.pdf.
+[4] Ufasoft Bitcoin Miner. http://ufasoft.com/coin/.

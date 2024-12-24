@@ -1,0 +1,133 @@
+Playing cat & mouse: introducing the Felismus malware
+
+For the past several weeks, Forcepoint Security Labs have been tracking a seemingly low-profile piece of malware which piqued our interest for a number of reasons: few samples appear to be available in the wild; there is no previous documentation referring to the C2 domains and IP addresses it uses (despite the domains appearing to be at least twelve months old); and, if its compilation timestamps are to be trusted, the campaign itself may have been active for at least six months before samples started to surface...
+
+The primary samples examined appear in the wild with filenames mimicking that of Adobe's Content Management System [1] and offers a range of commands typical of Remote Access Tools: file upload, file download, file execution, and command execution.
+Analysis shows the malware overall to be modular, well-written, and to go to great lengths to hinder both analysis efforts and the content of its communications. Its apparent scarcity in the wild implies that it is likely highly targeted. Furthermore, as discussed in this analysis, the good 'operational hygiene' relating to the re-use of email addresses and other similarly traceable artefacts similarly suggests the work of coordinated professionals.
+At the time of writing, both the actors behind the malware and their ultimate intentions remain opaque, but it seems likely that the samples discovered are the 'thin end of the wedge' as far as this campaign is concerned. Forcepoint Labs have named the samples 'Felismus' in reference to the 'Tom & Jerry' encryption key used by the malware.
+Key findings
+
+In instances where the original filename is known, the malware appears in the wild as 'AdobeCMS.exe';
+The malware appears to be modular and capable of self-updating;
+Samples analysed appear to attempt to identify and avoid a large number of AV products;
+Executables and DLLs appear to be written to hamper analysis/reverse engineering efforts;
+Majority of messages to and from C2 infrastructure are encrypted twice with differing keys;
+Many identifiers within the malware (e.g. victim IDs, module IDs, encryption keys) derived from MD5 hashes of other components;
+One human-readable encryption key identified: 'Tom&Jerry@14here';
+C2 infrastructure is active and, at the time of writing, appears to be maintained;
+Threat actors and end-targets remain unidentified at this time.
+
+Analysis
+At the time of discovery, the initial sample (SHA256: e48822e0c5ceae5377100053047e78f015b1ec2372f349eaa9e98f25ba33e4da) had a relatively low detection rate of 9/60 on VirusTotal, triggering only generic/heuristic signatures. Pivoting on various features of this sample revealed a number of additional samples, shown below.
+
+All three of these samples drop the following two DLL files:
+
+These two DLL files export a number of functions:
+
+Note the mis-spelling present in the 'GetCurrtenUserName' function exported by converts.dll.
+When run, all of the samples create an invisible window and register a WindowProc function to it. This function contains the main functionality of the malware, with the original process sending messages to the invisible window in order to execute the following capabilities:
+
+Download a file from a remote server
+Create a text file on the local machine
+Execute a file
+Execute a shell (cmd.exe) command and save the results to disk
+Upload the results of a previously executed shell command to a remote server
+
+The samples examined check for a large number of processes associated with antivirus vendors. The complete list is show below.
+
+While most of these are globally-known vendors, two stand out as less common: Rising AntiVirus [2] is a Chinese vendor of AV and security products with limited presence outside of China (indeed, they discontinued their English-language website in 2013), and VirusChaser [3] is a Korean vendor with a similarly narrow regional presence.
+Network Traffic
+Upon execution, the malware makes a series of innocuous looking HTTP requests to www[]cosecman[]com seemingly designed to look like normal browsing/shopping activity:
+
+(i)   GET /notice/news/items.php?V=ca09a22378d1673b&U= HTTP/1.1
+
+(ii)  GET /notice/news/items.php?V=ca09a22378d1673b&M=f871ff6f939cecf8&U=fe41320b0e4c5d1a
+
+(iii) POST /notice/items/products.php?mobfhvkaqmrmsjjalllpdtkizewqx
+Analysis of these requests and their associated responses show them to be part of the malware's setup process. The 'V' argument passed by the malware in requests (i) and (ii) is encrypted and hard-coded within the three samples discovered. This suggests that it provides a relatively consistent identifier (e.g. campaign or software version) to the C2 server.
+
+The server responds to request (i) with an encrypted string and, within the HTTP headers, an ETag value which is used as the filename of an empty text file. This filename is used to define the victim's machine ID for future communications with the C2 and later as part of an encryption algorithm; if a file with a name matching the format of the ETag already exists, it uses the existing filename rather than replacing it.
+Note: The encryption methods employed vary significantly and are discussed in greater depth later in this article.
+The machine name is defined by generating the MD5 of the ETag and taking only the 'middle' 16 hex digits of this value, e.g. a machine sent ETag '{C599BA7D-A7D0-2846-6005-39A8D50A835E}' would generate an MD5 of '46ea3fa21a69890650089f1c0d4e7170' and use the identifier '1a69890650089f1c' in future communications.
+The encrypted string returned in the body of the response decrypts to the 'converts.dll:f871ff6f939cecf8\r\n'. This comprises the filename of the module to be downloaded and the middle 16 hex digits of the MD5 of converts.dll (e326f756f871ff6f939cecf898d84100). This is included as the 'M' argument passed by request (ii), with the machine ID generated from the filename defined by the ETag being passed as the 'U' argument.
+The converts.dll file is returned by the C2 in response to request (ii).
+
+Request (iii) POSTs a message code (see below), the ETag-generated machine name, and selection of system information to the C2 in the form of an encoded, encrypted string. A decrypted example of the system information returned is shown below. The argument supplied to the products.php page (e.g. ?mobfhvkaqmrmsjjalllpdtkizewqx) appears to be randomly generated by a string function within the code.
+
+At the time of writing, the only observed response to these POST requests is FUez9JqjgAGdO+jPAj5EnA== which simply decrypts to 'OK' and functions as a 'noop' command to the malware.
+Interestingly, analysis of the malware shows that its initial check upon receiving this response is the length of the decrypted string: it assumes any two character string to be 'OK'. Longer responses - i.e. commands being sent to the malware - are expected to be in the format '[commandid]#[arguments]' - e.g. '110#ipconfig'.
+The tables below show the command and message codes identified to date:
+
+Encryption methods
+The malware uses at least three separate encryption methods for its traffic, depending on the type of message. The first method, implemented within HTTPDLL.dll, is used for the decryption of values and traffic relating to the HTTP GET requests (i) and (ii) discussed above. It appears to use an implementation of AES to encrypt the data which is then transmitted in its encrypted format. The key (shown in the image below) is apparently static, at least among the samples tested, and generated by drawing byte values from multiple parts of the binary and performing a number of bitwise operations on them.
+
+Request (iii) itself uses a more complex variant: the cleartext data to be transmitted is AES encrypted using the first 16 hex digits of the MD5 of the ETag filename as a key and then converted to base64. A response code and the machine ID (the 'U' argument seen in request (ii) - is prepended to this in plain text and the whole string is then encrypted and base64 encoded again with the 'Tom&Jerry@14here' key shown below.
+This method is then used for all C2<->Malware communications (e.g. commands, command responses, etc.) except for the straightforward OK/noop response.
+Decryption for the OK/noop response is implemented within converts.dll and uses the hard-coded key 'Tom&Jerry@14here' before converting the result to base64 for transmission. It is unclear why these messages alone use this single-wrapped approach.
+
+Disk activity & log files
+The samples identified dropped the following files to %APPDATA%/Roaming/Microsoft/Security/ when run:
+
+The file named 'data' appears to be used to store the encrypted value returned by the C2 in response to the first HTTP GET request the malware makes.
+The log files generated by the malware consist only of ISO-format date/time stamps and a three letter log code. Only six unique log codes could be generated during sandboxing:
+
+The meaning of these log entries is shown in the table below.
+
+Cosecman & associated domains
+Visiting cosecman[]com reveals what appears to be a copy of the WordPress.org website, albeit with a stylesheet error in all browsers tested.
+
+This error may be a result of files having moved and/or XSS protection present on the 'real' WordPress.org website, as an inspection of the source code of the page shows it to be 'leeching' the majority of the content from the WordPress.org domain.
+
+Based on the download link and blog post referenced on the page referring to WordPress v3.5.1, the source code was likely captured in January 2013 [4].
+At the time of writing, the cosecman[]com domain has been recorded on three IP addresses:
+
+Historical DNS data for these IP addresses shows that a number of additional domains have moved IP address in close-step with cosecman[]com since 2016, all of which return the fake WordPress.org page from 2013 detailed above. Registrant details of these, along with cosecman[]com, are shown below.
+
+All of the details associated with these domains are falsified: the Hong Kong-based telephone numbers are invalid, and the associated street addresses nonexistent. Further to this, the email addresses used to register the domains do not seem to have been used to register any other domains or, indeed, anywhere else online. If the domains are assumed to be related to the same actors and/or campaign based on the close registration timestamps and circumstantial evidence available, this suggests a degree of professionalism and good 'operational hygiene'.
+As of 28 March 2017, three other IP addresses within AS132883 serve the same fake WordPress.org page when sent an HTTP GET request: 103.43.18.102, 103.43.18.106, and 103.43.18.111.
+Of these three, IP address 103.43.18.106 does not appear to be associated with any domains at the time of writing. IP address 103.43.18.102 appears to host a number of additional domains registered with similar fake details to those above:
+
+Unlike the email addresses used to register cosecman[]com and the domains hosted alongside it, all three of these email addresses appear to have been associated with other domains, specifically: kasparcloud[]com (KactsKuang@mail.com); mixtun[]com (kaka.chong@aol.co.uk); and canshone[]com (ThomasMatany@email.com). All three of these older domains appear to have expired in early June 2016, with DNS records suggesting that they were active between October 2015 and April 2016.
+IP 103.43.18.111 is host to the domain qqhodo[]com. This domain differs from the others in that it both appears to have been registered via a domain privacy service instead of using fake credentials and to have hosted content previously indexed by Google:
+
+While the relationship between these IP addresses and domains remains unclear, it can be stated that other IP addresses within the same subnet do not appear to return the fake WordPress.org page. Furthermore, the E-Tag and content last modified dates for all four of the IP addresses identified within the 103.43.18.0/24 subnet are identical, raising the possibility that the IP addresses simply function as reverse proxies for incoming connections, with the 'real' C2 server located elsewhere.
+Protection statement
+Forcepoint customers are protected against this threat via TRITON® ACE at the following stages of attack:
+Stage 5 (Dropper File) - The malware components are prevented from being downloaded and/or executed.
+Stage 6 (Call Home) - The HTTP-based C2 traffic is blocked.
+Conclusion
+The malware analysed appears to be both modular and well-written, strongly suggesting that skilled attackers are responsible, while its apparent scarcity in the wild implies that it is likely highly targeted. On top of this, as observed above, the good 'operational hygiene' relating to the re-use of email addresses and other similarly traceable artefacts suggests coordinated, professional actors and, at the time of writing, there is little to link it with any known campaigns (APT-linked or otherwise).
+The unusual use of the folder name 'datas' and the apparent typo in the function name 'GetCurrtenUserName' stand out. While the latter kind of error is not necessarily unusual in malware samples, it does stand out in what is otherwise a well-written piece of software. The 'datas' folder, on the other hand, may be more revealing in that it suggests that English may not be the authors' first language. It is also potentially worthy of note that all of the samples appear to have been compiled using a version of the open-source TDM-GCC compiler suite [5] dating from December 2014.
+Behaviourally, it is unclear whether the malware's 'resistance' to performing its additional functions (as evidenced by the small number of unique log file entries which could be generated) is a result of the campaign now being dormant or of there being a selectivity about the machines to which the C2 will send further instructions. It is worth noting at this point that the C2 IP address associated with the cosecman[]com domain appeared to selectively block one of our exit IPs during our research.
+If the other modules and capabilities associated with the malware remain a matter of speculation, so too do the intended target(s). Of the five domains hosted on the C2 IP address identified within this post, three - cosecman[]com, nasomember[]com, and unmailhome[]com - have potential associations with the financial services sector; however, under this theory the naming of the remaining two domains - maibars[]com and mastalib[]com - remain unexplained.
+What does feel clear from this analysis is that the malware and its dependent libraries are under active maintenance and that these samples are likely only a part of a larger campaign, the perpetrators and intentions of which remain obscure.
+Indicators of Compromise
+SHA256
+
+e48822e0c5ceae5377100053047e78f015b1ec2372f349eaa9e98f25ba33e4da
+fd760ad4b3251de7ec976f60cdbf45e21f33c4744cc1176c5bba9f2a9e1a622e
+e20aaae703a3f6683d963c1035c10d5db7e460a4a331e2e6ea44308e4f8acf9f
+6d36d346865829e04b54b433d0ee9c07aa3df9ee07285924aef7abc92972ba3d
+6fc68860601f4d2d2c919a7e711bc37b1c4b3ccdaead7835879a9e4d40cddce7
+Domains & URLs
+
+hxxp://www[]cosecman[]com/notice/news/items.php
+hxxp://www[]cosecman[]com/notice/items/products.php
+IP Addresses
+
+103.43.18.105:80
+Files
+
+AdobeCMS.exe
+%APPDATA%/Roaming/Microsoft/Security/httpdll.dll
+%APPDATA%/Roaming/Microsoft/Security/converts.dll
+%APPDATA%/Roaming/Microsoft/Security/logs.txt
+%APPDATA%/Roaming/Microsoft/Security/data
+Footnotes
+[1] http://www.adobe.com/uk/marketing-cloud/enterprise-content-management/web-cms.html
+[2] http://www.rising-global.com/
+[3] https://www.viruschaser.com/
+[4] https://wordpress.org/news/2013/01/wordpress-3-5-1/
+[5] http://tdm-gcc.tdragon.net/
+[6] https://play.google.com/store/apps/details?id=com.polaris.octopus&hl=en
+[7] http://www.securityfocus.com/bid/96783

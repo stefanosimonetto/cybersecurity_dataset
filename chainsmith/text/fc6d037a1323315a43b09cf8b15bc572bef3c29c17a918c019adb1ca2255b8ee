@@ -1,0 +1,185 @@
+Profiling binaries for instrumentation
+2007-08-01
+
+Aleksander Czarnowski
+AVET Information and Network Security
+,
+Poland
+Editor:
+Helen
+
+Martin
+Abstract
+Instrumenting binaries is a technique that is rapidly gaining popularity among security researchers. Profiling the binary beforehand can provide a lot of important information about the target, as Aleksander Czarnowksi explains.
+Copyright © 2007 Virus Bulletin
+
+Introduction
+Instrumenting binaries is an analysis technique that is gaining popularity among security researchers for identifying vulnerabilities or analysing malware. However, before one starts on the instrumentation process it is worth profiling the target in order to better control further analysis. To demonstrate, let me use an example.
+
+The example
+With Visual Studio.NET 2005, Microsoft introduced a buffer overflow protection scheme (enabled by the /GS switch) based on cookies. The idea behind this safeguard is very similar (to say the least) to the Immunix Stackguard solution. There are already a couple of good publications detailing how to bypass both /GS and Stackguard. We will use the code of the /GS safeguard as an example for further discussion.
+
+Rationale
+Quick identification of safeguards within binaries can be important during a security audit of binary objects. It can be helpful either during the instrumentation phase or during a static binary audit based strictly on code analysis.
+When we know that a binary contains /GS buffer overflow protection we can:
+Write an exploit that will bypass /GS (we still need to remember about DEP too!).
+Write a non-executable stack exploit (employing a return-to-glibc style technique).
+Better model the threat profile for the application.
+But wait a minute! Aren’t Windows 2003 and newer versions of Windows compiled with /GS enabled on all binaries? Yes they are, and we have to assume that every driver, library, service and application that comes with a system is /GS enabled. However, the same might not be true for third-party applications.
+The real motivation for this work lies in the binaries compiled by a system integrator deployed in an audited system. To model threats and perform risk-based assessment we need to identify safeguards and evaluate their strength. Finding a third-party binary like a DLL or server application in a tested system certainly requires some kind of analysis. Even if you have access to the source code for those binary objects, not all safeguards or vulnerabilities can be identified at source level. While fixing defects, flaws and errors at the source code level is critical, evaluating the security of executed code cannot be skipped either.
+
+Test set
+There are several different tests that allow quick identification of the /GS safeguard within a binary:
+Test if the binary has been compiled with VS.NET 2005 or newer. If not, then it is not possible for the /GS safeguard to be present – however other similar safeguards could have been deployed (especially if the object is not in PE format but ELF – however this would apply to Unix binaries which are not discussed here).
+Look for the security_init_cookie() function within the code – while the behaviour of the /GS option behaviour has been changed by Microsoft between releases of Visual Studio, the function is still present.
+Analyse the import table for GetTickCount() and other functions to find whether the security cookie is being initialized.
+Search prologs and epilogs of main functions for setting up cookies and checking return address integrity?
+
+Test 1: has the binary been compiled with VS.NET 2005?
+This method has two drawbacks: first, it needs to be upgraded every time a new VS compiler (or service pack) comes out. Secondly, detecting the type of compiler can be time consuming if automatic tools fail to identify the compiler or linker. Unless the binary is protected against disassembly this should not usually happen. Tools like PeID can easily identify the type of compiler. However, identifying the type of compiler still will not tell us whether /GS has been enabled. While it is enabled by default in VS.NET 2005 , a programmer could disable it manually. So this method is not sufficient unless some additional tests are performed.
+
+Test 2: is __security_init_cookie() present?
+The /GS mechanism needs initialization which is performed inside the __security_init_cookie() function. This function takes no parameters and it is called near the original entry point. For example, the Windows Console application that uses _tmain() has the following entry point:
+wmainCRTStartup proc near
+call  __security_init_cookie
+jmp   __tmainCRTStartup
+wmainCRTStartup endp
+So __security_init_cookie() is being called even before SEH has been set up (take a look at the _tmainCRTStartup code to confirm this).
+The compile code of __security_init_cookie() is as follows:
+.text:004018B0 __security_init_cookie proc near ; CODE XREF: wmainCRTStartupp
+.text:004018B0
+.text:004018B0 PerformanceCount= LARGE_INTEGER ptr -10h
+.text:004018B0 SystemTimeAsFileTime= _FILETIME ptr -8
+.text:004018B0
+.text:004018B0   push  ebp
+.text:004018B1   mov   ebp, esp
+.text:004018B3   sub   esp, 10h
+.text:004018B6   mov   eax, __security_cookie
+.text:004018BB   and     [ebp+SystemTimeAsFileTime.dwLowDateTime], 0
+.text:004018BF   and     [ebp+SystemTimeAsFileTime.dwHighDateTime], 0
+.text:004018C3   push  ebx
+.text:004018C4   push  edi
+.text:004018C5   mov   edi, 0BB40E64Eh
+.text:004018CA   cmp   eax, edi
+.text:004018CC   mov   ebx, 0FFFF0000h
+.text:004018D1   jz    short loc_4018E0
+.text:004018D3   test  eax, ebx
+.text:004018D5   jz    short loc_4018E0
+.text:004018D7   not   eax
+.text:004018D9   mov   __security_cookie_complement, eax
+.text:004018DE   jmp   short loc_401940
+.text:004018E0 ;
+¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦
+.text:004018E0
+.text:004018E0 loc_4018E0:   ; CODE XREF: __security_init_cookie+21j
+.text:004018E0   ; __security_init_cookie+25j
+.text:004018E0   push  esi
+.text:004018E1   lea   eax, [ebp+SystemTimeAsFileTime]
+.text:004018E4   push  eax   ; lpSystemTimeAsFileTime
+.text:004018E5   call  ds:
+[email protected]
+; GetSystemTimeAsFileTime(x)
+.text:004018EB   mov   esi, [ebp+SystemTimeAsFileTime.dwHighDateTime]
+.text:004018EE   xor   esi, [ebp+SystemTimeAsFileTime.dwLowDateTime]
+.text:004018F1   call  ds:
+[email protected]
+; GetCurrentProcessId()
+.text:004018F7   xor   esi, eax
+.text:004018F9   call    ds:
+[email protected]
+; GetCurrentThreadId()
+.text:004018FF   xor   esi, eax
+.text:00401901   call    ds:
+[email protected]
+; GetTickCount()
+.text:00401907   xor   esi, eax
+.text:00401909   lea   eax, [ebp+PerformanceCount]
+.text:0040190C   push  eax   ; lpPerformanceCount
+.text:0040190D   call    ds:
+[email protected]
+; QueryPerformanceCounter(x)
+.text:00401913   mov   eax, dword ptr [ebp+PerformanceCount+4]
+.text:00401916   xor   eax, dword ptr [ebp+PerformanceCount]
+.text:00401919   xor   esi, eax
+.text:0040191B   cmp   esi, edi
+.text:0040191D   jnz   short loc_401926
+.text:0040191F   mov   esi, 0BB40E64Fh
+.text:00401924   jmp   short loc_401931
+.text:00401926 ;
+¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦
+.text:00401926
+.text:00401926 loc_401926:     ; CODE XREF: __security_init_cookie+6Dj
+.text:00401926   test  esi, ebx
+.text:00401928   jnz   short loc_401931
+.text:0040192A   mov   eax, esi
+.text:0040192C   shl   eax, 10h
+.text:0040192F   or    esi, eax
+.text:00401931
+.text:00401931 loc_401931:     ; CODE XREF: __security_init_cookie+74j
+.text:00401931                ;  __security_init_cookie+78j
+.text:00401931   mov   __security_cookie, esi
+.text:00401937   not   esi
+.text:00401939   mov     __security_cookie_complement, esi
+.text:0040193F   pop   esi
+.text:00401940
+.text:00401940 loc_401940:         ; CODE XREF: __security_init_cookie+2Ej
+.text:00401940   pop   edi
+.text:00401941   pop   ebx
+.text:00401942   leave
+.text:00401943   retn
+.text:00401943 __security_init_cookie endp
+As you can see this function takes no parameters, so despite the fact that it is being called near the original entry point there is nothing special that could help us in its identification by using calling convention and/or passed parameters. In such a case we need to use the function code as a signature.
+Take a look at this code snippet:
+.text:004018C5   mov   edi, 0BB40E64Eh
+.text:004018CA   cmp   eax, edi
+.text:004018CC   mov   ebx, 0FFFF0000h
+It seems that we can use the 0xBB4OE64E value as a signature. Three bytes further on there is another value we can use in a signature: 0xFFFF0000. If we find such a signature within the code section of a binary it is probable that it contains code for a /GS safeguard.
+We can perform an additional test – take a look at address 0x004018B6:
+.text:004018B6   mov     eax, __security_cookie
+The value of __security_cookie is set to 0x0BB4E64E:
+.data:00403018 __security_cookie dd 0BB40E64Eh
+So we can look for 0x0BB4E64E twice: once in the code section (.text) and once in the data section (.data). If we find both occurrences in both sections we can assume that the binary has been compiled with /GS code. The whole code of the __security_init_cookie() function can also be used as a signature. This method can be extended further by looking for other /GS functions like:
+__security_check_cookie()
+__report_gs_failure()
+Of course, searching a binary for signatures based on initial values will not work if Microsoft changes them in the next compiler.
+Figure 1. Signature used within the __security_init_cookie() function.
+
+Test 3: test for imported functions by __security_init_cookie()
+If you have analysed the compile code of __security_init_cookie() you will already know that it uses the following functions:
+GetSystemTimeAsFileTime(x)
+GetCurrentProcessId()
+GetCurrentThreadId()
+GetTickCount()
+QueryPerformanceCounter()
+This leads us to a simple conclusion: if we find such imports in the Import Address Table (IAT) then there is a chance that the binary contains /GS code. Parsing the IAT table (providing it is not protected and the binary is not compressed) is trivial, reliable and can easily be implemented inside the static binary audit process.
+
+Test 4: prolog and epilog analysis
+This method works very well in the case of dynamic analysis (or code emulation) and can easily be automated. If you are tracing (or ‘stalking’) code you just need to intercept the call instructions. After a call is executed the prolog function can be analysed. However, remember that not every function being called (either by call or by push/jmp) uses the /GS safeguard. Here is an example:
+.text:00401000 Base__demo  proc near  ; DATA XREF: .rdata:const Base::‘vftable’  o
+.text:00401000   push  offset aBaseClass ; “Base class\n”
+.text:00401005   call  ds:__imp__wprintf
+.text:0040100B   pop   ecx
+.text:0040100C   retn
+.text:0040100C Base__demo    endp
+As you can see, this function is even missing the typical push ebp/mov ebp, esp prolog! So look for /GS code only if the function has a standard prolog and local variables are allocated on the stack.
+
+Practice
+Unless you are using dynamic analysis, a combination of test method 3 with test method 2 is the most practical as these don’t require full disassembly of the object.
+Method 4 and looking for the execution of __security_init_cookie() is reasonable during dynamic analysis and doesn’t incur a huge performance hit – especially if you disable the check for /GS code after the first hit of __security_init_cookie() and __security_check_cookie(). Similar rules apply in other cases.
+Profiling can also be used for quick identification of compressed binaries, entry point obfuscation or internal use of strong cryptography.
+
+The process
+We can break up the process into the following steps assuming PE file format:
+Is it a PE file? Check the signature.
+Is it 32- or 64-bit? Assume proper values.
+Is it a .NET managed file?
+Is it a DLL?
+Are loader flags standard?
+Is base address standard? No: could it be some anti-debugging technique?
+Is IAT correct? No: could it be some anti-debugging technique or a compressed binary?
+What entries are in IAT?
+Scan the binary for cryptographic algorithm initialization values.
+
+Final words
+A lot of anti-debugging schemes deploy some of the above techniques to protect application code. While the example described in this article is trivial, profiling can provide a lot of important information about the target we wish to analyse (assuming that the binary is not compressed internally [with UPX or other similar tools], its code is neither obfuscated nor encrypted, and the IAT table is intact).
+Most profiling techniques are easy to implement and time efficient. What’s more important is that they can be built on top of a debugger (like OllyDBG ) or disassembler (like IDA Pro, e.g. the FindCrypto plug-in http://hexblog.com/2006/01/findcrypt.html) to aid the analysis process.

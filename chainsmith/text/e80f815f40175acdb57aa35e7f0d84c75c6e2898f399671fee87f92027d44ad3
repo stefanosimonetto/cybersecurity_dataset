@@ -1,0 +1,118 @@
+Invading the core: iWorm's infection vector and persistence mechanism
+2014-10-31
+
+Patrick Wardle
+Synack
+,
+USA
+Editor:
+Martijn
+
+Grooten
+Abstract
+iWorm is a recently discovered OS X backdoor that affords an attacker complete control of an infected host. In this paper, Patrick Wardle builds upon the latest analyses, and provides a comprehensive technical analysis of iWorm's infection vector and persistence mechanism.
+Copyright © 2014 Virus Bulletin
+
+iWorm is a recently discovered OS X backdoor that affords an attacker complete control of an infected host. Initial reports provided a fairly thorough overview of the malware’s functionality, however iWorm’s infection vector was not identified, and its persistence mechanism was not discussed sufficiently. These reporting shortcomings were (at least partially) remedied by subsequent reports that revealed how the malware both gained and retained access on a host.
+This paper builds upon the latest analyses, and provides a more comprehensive technical analysis of iWorm’s infection vector and persistence mechanism. Armed with this information, users will be able to detect existing iWorm infections and prevent future infections. This is essential, as users may not be able to count on Apple’s anti-malware mitigations (XProtect, Gatekeeper, etc.) to protect them from this threat. More importantly, this analysis reiterates several well established security mantras and provides information that will both educate and safeguard users, even against future threats.
+
+iWorm appears as a riddle
+iWorm was first reported on 29 September 2014 by the Russian anti-virus company Doctor Web [1]. The researchers’ initial analyses provided a decent overview of this ‘multi-purpose backdoor’ [1], briefly describing its capabilities and its unique Reddit-based C&C server location mechanism. Unfortunately, the report left out several pertinent facts, such as the malware’s infection vector, and did not provide specifics as to its persistence mechanisms. Therefore, the remainder of this paper will provide a comprehensive analysis of both iWorm’s initial infection vector and its persistence mechanism. Moreover, suggestions for both the detection and prevention of iWorm infection will be discussed and an open-source tool will be detailed that can enumerate and display persistent OS X binaries generically, including iWorm. This short paper should give readers a comprehensive understanding of iWorm’s infection and persistence mechanisms, and of how to both detect and prevent the malware. Moreover, by covering various best practices, analytic techniques, and a generic detection tool, it is hoped that users will remain secure against other OS X malware as well.
+
+Initial infection vector
+A few days after Doctor Web’s initial reports on iWorm, the owner of Mac security website The Safe Mac reported that he had received an email tipping him off as to the malware’s infection vector [2]. The email described how pirated versions of desirable OS X applications (such as Adobe Photoshop and Microsoft Office) were infected with the malware. In other words, iWorm is ‘a classic trojan – a program which tricks you into installing malware, usually bundled with legitimate software’ [3]. Magnet links to these infected applications were uploaded to Pirate Bay by the user ‘acerprog’ in order to reach a global audience. Although the links have since been removed, the applications were downloaded prior to their removal.
+Figure 1. Links to iWorm-¬infected torrents on Pirate Bay.
+
+Installation: part 1
+As described in the anonymous write-up [3], the installers for the pirated applications contained malicious code that installed the iWorm malware persistently. The write up continued by analysing these applications in order to provide an illustrative overview of the actual infection technique. Here, a few extra (technical) details will be added to paint a comprehensive picture of how iWorm infects a target computer. Specifically, the infected ‘Adobe Photoshop CC 2014 Mac OS X’ torrent will be dissected to reveal iWorm’s installation (infection) and persistence mechanisms.
+Whenever a user launches an application, OS X consults the application’s Info.plist file for the app’s binary. As shown in Figure 2, the Info.plist file for the infected Adobe Photoshop application specified that the ‘Install’ binary should be executed whenever the application was launched.
+Figure 2. Infected application’s Info.plist file.
+Figure 3. Infected installer application.
+The ‘Install’ binary existed in the usual Contents/MacOS folder within the infected application. Oddly, two other binaries (named ‘0’ and ‘1’) were also present within this directory. Their purpose will be described shortly.
+Whenever a user launches the Install.app file (within the ‘Adobe Photoshop CC 2014’ folder), the ‘Install’ binary will be executed. Disassembling this 32-bit Mach-O executable provided an insight into its actions. In short, the ‘Install’ binary simply launched the ‘0’ binary with elevated privileges, then executed the ‘1’ binary before exiting. The former action is illustrated in the disassembly and pseudo-code shown in Figure 4 and Figure 5.
+Figure 4. iWorm installer’s disassembly (IDA).
+Figure 5. iWorm installer’s pseudo-code.
+The use of the AuthorizationCreate() and AuthorizationExecuteWithPrivileges() API functions generated an authorization dialog that would be presented to the user, as shown in Figure 6.
+Figure 6. iWorm installer’s authorization prompt.
+If the user entered their password and clicked ‘OK’, the ‘0’ binary would be executed with elevated privileges. Interestingly, if the user clicked ‘Cancel’, the binary would not be executed, as there is no code within the ‘Install’ binary to handle this scenario. As the ‘0’ binary is malicious, clicking ‘Cancel’ would actually prevent infection.
+Analysis of the two binaries revealed that the ‘0’ binary was a second-stage installer (dropper) for the persistent malware component, while ‘1’ was the legitimate installer for the pirated application (Adobe Photoshop). Spawning the malware dropper with elevated permissions makes sense, as in OS X, unprivileged binaries are fairly constrained and limited in what actions they can perform. Obviously, malware authors prefer for their creations to have free reign over an infected host. If a privilege escalation vulnerability is not used, simply asking the user for their password via an authorization prompt may achieve this privileged state. While the malware dropper is executing, it makes sense to execute the legitimate installer application in parallel. This ensures that the user will not notice that anything is amiss.
+Figure 7 summarizes iWorm’s initial installation phase, showing how the malware can find its way onto a user’s system and gain privileged execution.
+Figure 7. Overview of iWorm infection.
+First, the malware author uploads an infected application to the popular torrent site Pirate Bay. Any user who downloads and runs the infected application will become infected. Of course, the (fully functional) pirated application will also be installed – although that is quite a small consolation for turning over complete control to an unknown adversary!
+
+Installation: part 2
+The last section described how the pirated Adobe Photoshop installer application invoked the ‘Install’ binary, which in turn would execute the ‘0’ binary with elevated privileges. The ‘0’ binary turned out to be a basic malware dropper. First, this dropper created the /Library/Application Support/JavaW/ directory, then it saved 0x29000 bytes from offset 0x00002050 (the start of its _data segment) to a file named JavaW, as shown in Figure 8.
+Figure 8. iWorm dropper writing to JavaW.
+Single-stepping the malware through a debugger provided an easy way to examine the bytes as the dropper was writing them to disk, as shown in Figure 9.
+Figure 9. iWorm dropper (within a debugger), writing bytes to JavaW.
+Ah, good old 0xfeedface, the ‘magic’ number indicating an Intel Mach-O binary – the dropper was saving an embedded binary to disk. Once the embedded binary (‘JavaW’) had been saved, the dropper created a property list within the /Library/LaunchDaemons directory.
+Figure 10. iWorm dropper writing out a launch daemon plist.
+The contents of this plist file are shown in Figure 11.
+Figure 11. iWorm’s launch daemon plist.
+On OS X, there are many ways to ensure that a binary is executed automatically by the OS every time the computer is restarted [4]. For ‘n00bie’ OS X malware writers, launch items (daemons and agents) are the preferred method of persistence. To persist a binary as a launch daemon, one simply has to create a property list (‘plist) within one of the launch daemon directories (e.g. /Library/LaunchDaemons). This plist should contain a dictionary of various key value pairs including the path to the persistent binary and flag (such as RunAtLoad), indicating how and when the binary should be started by the OS. Since the dropper created a launch daemon plist with the RunAtLoad key set to true, the persistent component of the malware (/Library/Application Support/JavaW/JavaW) would automatically be started by the OS on each reboot – persistence achieved!
+Once the dropper had installed the malware persistently as a launch daemon, it executed the malware directly via two calls to the launchctl utility (Figure 12). This native OS utility interfaces with launchd, the ‘system wide and per-user daemon/agent manager’ [5]. The calls to launchctl and arguments passed were observed passively via a simple dtrace script [6].
+Figure 12. iWorm dropper launching iWorm via launchctl.
+The output of the dtrace script showed the dropper first loading, then starting the malicious launch daemon. It should be noted that, because the RunAtLoad key was set to true, the start command was surplus to requirements; the malware was both loaded and started via the first load command [7] (see Figure 13).
+Figure 13. Simplifying the launch of iWorm.
+With iWorm installed persistently (as a launch daemon) and started manually for the first time, the dropper exited.
+
+iWorm proper
+Various online analyses of iWorm, such as [1] and [8], provide a fairly thorough overview of the malware’s capabilities and features. While the goal of this paper is to focus on the infection and persistence of iWorm, several of the more interesting components of the malware will briefly be discussed as well.
+The iWorm binary (‘JavaW’) was packed with UPX. While packers are commonly used by Windows-based malware, amongst OS X malware specimens, this is a somewhat uncommon feature. Unpacking the binary (upx -d JavaW) decompressed it and allowed for analysis to commence.
+As mentioned in the initial report from Doctor Web [1], the malware appeared to have been written in C++. While binaries on OS X are often written in Objective-C, it’s likely that the background of the malware author(s) was Linux-based, and thus C++ was a more familiar language.
+iWorm provides basic backdoor functionality, and contains no worm-like (i.e. self-spreading) capabilities. However, it does have a few tricks up its sleeve. First, in order to locate its command and control (C&C) servers, iWorm queried reddit.com. This query returned ‘a page containing the list of botnet C&C servers and ports published by criminals in comments to the post minecraftserverlists under the account vtnhiaovyd’ [8]. Unfortunately, although several of the subreddits that contained iWorm’s C&C servers (e.g. minecraftserverlists) were banned, others such as ‘ilikedota2’ remained (and remain) online. Since these are still accessible, new iWorm infections are still able to resolve addresses for remote tasking. It should be noted that (other than using Reddit) this is not a novel technique. Other malware, including OS X Flashback, has used online services (such as Twitter) both for determining the location C&C servers and for direct command and control [9].
+Another interesting feature of iWorm is its support for Lua [8]. The malware contained an embedded Lua interpreter that enabled it to execute Lua scripts directly. Such a feature allows the malware author(s) to dynamically (though not persistently) extend the core functionality of the malware by uploading and executing any scripts they desire.
+Figure 14. Snippet of iWorm’s embedded Lua interpreter.
+Interested readers are encouraged to read [8] to learn more about iWorm’s capabilities (e.g. supported backdoor commands) and features (e.g. use of encryption).
+
+goodbyeWorm
+Having gained a comprehensive understanding of iWorm’s infection vector and persistence mechanism (coupled with a high-level overview of its features), it’s time to discuss detection, prevention, and several security ‘best practices’. In this case, the discussion is quite pertinent as Apple’s anti-malware mechanisms did little to protect unwitting users from iWorm infections. Of course, Apple zealots may point out that there is ‘no patch for human stupidity’, and that if users are downloading and running malware manually, the OS doesn’t stand a chance. However, one would hope that the OS’s anti-malware mechanisms would at least provide some level of protection. Unfortunately, Apple’s may provide none.
+According to Apple, the Gatekeeper security feature helps protect Macs from malicious applications that are downloaded and installed from the Internet [10]. Aiming to be the first line of defence, it checks whether downloaded files are digitally signed, and may either warn the user or simply block a downloaded file from executing if it comes from an untrusted source. Contrary to popular belief, Gatekeeper (like XProtect) is fairly limited in the attacks it can prevent. This is due to the fact that Gatekeeper will only examine binaries that contain a quarantine attribute named ‘com.apple.quarantine’. Interestingly, it is the responsibility of the downloading application (e.g. Safari, the torrent client, etc.) to set this quarantine attribute. If the downloading application does not set this, Gatekeeper will remain out of the loop. Unfortunately, many of the torrent clients that are likely to be used to download the infected applications may not set this attribute. For example, uTorrent (a popular OS X torrent client) did not set it, and thus when the infected installer was executed, no Gatekeeper prompt appeared. The malicious file was allowed to run in an uninhibited manner.
+Figure 15. No com.apple.quarantine.
+Of course, had the com.apple.quarantine attribute been set, a Gatekeeper alert would have been raised (since the iWorm installer was not signed) and the malware would have been blocked. This was confirmed by setting the attribute manually, then attempting to re-run the installer application. As expected, this (finally) resulted in Gatekeeper blocking the malicious installer (see Figure 16).
+Figure 16. With the quarantine attribute set, Gatekeeper displays an alert.
+XProtect is Apple’s attempt at an anti-virus product. Implemented within the CoreServicesUIAgent, it uses signatures from /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/XProtect.plist to detect OS X malware. Since it is a static, signature-based AV product, it cannot detect (and thus prevent) new malware samples. Thus iWorm was initially free to ravage a user’s system. To give Apple some credit though, although XProtect could not detect iWorm initially, once the malware had been reported, the company released several detection signatures.
+Interestingly, the signature (shown in Figure 17) will only match (and thus block) the malware’s installer application (‘Install’, sha1: c0800cd5095b28da4b6ca01468a279fb5be6921a). Although two other iWorm signatures were released, these also only detect the installer (variants ‘B’ and ‘C’). This means that existing iWorm infections (e.g. the JavaW binary) will not be detected. Worse yet, like Gatekeeper, XProtect only scans files that have the quarantine attribute set. Thus, if the downloading application (e.g. uTorrent) does not set this attribute, the malware (including its installer) will still be able to execute freely and infect the user’s system.
+Figure 17. XProtect’s iWorm signature.
+(Click here to view a larger version of Figure 17.)
+Figure 18. With the quarantine attribute set, XProtect detects the malware.
+Since Apple seems unable to protect its users or detect the infection, how can users remain safe? First, the obvious: downloading pirated and cracked applications from untrusted sources is a bad idea (at least from a security point of view). As iWorm clearly illustrates, malware authors may use such applications to distribute their malware. Also, applications from untrusted sources that request elevated privileges should be treated with care. If the source cannot be verified, such applications should be avoided. If the application must be run, executing it within a virtual machine under the watchful eye of various profiling tools may be a possible solution.
+Detecting the iWorm infection is actually fairly trivial, as the malware does not employ any rootkit or self-defence mechanisms. Several infection indicators are detailed in Table 1.
+Infection indicator type
+Infection indicator
+Description
+Process
+JavaW
+The persistent iWorm component is named JavaW and runs as a launch daemon.
+Directory
+/Library/ApplicationSupport/JavaW/
+The malware installer creates this directory to contain things such as the malware’s binary (JavaW).
+File
+/Library/ApplicationSupport/JavaW/JavaW
+The persistent iWorm component is named JavaW and is installed into the /Library/ApplicationSupport/JavaW/ directory.
+File
+/Library/LaunchDaemons/com.JavaW.plist
+In order to persist, the malware installer creates this plist file.
+Table 1. iWorm infection indicators.
+Removing the malware from an infected host is trivial as well. The steps shown in Figure 19 (run with elevated privileges) should remove all traces of the infection. Of course, if the malware has installed additional components, other steps may be necessary as well.
+Figure 19. Steps to remove iWorm.
+As Mac OS X continues to increase in popularity, persistent OS X malware such as iWorm is becoming more common than ever. There are many locations on OS X that may be abused for persistence (such as launch daemons), and Apple’s anti-malware mitigations may not protect end-users.
+In order to detect persistent OS X malware generically, a new tool has recently been developed that can enumerate and display persistent OS X binaries. Named KnockKnock, the goal of the tool is simple: to tell you who’s there! Open source [11], and based on an extensible plug-in architecture, it can easily evolve as new methods of persistence are uncovered. KnockKnock can readily detect the presence of iWorm via the malware’s persistence technique.
+Figure 20. Using KnockKnock to detect iWorm generically.
+
+Conclusion
+iWorm is a recent OS X backdoor that allows an attacker complete remote control over infected hosts. As detailed in this paper, iWorm was distributed via infected pirated applications that were hosted on Pirate Bay. When run, it was persistently installed as a launch daemon, which ensured that it would automatically be executed each time the infected computer was rebooted.
+Although users cannot rely on Apple’s anti-malware mechanisms for protection from iWorm, refraining from using pirated applications should keep them safe in this case. More generically, armed with a tool such as KnockKnock, users can detect both current and future persistent OS X threats.
+
+Bibliography
+[1] New Mac OS X botnet discovered. http://news.drweb.com/show/?i=5976.
+[2] iWorm method of infection found! http://www.thesafemac.com/iworm-method-of-infection-found/.
+[3] Mac.BackDoor.iWorm. https://docs.google.com/document/d/1YOfXRUQJgMjJSLBSoLiUaSZfiaS_vU3aG4Bvjmz6Dxs/edit.
+[4] Methods of malware persistence on Mac OS X. https://www.virusbtn.com/virusbulletin/archive/2014/10/vb201410-malware-persistence-MacOSX.
+[5] Man page for launchd. https://developer.apple.com/library/mac/documentation/Darwin/Reference/Manpages/man8/launchd.8.html.
+[6] D-trace script. https://gist.github.com/viroos/1242279.
+[7] What is launchd? http://launchd.info/.
+[8] The Mac.BackDoor.iWorm threat in detail. http://news.drweb.com/show/?i=5977&lng=en.
+[9] Flashback Mac Malware Uses Twitter as Command and Control Center. http://www.intego.com/mac-security-blog/flashback-mac-malware-uses-twitter-as-command-and-control-center/.
+[10] OS X: About Gatekeeper. http://support.apple.com/kb/ht5290.
+[11] KnockKnock. https://github.com/synack/knockknock.

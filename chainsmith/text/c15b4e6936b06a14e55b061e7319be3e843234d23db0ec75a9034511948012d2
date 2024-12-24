@@ -1,0 +1,56 @@
+Analyzing and Cleaning Hijacked Google SEO Spam Results
+
+Blackhat SEO spam comes in many forms, and one of the most nefarious is hijacked search results. This happens when search engines crawl and display unwanted content in the title and description of infected web pages. The negative impact to the infected website cannot be understated. This harms the website’s reputation with visitors and will lead to a warning on the search engine results page (SERP) claiming This Site May Be Hacked. This warning will undoubtedly lower your incoming traffic by a significant amount and affect your ranking position if nothing is done about it.
+Hijacked Search Results
+A website owner contacted us worried about pornographic content showing in Google results for their site. As you can imagine, he was eager to have it removed from his business site. They were already losing countless potential customers and damaging existing relationships. This particular SEO spam not only created bogus meta-data for the main text link and description, it also changed the sitelink snippets (short descriptions of secondary page content) below the client’s initial hyperlinks:
+This is how Google results looked for that site.
+Investigation
+I went ahead and started our cleanup process by scanning the website files and database. A malicious cron job showed up along with a file named .cache.php, but these didn’t appear to be the actual source of the pornographic spam.
+I confirmed this by removing the .cache.php file, clearing the site cache, and then using the curl command in a Linux terminal. This command allows me to view the output of the website in the text with HTTP headers.
+More importantly, it allows me to spoof my user-agent.  This means is I can trick the client’s website into thinking I’m a visitor using a different device, or in this case, that I’m a search engine crawling bot:
+curl -sD – -L -A “Mozilla/5.0 (compatible; Googlebot/2.1;
++http://www.google.com/bot.html)” http://infecteddomain.com/
+
+This command outputs everything that Googlebot (Google’s search engine crawler) would see on the infected domain.
+While parsing through the data I found the disturbing pornographic spam which was undetectable as a normal visitor:
+Pornographic content only visible to Googlebot
+Modified WordPress Core Files
+After cross-referencing the current WordPress installation (with a known good copy from the official repository), I was able to narrow the infection down to two files:
+
+./wp-includes/load.php
+./wp-admin/includes/class-wp-text.php
+
+At first glance, these files may seem pretty harmless. They are just two of the thousands of files that WordPress uses. Fortunately our security analysts at Sucuri are highly experienced with identifying and cleaning WordPress malware.
+./wp-includes/load.php:
+This is a core WordPress file that shouldn’t be modified unless WordPress is updated, or in rare cases of customization. None of the surrounding files were updated, and I recognized this as an immediate red flag. Furthermore, this file runs every time WordPress is loaded in browser, so it’s a common target for hiding malware. The attacker hopes you will focus on the theme files (i.e. header.php, footer.php) and the files in the root of the WordPress install (i.e. index.php, wp-load.php).
+./wp-admin/includes/class-wp-text.php:
+This file is not a WordPress core file, so it should only exist in that directory if the WordPress install was heavily customized. You can always visit https://core.svn.wordpress.org/tags/ for a list of every WordPress version to confirm whether a file or directory comes with the core install.
+At this point, I would like to mention that manually auditing your website files for modifications would be very exhaustive and this is why we recommend using file monitoring.  File monitoring does exactly what it sounds like. It forms a baseline of your current environment and then alerts you to any changes to that baseline (ie: new files, modified files, deleted files, etc.).
+This system would alert you that a new file (./wp-admin/includes/class-wp-text.php) was created and a core file was modified (./wp-includes/load.php). Instead of having to manually go through over a thousand WordPress files, you already know which ones were modified and so can begin there.
+We offer free core file integrity monitoring with our Sucuri security plugin available through the WordPress plugin repository. We also offer a server-side scanner that performs file monitoring and can be added to virtually any website.
+How Does the SEO Spam Get Displayed?
+The file ./wp-includes/load.php was modified by the attacker with a simple trigger telling the web server to also load the file containing the payload (./wp-admin/includes/class-wp-text.php). As mentioned, every time the website is requested by a visitor, WordPress runs the ./wp-includes/load.php file.  Let us look closer to the actual injection within ./wp-includes/load.php:
+(Click to Enlarge)   load.php set to include class-wp-text.php
+At line 669, the malicious include_once function causes the website to load ./wp-admin/includes/class-wp-text.php.
+Note the very large space preceding the injection? Attackers use this to try to hide the injection when someone opens the file. This is why we always use word-wrap to view files, otherwise, the injection would show offscreen and may be missed.
+Now that we know how the malware is loaded…what does ./wp-admin/includes/class-wp-text.php actually do?
+The file contains functions for user-agent, URL referrer, and reverse IP lookups in order to gain more information about the website visitor. This is important to the attacker because they only want to show their pornographic spam data to search engine crawlers. Revealing the spam data to normal visitors would cause the website owner to quickly find out and take action.
+After checking for Googlebot, the file uses a PHP function called file_get_contents which allows PHP files to grab data from various sources. Usually, attackers will use file_get_contents to grab data directly from a URL, and many website malware scanners have signatures to look for this.
+In an attempt to increase obscurity, the attacker used a variable to store the malicious URL, then used @file_get_contents to grab data from the variable while suppressing any errors that the functional call might display. This has the same outcome as if they grabbed the data using the URL directly with the  file_get_contents function, but it helps to evade detection. You can see the malicious URL stored in the $req_uri variable below:
+(Click to Enlarge)  Malicious URL stored in $req_uri
+The payload – in this case, the pornographic spam data – is obtained through the file_get_contents shown above. This is beneficial to the attacker as they do not have to store the thousands of pornographic spam terms in the website files.  If someone scanned the infected website files looking for common pornographic terms they wouldn’t find anything. This is yet another method for evading detection.
+It also allows the attacker to change the spam data on-the-fly simply by updating the content on their malicious URL, instead of having to modify content on the hacked website.
+The malware file then uses a secondary file named template.html (in wp-admin/includes/template.html for WordPress. or libraries/joomla/application/template.html for Joomla). This file contains a crudely generated page that imitates a WordPress website page. Essentially, it’s a homemade template for their own SERP payload injection.
+If you remember the output of the curl command with all of the SEO spam,  here’s what the attacker’s template looks like before the SEO spam is added. It’s formatted to use common meta-tags for search engine optimization, such as Open Graph and<link rel> tags which affects social and search engine results listings:
+Attacker template before spam is added
+Prevention
+Earlier we talked about using file monitoring to accurately detect possibly malicious modifications to existing website files, but how can we actually prevent this from occurring in the first place?
+
+Always use strong passwords for all WordPress users.
+Minimize the number of WP admins.
+Always keep your accompanying software (plugins and themes) up to date.
+Any software that is no longer being used should be removed as soon as possible. Often times an old admin user will be left on a website and neglected, which makes it a great target. This also occurs with plugins, simply disabling a vulnerable plugin does not mean you are safe.
+Use various hardening techniques such as disabling the WordPress theme editor through your wp-config.php and preventing PHP file requests in wp-content/uploads.
+Regularly scan all computers and devices that are used to access wp-admin or any of your hosting environment. Malware on your local computer can either steal your site credentials or piggy-back your connection to inject malware into your website.
+
+Another option to prevent SEO spam infections is to use a cloud-based WAF, like the Sucuri Firewall. Our protection platform helps to virtually harden your site and virtually patch outdated software by preventing exploit requests from ever reaching your web server.

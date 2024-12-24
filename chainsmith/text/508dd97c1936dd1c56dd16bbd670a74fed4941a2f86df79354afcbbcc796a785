@@ -1,0 +1,97 @@
+Evolution of the CookieBomb toolkit
+
+An ongoing, large-scale injection campaign has been raging for the last 6 months. This campaign utilises a toolkit, dubbed CookieBomb (due to its signature use of cookies), which is fascinating not only in its apathy toward a particular platform, but also the code used in the injections, and way in which it has evolved to escape and evade traditional AV platforms and structures. This blog will:
+
+describe the evolution of not only the raw code involved in these attacks, but also the delivery mechanisms with which users are lured to infected, or outright malicious, pages
+
+implicitly highlight the interaction between, and quid pro quo nature of, major threat-actors within the malware ecosphere
+
+describe the use of session Cookies and the etymology of the toolkit name: CookieBomb
+
+outline the use of CookieBomb to drive traffic toward EK infrastructure, directly or via TDS systems
+
+cover the migration from  BHEK to competing EKs in light of the BHEK author's arrest
+
+detail the point at which the campaign forked into two distinct entities
+
+An Injection to Remember
+
+Since June 2013, Websense® ThreatSeeker® Network has been tracking a large-scale injection campaign, dubbed “CookieBomb” due to its reliance on session cookies for redirecting traffic. According to Websense Labs’ telemetry, this campaign has infected tens of thousands of legitimate websites across the web. The exploits themselves are widely varied and no single platform, CMS, or OS is uniquely targeted; rather, the toolkit appears to automatically target a multitude of known vulnerabilities, as well as classic bruteforcing attacks, across multiple surfaces.  The "Malware Must Die!" blog describes the early version of CookieBomb here.
+
+Prehistoric Injections
+
+When this campaign was first identified and investigated by Websense Labs’ analysts, the injections were without any kind of obfuscation, and instead relied on a fairly trivial, yet seemingly effective, method of avoiding static AV detection:
+
+This attack relies on the fact that no iFrame will be rendered until the appropriate JavaScript function is executed, therefore any generic detection targeting iFrames would be rendered ineffective. Of course, this type of injection campaign did not go unnoticed for long and, given its unique properties and structure, it was trivial to provide mitigation for this attack.
+
+Within days of this structure being detected seemingly across the board, the authors shifted tactics and began to lightly obfuscate their code - this leads us to believe the initial campaign was merely an Alpha or Beta test of the toolkit.
+
+The obfuscation, in addition to requiring emulation or similar, was also polymorphic, meaning no two injections resulted in the same obfuscated code. An example of the early obfuscation methods used by these threat actors:
+
+Note: The screenshot was trimmed for space; the variable “z” is actually ~4,500+ characters long.
+
+As is plain to see, this code looks radically different from the initial campaign, and therefore required a little reverse engineering to identify the code as a CookieBomb injection. The code above is designed specifically to frustrate analysis and subsequent detection-creation by the AV community; fortunately, for an experienced analyst, the code is not at all difficult to clean up and beautify:
+
+This decodes precisely into the plaintext code shown in the first image of this blog.
+
+Modifying the obfuscated code
+
+The plaintext code remained almost identical for a significant amount of time, by industry standards – it’s unusual to see identical code ITW (In The Wild) for longer than 24 hours. However this remained the code of choice, for these actors, for several months – indeed, we still see fresh injections which are either the plaintext or obfuscated version of this script. The toolkit, though, has forked into two distinct injections: one for .php scripts, the other for .htm(l) and .js scripts.
+
+The .php injection attempts to avoid static detection by utilising the PHP method: echo – this is used to dynamically write the code to the page:
+
+Notice how the author needed to use substantial escape sequences in order for this code to function correctly.
+
+The JavaScript and HTM(L) injections follow a similar pattern, but make use of classic injection methods (as no such method exists within JS or HTML):
+
+Exploit-chip Cookies
+
+Throughout the injection campaign, regardless of the initial injection type used, the deobfuscated code had one particularly interesting, and consistent, characteristic: the setting of a very specific cookie:
+
+The last segment of code checks to ensure the browser has cookies enabled - it exits the if-block if they're not - it then checks to see if the cookie “visited_uq” is set to the value 55. If it’s not, it sets the cookie appropriately, finally calling the main function, gh09() in this case, which causes the iFrame to be written to the page and executed. When our browser is silently redirected to the iFrame source, a script on the other end checks to ensure that our browser has this session cookie set, using a built-in PHP superglobal variable $_COOKIE. If the appropriate variable is set, depending upon the script used, the browser will either be redirected, again, to another link in the chain, or passed to a script within the same domain – until recently, these would have been part of the Blackhole Exploit Kit (BHEK), covered in-depth here. Once this kit executes, the victim would have had any number of pieces of malware installed on their machine, including, but not limited to: ZeroAccess, Zeus and its clones, Reveton, and various other generic Ransomware kits.
+
+Cookies and Spam
+
+Around the middle of October 2013, Websense ThreatSeeker Network detected a small number of spam messages purporting to offer users products to support and increase their libido:
+
+The body of the message was very simple, plaintext:
+
+This mail is quite clearly spam, however, what is really interesting is the various artifacts within the header itself, specifically this little snippet:
+
+This is a very clear indicator that the source of this message is a spambot or script. When looked over with an experienced eye, it becomes apparent this email may just have come from the Kelihos botnet.
+
+Firstly, let us take a look at the content of the URL within one of these spam messages:
+
+Note: This is extracted from a different URL, as its structure lends itself to easier viewing.
+
+This HTML is hideously malformed and one would expect it not to render in a browser. However, as is evident in the following screenshot, it does, albeit a little on the ugly side:
+
+When this page is loaded into a browser, two things will happen. Firstly, the browser will silently redirect to the iFrame source which is decoded from the obfuscated code present at the head of the script. The browser will then overtly redirect to the spam site via the following code:
+
+This site is classic med-spam, which offers the victim not only their choice in sexual performance-enhancing drugs, but also of having their bank accounts drained by the malicious actors who would receive such details:
+
+And the accompanying protocol errors:
+
+If we take a look at the redirection process in a session debugger, we see that the attempt to redirect to the malicious site fails to load with a 502 response, which is a classic way for a server hosting an Exploit Kit to reject connections from nodes on its blacklists. When a redirect does successfully render (which has yet to occur in the latest incarnation of this campaign), we are no longer redirected to the BHEK – due almost certainly to the recent arrest of its author, Paunch. It appears there’s a migration to other EKs (such as Styx), currently in progress. In the meantime, however, the current URLs, which pointed to BHEK, are, seemingly, refusing all connections:
+
+Success breeds success
+
+After an eventual, successful redirect and exploitation attempt, the user is served up a classic, generic downloader. This downloader grabs, amongst other things, another downloader, which attempts to grab a very suspect named set of binaries, from a number of IPs:
+
+Depending upon a number of variables, the IP queried will either serve a binary or, more likely, serve content such as this:
+
+Clearly, a fake 404 means either the binaries were removed from the host, or our checks did not pass validation and therefore our desired content was not served. Eventually, however, we got what we were looking for: in our case, we were served two encrypted certificates, masquerading as .htm files:
+
+The contents of these samples are clearly encrypted:
+
+However, judging by the behavior of the sample when under debug, it’s most likely these are certificates for C&C communications. Once we’ve established a valid connection to one of our Motherships, we further obtain a binary, named in a similar convention to what we’ve seen above. Once executed, this bot reaches out to its peers, whose addresses are obtained via a hardcoded peer list embedded and encrypted within the bot itself. Once a connection is established, a new spam template is downloaded and loaded into memory – it’s at this point Kelihos begins to show its true nature as an advanced spam bot:
+
+The messages as they appear in Wireshark:
+
+As we can see, his message is incredibly similar to the spam message mentioned above and, indeed, when we view the source code at this URI:
+
+We can see it is of absolutely the same structure, even down to the malformed HTML. We can, therefore, reliably conclude these URLs are part of the same campaign.
+
+Conclusion
+
+Malware evolution is not new: indeed, since the days of Dark Avenger’s polymorphic engine, the Mutation Engine (MtE), obfuscation and evasion have been commonplace within most, if not all malware families. This blog aims to highlight how, in as little as 6 months, a simple tool for delivering Exploit Kits to end users has not only had its code radically altered, but has split into two distinct campaigns. One campaign is as mentioned above, infecting legitimate hosts via the exploitation of vulnerabilities; the other is arguably the most noteworthy – piggybacking on the Kelihos Botnet, which is an incredibly sophisticated and effective spam platform, as a means of exposing end users to EKs via blatantly malicious domains. Whether this tool was exclusively rented by/to the BHEK team, or whether in fact it was coded by them, remains to be seen.

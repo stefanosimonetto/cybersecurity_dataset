@@ -1,0 +1,130 @@
+evilMule in kernel mode – an analysis of the network functionality of Sirefef
+2012-05-03
+
+Chun Feng
+Microsoft
+,
+Australia
+Editor:
+Helen
+
+Martin
+Abstract
+Win32/Sirefef (a.k.a. ZeroAccess) is one of the most prevalent threats in the wild today. Its main component is a kernel-mode driver, which implements a kernel-mode P2P file distribution system to deploy new malware components and upgrade existing ones. Chun Feng describes the design and implementation of this P2P file distribution system.
+Copyright © 2012 Virus Bulletin
+
+Win32/Sirefef (a.k.a. ZeroAccess and max++) is one of the most prevalent threats in the wild today. The main component of Sirefef is the kernel-mode driver, which is dropped by a Sirefef dropper and replaces a chosen Windows device driver. This kernel-mode component of Sirefef is both complicated and advanced [1]:
+It creates a ‘hidden volume’, which is used to store additional malware components. This ‘hidden volume’ cannot normally be accessed.
+It implements a disk-level hook to hide its presence on the affected system – reading from the replaced driver returns the original clean copy; writing to the replaced driver won’t actually change the file.
+It includes a self-defence mechanism to protect itself against security-related software. Any process that attempts to access Sirefef calls ExitProcess() and quits [1, 2] .
+However, the main payload is in the kernel-mode driver – details of the network functionality utilized in recent Sirefef variants haven’t been published to date. A detailed look into the Sirefef driver reveals that it implements a kernel-mode P2P (peer to peer) file distribution system that can be used to deploy new malware components or upgrade existing ones. This article focuses on the design and implementation of this P2P file distribution system (hereafter referred to as P2P system).
+
+Bypass Windows Firewall
+Before Sirefef starts executing its network functionality, it attempts to bypass the Windows Firewall to make sure the traffic won’t be blocked. It does this by:
+Sending an IRP_MJ_DEVICE_CONTROL request with a particular I/O control code to device \Device\ipnat, which is used by the Windows Firewall on Windows XP (as a side effect, Network Address Translation (NAT) is turned off).
+Setting up a symbolic link between \Device\00000033 and a user-visible name for a device used by the Windows Firewall on Windows Vista and later. The symbolic link causes any attempt to access the original device to be redirected to the new one (\Device\00000033). The new device does not interpret the control codes in the correct way, resulting in the firewall not functioning properly.
+
+Peer organization
+In a P2P system, peer discovery is the key to supporting the peer organization, so each peer can be aware of other available peers and keep updated when others join or leave. Sirefef’s peer discovery mechanism utilizes a simple configuration file. The Sirefef dropper drops a configuration file named ‘@’ to the hidden volume, e.g. \??\ACPI#PNP0303#2&da1a3ff&0\@, where \??\ACPI#PNP0303#2&da1a3ff&0 is the path of the hidden volume. (When a host is infected with Sirefef, the dropper posts infection information to a remote server in a .cn domain, which presumably is used to collect infection data and generate the peer configuration file.) The configuration file is a binary file that contains a number of eight-byte pairs – each pair has four bytes for the peer’s IP address followed by four bytes for the timestamp (elapsed time, in seconds, since the beginning of 1980) of the last active time of the peer. When the Sirefef peer starts up, it reads up to 256 pairs from the peer configuration file ‘@’. Each peer generates a unique 32-bit value derived from ExUuidCreate() as its own peer ID, which is used in peer communication (as discussed below).
+The Sirefef peer listens on one TCP port for the incoming command packet, and one UDP port for the incoming peer status change packet. It updates its peer configuration based on the received peer status change packet. The same hard-coded value (e.g. 5207) is used as both TCP port number and UDP port number. Different Sirefef variants may use different hard-coded values, and Sirefef peers only communicate with other peers that are of the same variant as their own, i.e. peers communicating with each other are always listening on the same port number.
+
+Handling asynchronous IRP
+Sirefef uses Transport Driver Interface (TDI) to send and receive TCP/IP packets in kernel mode. Since most TDI operations are asynchronous, TDI IRPs need to be handled asynchronously. Sirefef doesn’t use the commonly used I/O completion routine to handle the completed IRP asynchronously; instead it uses the I/O completion port, which can handle many concurrent asynchronous I/Os more quickly and efficiently [3].
+Sirefef adopts object-oriented implementations when handling the IRP with the I/O completion port. It creates an object in which it saves the connection-related information (e.g. remote peer address etc.). To handle the IRP with the I/O completion port, the IRP is populated as follows (also shown in Figure 1):
+IRP.CurrentStackLocation->FileObject-> CompletionContext->Port is set to a global I/O completion port, so when the IRP is completed, it is queued into this I/O completion port.
+IRP.CurrentStackLocation->FileObject-> CompletionContext->Key is set to the pointer of the aforementioned object as the I/O completion context.
+IRP.Tail.Overlay.AsynchronousParameters.UserApcContext is a ‘multiplexing’ of the TDI operation and the corresponding buffer pointer for this TDI operation: the lowest three bits indicate the TDI operation and the highest 29 bits (the buffer is allocated from the kernel memory pool, so it is always eight bytes aligned, i.e. the lowest three bits are always zero) are used as the pointer to an allocated buffer (e.g. the sending/receiving packet buffer). For some TDI operations – such as TDI_ACCEPT – the buffer is not used and its pointer value is set to zero (see Table 1).
+Figure 1. Handling asynchronous IRP with I/O completion port.
+
+Protocol
+Lowest 3 bits
+Highest 29 bits
+TDI_CONNECT(3)
+TCP
+001(1)
+0
+TDI_LISTEN(4)
+TCP
+001(1)
+0
+TDI_DISCONNECT(6)
+TCP
+100(4)
+0
+TDI_SEND(7)
+TCP
+011 (3)
+Pointer
+TDI_RECV(8)
+TCP
+010(2)
+Pointer
+TDI_SEND_DATAGRAM(9)
+UDP
+010(2)
+Pointer
+TDI_RECEIVE_DATAGRAM(0xA)
+UDP
+001(1)
+Pointer
+Table 1. The multiplexing of UserApcContext.
+A thread is created to keep scanning the I/O completion port for any completed IRP. The thread calls the ‘dispatcher’ functions defined in the virtual function table (VTABLE) of the object stored as IRP.Tail.CompletionKey in the completed IRP. The ‘dispatcher’ function calls the corresponding virtual function defined in the VTABLE based on the TDI operation (the lowest three bits in IRP.Tail.Overlay. AsynchronousParameters.UserApcContext). The VTABLE structure used by the Sirefef object is defined in Figure 2 and Figure 3:
+Figure 2. VTABLE for TCP-related TDI operations.
+Figure 3. VTABLE for UDP-related TDI operations.
+
+Packet structure of the P2P protocol
+Sirefef defines its own packet structure for the P2P protocol used for peer communication. As depicted in Figure 4, all the packets contain a packet header section and a payload section. The header section has a fixed length of 16 bytes and the payload section has a variable length section (four bytes aligned). The header section consists of four fields (each field is four bytes):
+Key: the key used to encrypt/decrypt the packet. Sirefef uses an algorithm (based on the RC4 algorithm) to encrypt/decrypt all the packets sent between peers. The key is usually a hard-coded constant, e.g. 0xCD6734FE (in little-endian byte order).
+Checksum: the CRC value used for integrity check purposes. Usually this is the CRC value of the whole packet (the CRC field is filled with zeros when calculating). Packets received with a bad checksum value are discarded by the peer.
+Command: this indicates which operation (request or response) is made by the peer, which could be one of the following four-byte strings (in little-endian byte order):
+getL
+retL
+getF
+setF
+srv?
+yes!
+news
+Different payload structures are defined for the different commands – these are discussed later.
+Payload length: the length (in bytes) of the payload section.
+Figure 4. The packet structure of the P2P protocol used by Sirefef.
+
+‘getL’ AND ‘retL’ commands
+When a peer starts up, it sends a ‘getL’ command to 64 different remote peers for syncing purposes. The payload section of the ‘getL’ command is only four bytes, which contains the peer ID of the requesting peer (see Figure 5).
+Figure 5. Packet structure of the ‘getL’ command.
+When the remote peer receives the ‘getL’ command, it checks whether the request has come from itself by comparing the peer ID in the packet with its own peer ID. If it hasn’t come from itself, it replies with a ‘retL’ command, which contains its own configuration information. The payload section of the ‘retL’ command consists of two parts (see Figure 6):
+The peer configuration information defined in the file ‘@’. This starts with a four-byte ‘peer count’ field which indicates the number of peer records that follow. Each peer record is eight bytes long: four bytes for the IP address and four bytes for the last active stamp.
+File information. A list of files (up to 16) is stored in the hidden volume’s file store directory (e.g. \??\ACPI#PNP0303#2&da1a3ff&0\U). It starts with a four-byte ‘file count’ field indicating the number of file records that follow. Each record is also eight bytes: four bytes for the file name (the file name is converted to a hex number) and four bytes for the timestamp (which is used as the version number) of the file.
+Thus, the total payload length is 8*(peer count + file count) + 8.
+Figure 6. Packet structure of the ‘retL’ command.
+
+‘srv?’ and ‘yes!’ commands
+When the remote peer receives ‘getL’ and replies with ‘retL’ to send the originating peer its own configuration, it also initializes a reverse sync request to sync from the originating peer. The reverse sync command starts with the command ‘srv?’. The packet structure of the ‘srv?’ command is depicted in Figure 7. The packet structure of ‘srv?’ is similar to ‘retL’, however it doesn’t include the peer configuration information. (File information filed as sent is not used by the receiving peer in current Sirefef variants.)
+Figure 7. Packet structure of the ‘srv?’ command.
+When the requesting peer receives the ‘srv?’ command from the remote peer, it replies with the ‘yes!’ command.
+The packet structure of the ‘yes!’ command is exactly the same as that of the ‘srv?’ command – the receiving peer replies with its own file information.
+
+‘getF’ and ‘setF’ commands
+When the ‘retL’ or ‘yes!’ commands are received by the peer, it initializes a file syncing process with the remote peer. The receiving peer parses the received file information and if a file doesn’t exist locally, or the version of the local copy is older than the remote version, then it sends a ‘getF’ command to sync the file from the remote peer. The packet structure of the ‘getF’ command is depicted in Figure 8. The payload is only four bytes, which is the hex number format of the file name to sync.
+Figure 8. Packet structure of the ‘getF’ command.
+The remote peer replies with a ‘setF’ command to send the file content to the requesting peer. The ‘setF’ command is split into multiple chunks since the whole size of this command can be very large. First, it sends the 16-byte header; the CRC in the header is only calculated on the header itself and doesn’t include the file content, and the payload length is the file length. Then the file content is sent in a number of 0x4000-byte chunks.
+Figure 9. Packet structure of the ‘setF’ command.
+When the requesting peer receives the ‘setF’ command, it saves it with a temporary filename ‘$<hex>’ in the file store folder of the hidden volume (e.g. \??\ACPI#PNP0303#2&da1a3ff&0\U\), where <hex> is an eight-digit hex number. It then sets the ChangeTime, LastAccessTime, LastWriteTime of the file to 0xffffffff; and the CreationTime is set to the same value as the timestamp in the remote peer. So for a certain file, when it is synced from one peer to another, the CreationTime value remains the same – i.e. the CreationTime can be used as the file version number. Once the timestamps of the file have been set successfully, the file is renamed to ‘@<hex>’. The new copy of the file is loaded by Sirefef if the hex number has the most significant bit set (i.e. the value of <hex> is above 0x80000000). Interestingly, Sirefef uses ZwSetSystemInformation (SystemLoadGdiDriverInSystemSpace,…) to load the file. The file is loaded into kernel memory space, then Sirefef calls the entry point code explicitly to execute it.
+
+‘news’ command
+Sirefef peers use the ‘news’ command to send notification of other peers’ status changes.
+When the ‘yes!’ command is received by a peer, it sends a ‘news’ command (UDP) to 64 peers in its peer configuration to inform them of the status change of the peer that sent the ‘yes!’ command. The packet structure of the ‘news’ command is depicted in Figure 10.
+Figure 10. Packet structure of the ‘news’ command.
+The payload length of the ‘news’ packet is 12 bytes. The first four bytes are the IP address of the peer whose status has changed, and the next four-byte Delta is the number of elapsed seconds between the peer receiving the ‘yes!’ command and sending the ‘news’ command (usually it should be 0). The last four bytes are a character, ‘@’ (ascii 0x40), with the other three bytes zero-filled.
+When the ‘news’ command is received by a peer, the receiving peer needs to update the last active timestamp of the peer specified in the ‘news’ command. If the peer’s last active time is older than 120 seconds, then it updates the specified peer’s last active time as ‘CurrentTime - Delta’ then it broadcasts this ‘news’ command to all of the peers in its peer configuration.
+
+Conclusion
+Sirefef is one of the most complicated and advanced rootkits seen in the wild to date. It implements a kernel-mode P2P system which can be used to distribute and upgrade its malware components without using a central server. This distributed P2P malware distribution channel is hard to disrupt, since there is no single takedown point. There are clear signs that the authors of Sirefef are very experienced kernel-mode driver developers, and that they have in-depth knowledge of the Windows kernel – many undocumented tricks have been observed in Sirefef and the code is both robust and performance friendly. We believe Sirefef will continue to be active and prevalent in the near future – we will continue to track and analyse this threat as it develops.
+
+Bibliography
+[1] ZeroAccess – an advanced kernel mode rootkit. http://www.prevxresearch.com/zeroaccess_analysis.pdf.
+[2] Ször, P. Asynchronous harakiri++. Virus Bulletin, October 2011, pp.11–13. http://www.virusbtn.com/virusbulletin/archive/2011/10/vb201110-asynchronous-harakiri.
+[3] I/O Completion Ports. http://msdn.microsoft.com/en-us/library/windows/desktop/aa365198(v=vs.85).aspx.
+
+Appendix
+The interaction procedure between peers is described in Figure 11.
+Figure 11. The interaction procedure between peers.

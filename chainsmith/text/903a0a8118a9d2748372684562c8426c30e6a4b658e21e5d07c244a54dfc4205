@@ -1,0 +1,40 @@
+Joomla SQL Injection Attacks in the Wild
+
+Nov 2016 Update: We released a new free guide to help you identify and remove Joomla hacks.
+Read the Guide!
+Last week, the Joomla team released an update to patch a serious vulnerability on Joomla 3.x. This vulnerability is an SQL injection (CVE-2015-7858) that allows for an attacker to take over a vulnerable site with ease. We predicted that the attacks would start in the wild very soon, due to the popularity of the Joomla platform along with how easy the exploitation was.
+
+Attacks in the Wild – Patient Zero (2015 / Oct / 22)
+We were right. Within 4 hours of the initial disclosure by Joomla and TrustWave, we saw direct attacks against 2 very popular Joomla sites that use our network. The attack tried to extract the current session from any logged in admin user and were blocked by our generic Joomla SQL Injection signatures:
+/index.php?option=com_contenthistory&view=history&list[ordering]=&item_id=75&type_id=1%20&list[select]=%20(select%201%20FROM(select%20count(*),concat((select%20(select%20concat(session_id))%20FROM%20jml_session%20LIMIT%200,1),floor(rand(0)*2))x%20FROM%20information_schema.tables%20GROUP%20BY%20x)a)
+What is very scary to think is that neither of these sites were patched at the time. The disclosure happened on a Thursday afternoon (evening in Europe), when many webmasters were already off for the day. Both sites would be compromised by now, if they were not deploying the defence in depth approach, which in their case, was to use a WAF on top of their site.
+Attacks in the Wild – First Day (2015/Oct/23)
+Within less than 24 hours after disclosure, we started to see Internet-wide scans trying to hit every single site on our network to see if they were vulnerable. They were leveraging 2 types of requests:
+/index.php?option=com_contenthistory&view=history&list[select]=1
+/index.php?option=com_contenthistory&view=history&layout=modal&tmpl=component&
+field=jform_contenthistory&item_id=1&type_id=1
+&type_alias=com_content.article&e11ddf616076d12a929967862cb0dd3c=1&
+list[ordering]=editor&list[select]=
+(select%20group_concat(username,%27|%27,email,%27|%27,name,%27|%27,
+registerDate,%27|%27,lastvisitDate,%27|%27)%20
+from%20jos_users)%20as%20`version_note`
+The first one was just a simple request, not an actual exploit, looking for the default Joomla SQL syntax error page. If the SQL error page showed up, they knew the site was likely a viable target for a follow-up exploitation. The second request, was trying to get the admin user from the jos_users table.
+In both cases, ff the following error was returned:
+
+They knew they had a valid target based on the response. Note that during the first day since the release, the IP addresses we flagged in these attacks were mostly behind the Tor network.
+Attacks in the Wild – Following Days
+Starting over the weekend, attacks on the Joomla SQL injection vulnerability increased, with different attempts and variations being tried against every single site on our network. This is the growth of exploit attempts so far since disclosure:
+
+What we found interesting was that many of the attacks started to check for the Joomla version before running the exploit payloads:
+82.146.39.190 – – [26/Oct/2015:05:55:03 -0400] “GET /plugins/system/cache/cache.xml HTTP/1.1” 200
+If the cache.xml returned a version over 3.x they would run the payload to try to get the admin session or a valid admin user:
+82.146.39.190 – – [26/Oct/2015:12:18:29 -0400] “GET /?view=history&list[select]=extractvalue(rand(),concat(0x3a,(sElect(EXP(2))),0x3a,user()))&option=com_contenthistor
+This likely saves them time with false positives and increases the odds of a successful exploitation attempts. Based on this pattern, it’s a very clear example of how basic automated scans can be adjusted to look for version numbers before applying more nefarious actions.
+We are also seeing attacks leveraging the GoogleBot user agent, so do not get fooled by that. Googlebot would not try these types of requests:
+176.111.109.92 – – [26/Oct/2015:13:03:47 -0400] “POST /index.php HTTP/1.1” 403
+User Agent: “Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)”
+BODY:option=com_contenthistory&view=history&list[select]=testsearch
+Patch Now!
+If you have not patched yet, do it now! We can’t stress this enough!
+This data tell us is that the average webmaster has less than 24 hours to patch a site after a serious disclosure like this. That’s for the average website (small to medium size). If you have a popular site, you have only a couple of hours from disclosure to attack, so you have to react fast.
+This is why we emphasize the importance of Defense in Depth. You can not just rely on being updated as your only layer of security. With the proper access control, monitoring, Intrusion detection and prevention system, you can be ahead when cases like this happen or even a 0-day exploit. In this specific scenario, security mechanisms that blocked generic SQL Injections and evasions, prevented the worst from happening.

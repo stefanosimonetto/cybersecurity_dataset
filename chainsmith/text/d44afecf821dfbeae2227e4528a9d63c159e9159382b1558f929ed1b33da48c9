@@ -1,0 +1,364 @@
+Meet Remaiten – a Linux bot on steroids targeting routers and potentially other IoT devices
+ESET researchers are actively monitoring malware that targets embedded systems such as routers, gateways and wireless access points. We call this new threat Linux/Remaiten.
+
+Michal Malik
+
+Marc-Etienne M.Léveillé
+
+30 Mar 2016 - 02:49PM
+
+ESET researchers are actively monitoring malware that targets embedded systems such as routers, gateways and wireless access points. We call this new threat Linux/Remaiten.
+
+ESET researchers are actively monitoring malware that targets embedded systems such as routers, gateways and wireless access points. Recently, we discovered a bot that combines the capabilities of Tsunami (also known as Kaiten) and Gafgyt. It also provides some improvements as well as a couple of new features. We call this new threat Linux/Remaiten. So far, we have seen three versions of Linux/Remaiten that identify themselves as versions 2.0, 2.1 and 2.2. Based on artifacts found in the code, the authors call this new malware “KTN-Remastered” or “KTN-RM”.
+
+In this blog we will describe the unique spreading mechanism of Linux/Remaiten, its different features, and the differences between the versions found in the wild.
+
+Improved spreading mechanism
+
+A prominent feature of Linux/Gafgyt is telnet scanning. When instructed to perform telnet scanning, it tries to connect to random IP addresses reachable from the Internet on port 23. If the connection succeeds, it will try to guess the login credentials from an embedded list of username/password combinations. If it successfully logs in, it issues a shell command to download bot executables for multiple architectures and tries to run them. This is a simple albeit noisy way of infecting new victims, as it is likely one of the binaries will execute on the running architecture.
+
+Linux/Remaiten improves upon this spreading mechanism by carrying downloader executables for CPU architectures that are commonly used in embedded Linux devices such as ARM and MIPS. After logging on via the telnet prompt of the victim device, it tries to determine the new victim device’s platform and transfer only the appropriate downloader. This downloader’s job is to request the architecture-appropriate Linux/Remaiten bot binary from the bot’s C&C server. This binary is then executed on the new victim device, creating another bot for the malicious operators to use.
+
+Downloader technical analysis
+
+The Linux/Remaiten downloaders are small ELF executables embedded in the bot binary itself. When executed on the victim’s device, they connect to the bot’s C&C server and send one of these commands, followed by a new line:
+
+mips
+mipsel
+armeabi
+armebeabi
+
+The C&C will respond with an ELF bot binary for the requested architecture. Note that the TCP port used to connect to the C&C server is different from IRC server of the bot shown later.
+
+Figure 1 – Downloader requesting a bot binary from the C&C
+
+Figure 2 – Downloader connecting to C&C
+
+The downloader’s only job is to send one of the mentioned commands to the C&C server and write the response to stdout. In the case shown here, the command is mips.
+
+Figure 3 – Downloader requesting a mips architecture bot from the C&C
+
+Bot analysis
+
+When executed, by default, the bot runs in the background. Running it with the “-d” switch instructs it to stay in the foreground. Once started, the process changes its name to something that looks legitimate such as “-bash” or “-sh”. We have seen “-bash” used in versions 2.0 and 2.1, and “-sh” in version 2.2.
+
+Figure 4 – Bot startup
+
+Next the function create_daemon will create a file named “.kpid” in one of the predefined daemon directories (the first one it finds having write permissions) and write its PID to this file:
+
+Figure 5 – Daemon file directories
+
+If the “.kpid” file already exists, the already running malware process is killed based on the PID contained in the file. The file is then removed before a new “.kpid” is created, and the execution continues normally.
+
+Figure 6 – strace of the daemon pid file creation
+
+Connecting to the C&C
+
+There is a list of C&C server IP addresses hardcoded in the bot binaries. One is chosen at random and the bot connects to it on a hardcoded port. The port changes from one variant to another.
+
+Figure 7 – Bot connecting to a C&C server
+
+If it successfully reaches the C&C server, the bot then checks-in on the IRC channel. The C&C should reply with a welcome message and further instructions. These instructions will be parsed and executed by the bot on the infected device.
+
+Figure 8 – C&C bot welcome message
+
+IRC command handling
+
+The bot can respond to various general IRC commands. They are listed in an array together with their function handler:
+
+Figure 9 – IRC commands
+
+The most interesting of these is the “PRIVMSG” command. It is used to instruct the bot to perform its various malicious actions such as flooding, downloading files, telnet scanning and so on. The commands that can be sent via “PRIVMSG” are also in a static array.
+
+Figure 10 – Available bot commands
+
+Most of these capabilities are from Linux/Tsunami with the remainder from Linux/Gafgyt. Here are some examples of the strings in the binary related to its malicious behavior. They have verbose descriptions which makes it quite easy to understand what they do.
+
+Figure 11 – Flooding capabilities
+
+Figure 12 – Telnet scanning, downloading a file, killing other bots
+
+Embedded downloader
+
+As we mentioned before, Linux/Remaiten is unique in that it carries multiple small downloaders and can upload them to the victim device if its architecture matches one of the available downloaders. When executed, the downloader will request a bot binary from the C&C server.
+
+Figure 13 – Embedded payloads
+
+Figure 14 – Payload structure
+
+Telnet scanner
+
+Figure 15 – Guessing telnet login credentials
+
+Remaiten’s telnet scanner starts when the C&C server issues the command “QTELNET”. Analysis reveal the description of that command by the malware author is correct: it is indeed an improved version Gafgyt’s telnet scanner.
+
+Telnet scanning is done in stages that can be boiled down to:
+
+Choose a random public IP address and connect to it on port 23
+Try username/password combinations
+Discover the victim’s architecture
+Send and execute the correct downloader
+
+The architecture is discovered by executing “cat $SHELL” on the victim’s device and parsing the result. The SHELL environment variable contains the path to the executable currently acting as the command line interpreter. If that file is an ELF executable, its header is parsed to determine its architecture.
+
+Figure 16 – Discover victim’s platform & check if downloader for the platform is available
+
+Figure 17 – Part of the function that parses the ELF header
+
+The bot will then choose the correct payload to send to the new victim device.
+
+Figure 18 – The function that chooses a payload based on the victim device’s architecture
+
+The first step is to find a writable directory. Linux/Remaiten has a list of the common paths where it should be able to write.
+
+Figure 19 – List of directories where the downloader might be saved
+
+Several empty executables are created: “.t”, “retrieve” and “binary”. The “retrieve” file will contain the downloader and “binary” the requested bot from the C&C server. The file “.t” file does not seem to be used in versions earlier that 2.2.
+
+Figure 20 – Prepare for payload transfer and its execution
+
+Linux/Remaiten has a strange way to create empty executable files: it copies the busybox binary (found on most embedded devices) and then empties it with the >file command.
+
+The downloader is transferred via telnet by issuing echo commands with each byte hex-encoded with the “\x” escape sequence. We have seen this technique before being used to spread malware between embedded Linux devices, such as in Linux/Moose.
+
+Figure 21 – Transfer the payload hexstring with echo
+
+Now that the downloader has been transferred, it will be launched to fetch the full Linux/Remaiten payload. The downloader requests a bot binary from the C&C and writes it to standard output, which is redirected to the “binary” file by the deployment command. Finally, the “binary” file is launched and voila, the new IRC bot is active.
+
+Figure 22 – Execute the downloader and the bot
+
+Send status to the C&C
+
+Before resuming the telnet scanning, the bot informs the C&C server of its progress. It sends the new victim device’s IP address, the successful username and password pair, and whether it infected the other device or not. Perhaps the botnet operators infect devices manually if the automatic method fails or collect statistics on the popularity of non-supported architectures?
+
+Figure 23 – Inform the C&C about the bot deployment status
+
+Killing other bots
+
+Another interesting command is “KILLBOTS”. When issued, the bot will enumerate running processes and decide which to ignore and which to kill based on a few criteria, but mainly because of their names. These process names can differ across bot versions.
+
+Figure 24 – A list of process names to kill
+
+Figure 25 – A list of process names to ignore
+
+Linux/Remaiten will only kill processes that were started from an interactive shell by looking at the process’s tty device number. It will also report the name of the killed process to its C&C server, perhaps to improve their whitelist and blacklist of process names.
+
+Figure 26 – The bot-killing process
+
+Linux/Remaiten change log
+
+There are mostly just minor differences between bot client versions, such as additional process names to kill/ignore, downloader directories, and so forth. It is reasonable to assume that these and others can change with each build, even if the version mentioned in the strings stays the same. The downloader binaries embedded in the bot are the same in the versions we have analyzed except for the hardcoded IP addresses and port.
+
+One major difference in v2.2 is the fact that it also executes a wget/tftp command to download a shell script that downloads the bot binaries, just like Gafgyt usually does. The spreading code will try this method before transferring the downloader.
+
+Figure 27 – Inform the C&C that the bot was deployed via wget/tftp
+
+The shell script is distributed via another server, which was also providing the popular Gafgyt bots.
+
+Figure 28 – Shell script distributed via another server
+
+By looking at the al.sh file, this was the first time we stumbled upon bots for platforms such as PowerPC and SuperH. Although there are tools to cross-compile for multiple architecture, it is surprising to see the actors when into the trouble of compiling their malware for these architectures. They are ready for any situation. We are not sure what device is running under PowerPC or SuperH.
+
+Figure 29 – Bots downloaded by the shell script
+
+Figure 30 – Beginning of the shell script
+
+The C&C server used for version 2.0 had an unexpected welcome message: It contained a reference to the MalwareMustDie blog.
+
+Figure 31 – Version 2.0 C&C MalwareMustDie reference
+
+Perhaps it is a way to take revenge: MalwareMustDie is publishing a lot of details about Gafgyt, Tsunami and so on.
+
+Indicators of compromise
+
+Bot samples
+
+Version 2.0
+
+SHA-1
+ESET Detection name
+
+2ff0b69bc5aaca82edb6a364ee9f6ad3c5fdd71c
+Linux/Remaiten.A
+
+bd8256d469aa42c6c57e8e6f91ef5b4782bd2cb7
+Linux/Remaiten.A
+
+3b233834ee962adb111a002bb64e594175e7c1e2
+Linux/Remaiten.A
+
+52210b49c47c6ad6fe34c70d6faf49e2763c0d9d
+Linux/Remaiten.A
+
+11807e5aa5dc1c14f8d509ea410eeb778896830d
+Linux/Remaiten.A
+
+Version 2.1
+
+SHA-1
+ESET Detection name
+
+e097c882eda2bd508dd9a3be72efce6fd2971f11
+Linux/Remaiten.B
+
+d4d70d0022e06b391b31195c030ac9bc6e716cce
+Linux/Remaiten.B
+
+2e901502263d50c1ab65e7516bb8534c28d41265
+Linux/Remaiten.B
+
+b9d8b993943872a19a1d4838570d7dcc9f374c20
+Linux/Remaiten.B
+
+977efab8a7cce22530c3bdeca860a342e232eeb3
+Linux/Remaiten.B
+
+Version 2.2
+
+SHA-1
+ESET Detection name
+
+0e5b982c8d55b78582da733d31e8b652c9da9f6e
+Linux/Remaiten.C
+
+4e2dfcd4a3e14b05b268b4a6df76479984932675
+Linux/Remaiten.C
+
+9f5f24bda7af3ed95c72c9b77d5a9c5807ca1be9
+Linux/Remaiten.C
+
+35b00e2243157171be6a7d7bc9b32f98805dcd35
+Linux/Remaiten.C
+
+537f8847d786923a9401889e6ee23675d96f2692
+Linux/Remaiten.C
+
+eefa249de2f7f08bcf4629d3e2055b06f1d74ae3
+Linux/Remaiten.C
+
+f3c4a7e8785355894482bce4f791d92e1c1da5b2
+Linux/Remaiten.C
+
+46cd369bce4f6a41d8863c46dd778c1b1c4f8df0
+Linux/Remaiten.C
+
+efd3a698dda376333c2dd84714f92f25539d4589
+Linux/Remaiten.C
+
+3dd804feef00bd8dbfb3a48e75120328e1cb041a
+Linux/Remaiten.C
+
+f8354d8cc946e8b137f9013fc3d44720f321dc48
+Linux/Remaiten.C
+
+b912a07528e1afabbaa01d99bcbb66498dee0406
+Linux/Remaiten.C
+
+359dd2f9646eb3fad979f4a658bc2ff74488c457
+Linux/Remaiten.C
+
+898e2d91d64ebb26cc049d78bdeeda87f2bc4f1a
+Linux/Remaiten.C
+
+17d3c799e7f1c77be5d7b3d03eaa630a2f261449
+Linux/Remaiten.C
+
+17dcfdcc39b21ad64864a386070cc633e9965c3d
+Linux/Remaiten.C
+
+d1c6511a84ca27e2c08b89a683db9878e83c8637
+Linux/Remaiten.C
+
+024136cbc562cff6f3ce31d213fc9fe7a78510f9
+Linux/Remaiten.C
+
+a2432461d56c7beec98e4a15ddf91a1ea6d41c1b
+Linux/Remaiten.C
+
+9f795334a7201b2c6c0ad9ffeb2103ed464f0c5f
+Linux/Remaiten.C
+
+e375ecd544368b77f686fb3f3a000844782a647b
+Linux/Remaiten.C
+
+0ca049baf56a6c4d01c6d183ef1acfa65d2be1e3
+Linux/Remaiten.C
+
+Downloader samples
+
+Version 2.0
+
+SHA-1
+ESET Detection name
+
+25a7cf2969ce154aa90891e844a6af84fc89d396
+Linux/Remaiten.A
+
+1fe1872cf18cd0101f0870ca58f68d6686010326
+Linux/Remaiten.A
+
+1cc2b57978ba2e611403ba11bf9129fb810fae5c
+Linux/Remaiten.A
+
+c552edd72495514765f6a8f26aee8a6da2a57992
+Linux/Remaiten.A
+
+Version 2.1
+
+SHA-1
+ESET Detection name
+
+e875f54b7bd967c4f9ae59d85ed60991561b097b
+Linux/Remaiten.A
+
+ebf2bc43b6b5a4b8933f4ed8ed4a4beaceaecff5
+Linux/Remaiten.A
+
+11a13d2eeb71573178d7686930340c51c8f3ce26
+Linux/Remaiten.A
+
+8d26cd7d34d84745a897d474aa2ac9b8d1943d68
+Linux/Remaiten.A
+
+Version 2.2
+
+SHA-1
+ESET Detection name
+
+e80aba63ba30a2048ba780c35eae65e8b95627f7
+Linux/Remaiten.A
+
+e280b220c2ea2668d1a2ad82bdc64922e8b9ec86
+Linux/Remaiten.A
+
+8decb1f0e94497ef31f13c6e07ff2a021cf0972f
+Linux/Remaiten.A
+
+17006c899fbce3f86ddfb93539033c363816ad19
+Linux/Remaiten.A
+
+C&C
+
+Version 2.0
+
+Bot
+185.130.104.131:443
+
+Downloader
+185.130.104.131:25566
+
+Version 2.1
+
+Bot
+185.130.5.201:53
+
+Downloader
+185.130.5.201:25566
+
+Version 2.2
+
+Bot
+185.130.5.202:23
+
+Downloader
+185.130.5.202:443

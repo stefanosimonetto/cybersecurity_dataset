@@ -1,0 +1,74 @@
+LeChiffre, Ransomware Ran Manually
+LeChiffre is yet another ransomware that recently has been observed to cause some major damage  (in Mumbai – read more here). Not much material about it is available, so we decided to take a look.
+It is different than most of the ransomware present nowadays. Instead of  spreading to users and automatically infecting their machines, LeChiffre needs to be run manually on the compromised system. Common scenario of infection is that attackers are automatically scanning network in search of poorly secured Remote Desktops, cracking them, and after logging remotely they manually run an instance of LeChiffre.
+It encrypts files and appends to their names an extension “.LeChiffre”.
+The name comes from French – it literally it means “the number” but it is also known as a verb “chiffrer” and noun “chiffrement” meaning encrypting and encryption – more details here: https://fr.wikipedia.org/wiki/Chiffrement. (thanks to @jeromesegura for the tip). Another possible explanation is that creators wanted to refer to a character from James Bond series.
+Analyzed sample: 4523ccfd191dcceeae8e884f82f5c7ad
+UPDATE: Emsisoft released Decrypter for this ransomware
+UPDATE2: McAfee Labs Unlocks LeChiffre Ransomware
+Behavioral analysis
+It is distributed as a typical Windows executable:
+
+When we run it what appears is a GUI with labels in Russian:
+
+Drops it’s copy in Recycle Bin, disguised as jpg:
+
+File encryption
+File encryption process starts after we run in manually. First button from the top scans all the available disks and encrypts files with given extensions. Sample result:
+
+And the information about ransom demand:
+
+User have a big level of control on the process of encryption. Clicking a 4-th button from the top (Отдельно – Separately) we can choose by our own a single file that we want to encrypt.
+Full process of encryption is possible off-line, without internet connection – it proves that keys are generated locally, not downloaded from the C&C server like in case of Cryptowall.
+Process of recovering files is also very strange in comparison to other ransomware – attackers want a victim to just sent them some encrypted files and the secret code (that is 128 byte long – base64 encoded).
+Leaving a backdoor
+Apart from encrypting files on the system, LeChiffre also leaves a backdoor, by replacing a file sethc.exe (C:\Windows\system32\sethc.exe) by cmd.exe. Windows runs sethc.exe when user presses SHIFT 5 times. It can be deployed even if user is not logged in in the system (on log-in screen). By replacing it by any other application, we are getting ability to deploy that replacement application from the level of not-logged user. By replacing it with cmd.exe, attackers gets access to the system command line without knowing a password or even gains ability to change the password.
+Network communication
+At startup, LeChiffre grabs data about geolocation by querying the address: api.sypexgeo.net – the country code is then displayed in the left corner of the GUI.
+If the Scan is started it also starts to communicate with a remote server: http://184.107.251.146/sipvoice.php by a simple, HTTP based protocol.
+
+Experiment
+To visualize encryption method we did an experiment. As an input we took a square-sized BMP
+
+Below you can see a visualization of the raw file. There is a small header at the beginning, and the raw bytes after that (BMP format keeps bytes in reversed order, that’s why the picture is upside-down):
+raw bytes of Koala.bmp:
+
+And this is the visualization of raw bytes of Koala.bmp.LeChiffre – the above file encrypted by LeChiffre:
+
+Most of the content didn’t changed! Only the beginning and the end of the file is encrypted by the malware.
+Another example:
+Left – raw bytes of original BMP, right – the same BMP encrypted by LeChiffre:
+
+No matter the size of the file, LeChiffre always encrypts first 0x2000 (8192) bytes at the beginning of the file:
+
+Then, similarly it encrypts 0x2000 bytes at the end of the file.
+After that it appends to the file 32 byte (265 bit) long content  – possibly the AES key or initialization vector. Example below – appended content from 0x22F9E to 0x22FBD):
+
+this 32 byte long payload is not generated per file – experiment made on another file gave the same result (7A 02 5B 5A … A9 39 E1 98)
+
+Inside
+The binary is UPX packed. After unpacking it we can find out, that it has been written in Delphi.
+Decompiled form (TForm.dfm) contains 3 base64 encoded elements. After decoding them, we can find out that they contain an HTML, divided in 3 chunks:
+https://gist.github.com/hasherezade/4c6c230c0e1def8aefad#file-tform2-dfm-L285
+
+chunk_1.html
+chunk_2.html
+chunk_3.html
+
+After merging them we get a template for the “Attention” message:
+
+LeChiffre not only encrypt local files, but all available resources. Those that are shared in the local network…
+
+and others, mapped by RDP or some virtual environments:
+
+It enumerates also all available users:
+
+Sends the data to the hardcoded C&C during file scanning:
+
+Conclusion
+LeChiffre looks very unprofessional. Code has been written in Delphi and packed by UPX – practically, no countermeasures against analysis has been taken. It can be justified by the fact, that this ransomware was not intended to be distributed in campaign, only used by attackers after they entered to the system. However, poorly implemented encryption and model of communication with victims (via e-mail), shows that this malware has been prepared lazily, probably by beginners.
+Nevertheless, it managed to make some damage. It only proves the point that increasing awareness about ransomware is very important. Even a badly implemented piece of malware still can cause careless users to lose money.
+Appendix
+
+http://articles.economictimes.indiatimes.com/2016-01-11/news/69678894_1_hackers-computers-bitcoins – LeChiffre attacking in Mumbai
+http://www.bleepingcomputer.com/forums/t/578220/lechiffre-ransomware-adds-lechiffre-extension-to-files/ – thread about LeChiffre on forum BleepingComputer

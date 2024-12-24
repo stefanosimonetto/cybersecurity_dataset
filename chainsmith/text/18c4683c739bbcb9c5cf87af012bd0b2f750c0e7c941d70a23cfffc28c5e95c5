@@ -1,0 +1,71 @@
+Understanding and Cleaning the Pharma Hack on WordPress
+
+This post is very specific to one type of infection, there are many different types of infections and symptoms, do not be discouraged if the scenario does not fit your situation. There are more recent posts on what pharma hacks look like in 2016.
+A more detailed guide on how to address a hack in WordPress was released in 2016.
+
+In the last few weeks, the most common questions we’re receiving are related to the “pharma” (or blackhat SEO spam) hack on WordPress sites.
+This attack is very interesting because it is not visible to the normal user and the spam (generally about Viagra, Nexium, Cialis, etc) only shows up if the user agent is from Google’s crawler (googlebot). Also, the infection is a bit tricky to remove and if not done properly will keep reappearing.
+Because of this behavior, many sites have been compromised for months with those spam keywords and no one is noticing. A quick way to check if your site is compromised is by searching on Google for “inurl:yoursite.com cheap viagra or cheap cialis” or using our free security scanner.
+For example, this is the result of our scanner against wpremix.com (which was infected at the time we were writing this post):
+Pharma Hack – Details
+The pharma hack has various moving parts:
+
+Backdoor that allows the attackers to insert files and modify the database.
+Backdoor inside one (or more) plugins to insert the spam.
+Backdoor inside the database used by the plugins.
+
+If you fix one of the three, but forget about the rest, you’ll most likely be reinfected and the spam will continue to be indexed.
+As always, we recommend that you update your WordPress instance to the latest version. This goes for all of your plugins, themes, etc. WordPress is typically very secure, it’s when you’re running old versions and out of date plugins/themes that run into trouble. Keep your stuff up to date to minimize the risk of infection significantly.
+1. Backdoor Gives Remote Access to Users
+This is the first step in the infection. Generally, attackers do large scale scans and try to inject the backdoors into compromised sites. They do this by searching for vulnerable WordPress installations (older versions), vulnerable plugins, hosting companies with known security weaknesses, etc.
+When the backdoor is added, it is not immediately executed. Sometimes it stays for months without ever getting called. The common places for these backdoors are:
+wp-content/uploads/.*php (random PHP name file)
+wp-includes/images/smilies/icon_smile_old.php.xl
+wp-includes/wp-db-class.php
+wp-includes/images/wp-img.php
+Characteristically in the past, these files have had an “eval(base64_decode”, ultimately that’s what most people recommend searching for. However, on the pharma attack, the backdoor starts with:
+< ? php $XZKsyG='as';$RqoaUO='e';$ygDOEJ=$XZKsyG.'s'.$RqoaUO.'r'.'t';$joEDdb
+='b'.$XZKsyG.$RqoaUO.(64).'_'.'d'.$RqoaUO.'c'.'o'.'d'.$RqoaUO;@$ygDOEJ(@$j
+oEDdb('ZXZhbChiYXNlNjRfZGVjb2RlKCJhV1lvYVhOelpY... (long long string)..
+So, it still calls eval(base64_decode but using variables making it harder to detect. In fact, none of the WordPress security plugins are able to find it. Our suggestion is to search for this string: php $[a-zA-Z]*=’as’;
+If you do an inspection of the code, you will see that it scans for wp-config.php, gets the database information, acts as a remote shell and retrieves a lot of information about the system.
+That’s the first thing you have to remove before you do anything else.
+2. Backdoor Inside One of the Plugins
+This is the second part of the attack. After successfully creating a backdoor into the system, a file will be created inside one of the existing plugins. Example:
+akismet/wp-akismet.php
+akismet/db-akismet.php
+wp-pagenavi/db-pagenavi.php
+wp-pagenavi/class-pagenavi.php
+podpress/ext-podpress.php
+tweetmeme/ext-tweetmeme.php
+excerpt-editor/db-editor.php
+akismet/.akismet.cache.php
+akismet/.akismet.bak.php
+tweetmeme/.tweetmem.old.php
+Note that they will infect one or more of your enabled plugins and use names like wp-[plugin].php, db-[plugin].php, ext-[plugin].php, or something similar. We do not recommend you rely only those samples for your search, but try looking for any plugin file with the wp_class_support string on it.
+$ grep -r "wp_class_support" ./wp-content/plugins
+If you are infected, you will see things like (full content of the file):
+./wp-content/plugins/akismet/db-akismet.php:if(!defined('wp_class_support')) {
+./wp-content/plugins/akismet/db-akismet.php: define('wp_class_support',true);
+Make sure to remove those files. To be 100% sure your plugins are clean, I would recommend removing all of them and adding from scratch (not possible for all sites, but this is probably the most secure way of doing it).
+3. Backdoor Inside the Database
+This is the last step, and equally important. This is where the spam itself is hidden. They have been using the wp_options table with these names in the option_name:
+wp-options -> class_generic_support
+wp-options -> widget_generic_support
+wp-options -> wp_check_hash
+wp-options -> rss_7988287cd8f4f531c6b94fbdbc4e1caf
+wp-options -> rss_d77ee8bfba87fa91cd91469a5ba5abea
+wp-options -> rss_552afe0001e673901a9f2caebdd3141d
+Some people have been seeing fwp and ftp_credentials being used as well, so check there too.
+These SQL queries should clean your database:
+delete from wp_options where option_name = 'class_generic_support';
+delete from wp_options where option_name = 'widget_generic_support';
+delete from wp_options where option_name = 'fwp';
+delete from wp_options where option_name = 'wp_check_hash';
+delete from wp_options where option_name = 'ftp_credentials';
+delete from wp_options where option_name = 'rss_7988287cd8f4f531c6b94fbdbc4e1caf';
+delete from wp_options where option_name = 'rss_d77ee8bfba87fa91cd91469a5ba5abea';
+delete from wp_options where option_name = 'rss_552afe0001e673901a9f2caebdd3141d';
+Conclusion
+Tricky stuff! The attackers are getting better and we have to learn how to protect our sites and servers. If you need any help cleaning up the mess or you need a partner to help with your security needs, Sucuri is here to assist.
+Protect your interwebs!

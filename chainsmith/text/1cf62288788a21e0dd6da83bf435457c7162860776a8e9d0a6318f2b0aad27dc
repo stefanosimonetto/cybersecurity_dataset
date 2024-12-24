@@ -1,0 +1,76 @@
+Quick Analysis of a DDoS Attack Using SSDP
+
+Last week, one of our many clients came under an interesting attack. Enough that it was flagged for human intervention. The interesting aspect of the case was that it was a multi-faceted DDoS attack.
+The first issue we noticed was a Layer 7 – HTTP Flood (DDoS) Attack attack generating thousands of HTTP requests per second. This is not uncommon, and we’ve written about several instances of this in the past. When they are large enough they trigger a number of system alarms that allow us to quickly run counter intelligence based on the logs and to create custom patterns, signatures, that we can then deploy to proactively protect our clients.
+Once the Layer 7 DDoS attack was under control, we continued our investigation of the server and noticed that it was also suffering other types of DDoS attacks. Our attention turned to tcpdump. If you’re not familiar with TCPDUMP, it’s a command line packet analyzer that allows you to intercept and display all traffic that is hitting your computer. This allowed us to further investigate what the attacker was doing; further inspection revealed a large number of UDP packets hitting the server. Since we don’t run UDP on that server, it was easy to deduce that it was a DDoS attack.
+If your site is currently experiencing these problems, get in contact with us. We can help and it’s helpful to see different iterations of these attacks in the wild. If you’d like to read more about DDoS attacks, you can do so here or here.
+
+Simple Service Discovery Protocol (SSDP) DDoS
+If you’re not familiar with SSDP, it is the Simple Service Discovery Protocol. It is often used for discovery of Plug & Play (UPnP) devices. It was introduced in 1999 and is used by many routers and network devices. If you really want to get all geeky feel free to read the last draft by the Internet Engineering Task Force on the subject.
+The first packets we found had the source port 1900 (SSDP) and were hitting destination port 7 (echo). This is what it looked like:
+19:11:48.918266 IP 5f44d7e8.dynamic.mv.ru.1900 > serverX.sucuri.net.echo: UDP, length 274
+19:11:48.918271 IP 111.226.144.199.1900 > serverX.sucuri.net.echo: UDP, length 320
+19:11:48.918275 IP 95.67.190.27.1900 > serverX.sucuri.net.echo: UDP, length 307
+19:11:48.918279 IP 111.226.144.199.1900 > serverX.sucuri.net.echo: UDP, length 326
+19:11:48.918283 IP c-69-141-76-209.hsd1.nj.comcast.net.1900 > serverX.sucuri.net.echo: UDP, length 300
+19:11:48.918287 IP 145.255.28.15.dynamic.ufanet.ru.1900 > serverX.sucuri.net.echo: UDP, length 307
+19:11:48.918291 IP c-69-141-76-209.hsd1.nj.comcast.net.1900 > serverX.sucuri.net.echo: UDP, length 302
+19:11:48.918294 IP 16.77.223.77.akado-ural.ru.1900 > serverX.sucuri.net.echo: UDP, length 323
+19:11:48.918301 IP 120.192.146.173.1900 > serverX.sucuri.net.echo: UDP, length 268
+
+This was a new attack vector, leveraging SSDP. UDP-based DDoS is common, many in this business see it often. Often enough that rulesets exist to proactively block and mitigate attacks, but the use of SSDP is rare, at least for us. Interestingly enough, based on the Community Emergency Response Teams (CERT) blog, SSDP can lead to a 30x amplification of the attack, which might explain why attackers are using it now.
+Below is a list of protocols versus amplification rates:
+
+We love data and analysis as well as sharing our findings with the world, so we made sure to save some PCAPS (Packet Captures) to analyze:
+$ capinfos ssdp.pcap
+File name: ssdp.pcap
+File type: Wireshark/tcpdump/... - pcap
+File encapsulation: Ethernet
+Packet size limit: file hdr: 65535 bytes
+Number of packets: 1000 k
+File size: 326 MB
+Data size: 310 MB
+Capture duration: 5 seconds
+Start time: Wed Aug 27 19:11:48 2014
+End time: Wed Aug 27 19:11:54 2014
+Data byte rate: 59 MBps
+Data bit rate: 476 Mbps
+Average packet size: 310,68 bytes
+Average packet rate: 191 kpackets/sec
+
+As you can see, this simple attack hit 192,000 UDP packets per second and 1 million packets in 5 seconds, all while using around 476 Mbps of bandwidth, which really isn’t very big by itself, but had to be dealt with.
+Below, you can see stats by number of packets in a 5s interval.
+
+Looking into requests payloads we have a couple different samples:
+HTTP/1.1 200 OK
+Cache-Control: max-age=120
+Location: http://192.168.0.1:65535/rootDesc.xml
+Server: Linux/2.4.22-1.2115.nptl UPnP/1.0 miniupnpd/1.0
+ST: urn:schemas-upnp-org:device:InternetGatewayDevice:
+USN: uuid:b1c5d60c-1dd1-11b2-8687-a0bc8f76d644::urn:schemas-upnp-org:device:InternetGatewayDevice:
+
+HTTP/1.1 200 OK
+CACHE-CONTROL: max-age = 120
+LOCATION: http://192.168.1.1:80/UPnP/IGD.xml
+ST: urn:schemas-upnp-org:service:WANIPConnection:1
+SERVER: System/1.0 UPnP/1.0 IGD/1.0
+USN: uuid:WANConnection{9679d566-230a-49d3-92e5-421e9223eaef}000000000000::urn:schemas-upnp-org:service:WANIPConnection:1
+
+HTTP/1.1 200 OK
+Server: Custom/1.0 UPnP/1.0 Proc/Ver
+Location: http://192.168.1.1:5431/dyndev/uuid:204e7fce-118e-8e11-ce7f-4e204ece8e0000
+Cache-Control:max-age=1800
+ST:uuid:204e7fce-118e-8e11-ce7f-4e204ece8e0002
+USN:uuid:204e7fce-118e-8e11-ce7f-4e204ece8e0002
+
+HTTP/1.1 200 OK
+CACHE-CONTROL: max-age = 120
+LOCATION: http://192.168.1.1:80/UPnP/IGD.xml
+ST: urn:schemas-upnp-org:device:WANDevice:1
+SERVER: System/1.0 UPnP/1.0 IGD/1.0
+USN: uuid:WAN{84807575-251b-4c02-954b-e8e2ba7216a9}000000000000::urn:schemas-upnp-org:device:WANDevice:1
+
+Based on this very small subset of data, you could say that it’s a good bet that home routers are being abused. In this attack we found 111,000 different IP sources. The SANS team also reported seeing SSDP attacks last week. This attack wasn’t very large, but it seems the attackers are just starting to work with SSDP, so we expect to see some much larger SSDP-based amplification attacks in the future.
+For sysadmins, this sort of attack can easily overflow your bandwidth limits, so it is really difficult to block at the server-level. For good mitigation you have to consider blocks at the edge (border routers).
+Note that sites using CloudProxy (our website firewall) are automatically protected against SSDP-based DDoS attacks, among many others.
+Happy Networking.

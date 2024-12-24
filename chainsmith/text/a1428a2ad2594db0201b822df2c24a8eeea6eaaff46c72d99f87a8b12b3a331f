@@ -1,0 +1,78 @@
+Cerber Actor Distributing Malware Over E-mail Via WSF Files
+
+Last week we tracked an interesting e-mail campaign that was distributing double zipped files with Windows Script Files (WSFs) inside. When executed, these WSFs downloaded the Cerber crypto-ransomware. Cerber has previously been seen distributed via exploit kits and over e-mail using DOC files with macros. This is the first time that we have seen Cerber distributed via the use of WSFs.
+E-mail Lure
+
+The e-mail lures followed a convention of "[someone@somewhere.tld] Invoice-or-bill-related-subject-line". For example:
+
+The attacker has used two techniques to try and trick the user into downloading the malware. Firstly, there is a malicious attachment.  Secondly, there is a convincing looking unsubscribe link at the bottom which ends up redirecting the user to a similar ZIP file.
+
+Malicious WSF Files
+
+The ZIP files from the e-mails we analysed all contained another ZIP file of the same name, which in turn contained a somewhat rarely seen Windows Script File (WSF):
+
+WSFs are understood by Windows as an executable format that will be executed with the Windows wscript.exe utility. They may contain either JScript, VBScript, or both. These scripts can create ActiveX Objects to perform malicious activities. More about the WSF file format can be found on Microsoft's website at https://msdn.microsoft.com/library/15x4407c(v=VS.84).aspx.
+
+The uncommon use of a double-zipped file containing a WSF may fool some security solutions that rely on machine learning and/or heuristics. Other efforts by the attacker to evade heuristics include the use of generic "invoice" and "bill" themed lures as well as including legitimate looking content and an unsubscribe link.
+
+The WSF files themselves contained obfuscated JScript code such as the following:
+
+The samples we analysed downloaded payload from hxxp://188.225.36.90/label.bro which turned out to be the Cerber crypto-ransomware.
+
+Cerber Configuration & File Encryption
+
+Cerber is a highly customisable crypto-ransomware that will encrypt local files and request a payment in order to get the files decrypted. A blog from SenseCy suggests it is being sold under a ransomware-as-a-service (RaaS) model on Russian underground forums. RaaS provides actors with separation from each other so that a compromise of one actor's malware samples and/or infrastructure will not affect others. It also provides the malware author with additional revenue. As such, there is not one specific actor that is using Cerber but rather several actors distributing their own Cerber builds in different ways. For example, some Cerber samples are distributed via exploit kits whereas others are distributed via e-mail.
+
+RC4 & RSA File Encryption
+
+The malware mainly uses RC4 to encrypt each file, and each file is encrypted with a unique RC4 key. Cerber also adds a header at the start of the file which contains information such as the RC4 key that was used to encrypt it, the original file name and file system times, and a few bytes from the start of the original file. This header is then encrypted with an RSA public key that was generated when Cerber initially infected the system. When this key is generated the equivalent private key exponent is encrypted with a global RSA public key and saved in the registry. In order to decrypt the files we must be able to decrypt this registry key in order to know the RSA private key used to encrypt the file headers. From there we can see the RC4 key that was used to encrypt the file.
+
+Encryption Weakness
+
+The encryption schemes employed by Cerber means that it does not have to call home in order to securely encrypt files. However, after an in-depth analysis of Cerber we have determined that there are some weaknesses in the encryption implementation which would allow for partial file recovery. We are sharing our research privately with a small number of trusted partners and do not intend on releasing this information publicly.
+
+Protection Statement
+
+Forcepoint™ customers are protected against this threat via TRITON® ACE at the following stages of attack:
+
+Stage 2 (Lure) - The e-mail lures are detected and blocked.
+
+Stage 3 (Redirect) - The malicious URLs in the e-mails are detected and blocked.
+
+Stage 5 (Dropper File) - The WSFs are identified as malicious and blocked.
+
+Summary
+
+Cerber is just one of the new variants of crypto-ransomware that we have seen lately, but is interesting due to its ability to securely encrypt files without calling home.  The RaaS model that it can be sold under means that several actors are likely to be distributing the malware in different ways. Not only does the threat of Cerber exist via drive-by downloads from exploit kits, but also over e-mail. Actors distributing malware over e-mail are constantly changing their techniques in order to bypass security solutions. Although the number of observed victims is low, the majority currently appear to be within the UK.  However, this is likely to change over time.
+
+It is important for us all to to remain vigilant when opening e-mails, especially attachments and links that are contained within them.
+
+Indicators of Compromise
+
+Indicators of compromise (IOCs) for this e-mail campaign can be found below.
+
+Malicious Files
+
+0x90_315_kspc.zip - 444FC88BB139F0729FD54542666AC95D33FAB7DE
+
+4x94_182_qfx.wsf - 03D84211C2FA968B7737B37A5968B716259848A2
+
+1x91_426_cedu.zip - D797EE6794769FD8520586DA844728CF2600D764
+
+4x94_447_xih.wsf - 7BE42FFAAC461BB87B39098706A0A4022CC78517
+
+4x94_300_l.zip - C08C59EF13874CDB23EC7EB4DE4CD76AF131DC7A
+
+5x95_323_ofxh.wsf - 8A34DA2DB8A079C4CD5050EBD29A73A351EDE832
+
+4x94_175_g.zip - 36AFE469B1CA6BC122414D94B814222B7887D80F
+
+1x91_449_dcro.wsf - E69FD09F846C999C95CDF43A6CF114D73FE618F8
+
+Malicious Sites
+
+Fake unsubscribe link redirect - hxxp://vetdoctor[.]su/go.php
+
+Malicious ZIP with WSF downloader - hxxp://content.screencast[.]com/users/invoice1619/folders/Default/media/a21db752-f6f0-4389-9419-0c5040c54e61/0x90_170_cxz.zip
+
+Cerber payload - hxxp://188.225.36[.]90/label.bro

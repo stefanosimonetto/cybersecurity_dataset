@@ -1,0 +1,18 @@
+Extracting and Parsing PE signatures en masse
+March 3, 2019 in Clustering, Malware Analysis, Yara sigs
+
+A few years back I was dealing with a large corpora of PE files, and many of them were PUA/Adware installers. Most of these were signed, so I thought it would be cool to automate writing  yara sigs based on these PE signatures. So I did, and it helped me a lot with dividing the whole sampleset into clusters. I could then just exclude (a.k.a. delete) the uninteresting clusters of installers, and remove them from a scope of my further analysis.
+Today someone reminded me of this project, and I thought I will jot down some notes + share the yara sig I generated at that time. I believe in automation a lot, and hope this will be useful to someone facing similar problems.
+To extract signatures from a PE file, one can use the disitool.py from Didier Stevens. Once we extract it, we can analyze it. The problem is that:
+the extracted signature is in a binary formparsing it is non-trivial, so we need to use existing tools to do so for us
+After googling around, I eventually learned how to do it & wrote a simple batch file that I delegated this unpleasant task to. The batch file takes a name of a PE file from a command line, and extracts the binary signature using disitool.py, and then parses it… in 3 different ways.
+This is the batch file:
+disitool.py extract "%1" "%1.cert"if exist "%1.cert" ( openssl asn1parse -inform DER -i -in "%1.cert" > "%1.cert.asn" openssl pkcs7 -inform DER -in "%1.cert" -text -print_certs > "%1.cert.asn2" certutil -asn "%1.cert" > "%1.cert.asn3")
+You may notice that I am using both openssl / certutil. Why double, or even triple the effort? This is because I discovered that relying on data extracted by only one tool was not enough. To be frank, I don’t know the intricate details of what is exactly stored inside the actual Authenticode signature, and how. The ASN format is not a pillow read either, hence I went with a ROI-driven approach and simply extracted the data in any possible way and format.
+With that, I ran it over a corpora of samples. I then used a quick & dirty parser I wrote for the data outputted by these two tools, and generated a yara sig that covered most of the installers in the corpora.
+You can download the Yara Sig file here. Note, I saved it as Unicode, so you can see localization issues one needs to take into account while parsing sigs.
+Feel free to use it, but only on your own risk. I don’t guarantee that it’s error free. Also, if you are listed in the sig file, it’s only for purposes of samples’ clustering.
+
+Comments Off on Extracting and Parsing PE signatures en masse
+
+Comments are closed.

@@ -1,0 +1,133 @@
+Netdude Continues to Amaze
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+September 03, 2004
+
+Last week I posted a method to extract individual pcap files from a larger pcap file.  Originally I thought it would be useful to have a tool which would extract all individual flows from a pcap file into pcap format.  Note this is different from the capability offered by the excellent Tcpflow, which extracts the application data from all TCP flows.
+
+I thought the tool Netdude might have this capability when I saw its libnetdude plugin Flow Demultiplexer.  I was familiar with plugins for Netdude, the graphical interface.  Flow Demultiplexer is not available within Netdude and must be invoked using libnetdude.
+
+First, install Netdude.  I used the FreeBSD net/netdude port.  Next download and install the following from source code, in the order specified:
+
+- Connection State Tracker
+- Trace Set
+- Flow Demultiplexer
+
+I didn't know how to proceed.  I asked Netdude's author Christian Kreibich for help, and he sent a very helpful email.  To access libnetdude plugins, use the lndtool program:
+
+orr:/$ lndtool --help
+lndtool -- libnetdude configuration and execution tool.
+USAGE: lndtool [OPTIONS]
+
+--help, -help, -h, -?        This message.
+--prefix                     Installation prefix.
+--version, -v                Prints out version info.
+--cflags                     Preprocessor flags needed for compilation.
+--libs                       Linker flags needed when linking..
+--plugin-dir                 Plugin installation directory.
+--proto-dir                  Protocol installation directory.
+--include-dir                Header files directory.
+--plugins, -p                Lists all plugins that register successfully.
+--run, -r PLUGINNAME PARAMS  Run plugin PLUGINNAME with PARAMS.
+
+Using the -p option showed the registered plugins:
+
+orr:/$ lndtool -p
+libnetdude protocol plugins:
+--------------------------------------------------
+Ethernet                        0.6
+ICMP                            0.6
+IPv4                            0.6
+SLL                             0.6
+LLC/SNAP                        0.6
+TCP                             0.6
+UDP                             0.6
+ARP                             0.6
+FDDI                            0.6
+
+libnetdude feature plugins:
+--------------------------------------------------
+BPF-Filter                      0.6
+Checksum-Fix                    0.6
+Conntrack                       0.4
+Demux                           0.2
+Trace-Set                       0.2
+
+Now I was ready to get help with the Demux plugin:
+
+orr:/$ lndtool -r Demux --help
+Flow Demultiplexer plugin
+USAGE: lndtool -r demux [--debug|-d] [--output-dir|-o DIR] [--progress|-p]
+[--names-file|-f FILE]  [  ...]
+
+--help, -h, -?           This message.
+--output-dir, -o DIR     Output directory in which to dump output. Default: cwd.
+--progress|-p            Displays a progress indicator at the shell.
+--names-file|-f FILE     Take filenames of traces from flatfile FILE.
+
+Then I ran Demux on an old trace:
+
+orr:/$ lndtool -r Demux -o demux/ comcast3.lpc
+
+The demux/ directory contained two directories and one file:
+
+17              6               non_ip.trace
+
+The '17' directory contained UDP traffic, with directories named for the source address of the first packet in each "flow."
+
+0.0.0.0         10.71.136.1     192.168.100.1   192.168.100.11  68.48.43.26
+
+In the 68.48.43.26 directory, I found more directories, each named for the destination address:
+
+172.30.100.36   68.48.0.13      68.48.43.127
+
+Each of these directories contained individual pcap files.  For example, there was only one file in the 68.48.43.127 directory:
+
+1085778073.273396-137-137.trace
+
+The first part of the file name is a timestamp:
+
+date -r 1085778073
+Fri May 28 17:01:13 EDT 2004
+
+The second part is the source and destination port of the flow.  Here is what the "flow" looked like:
+
+orr:/demux/17/68.48.43.26/68.48.43.127$ tcpdump -n -r 1085778073.273396-137-137.trace
+17:01:13.273396 68.48.43.26.137 > 68.48.43.127.137: NBT UDP PACKET(137): REGISTRATION; REQUEST; BROADCAST
+17:01:19.271012 68.48.43.26.137 > 68.48.43.127.137: NBT UDP PACKET(137): RELEASE; REQUEST; BROADCAST
+17:02:59.206324 68.48.43.26.137 > 68.48.43.127.137: NBT UDP PACKET(137): QUERY; REQUEST; BROADCAST
+17:03:00.691252 68.48.43.26.137 > 68.48.43.127.137: NBT UDP PACKET(137): QUERY; REQUEST; BROADCAST
+17:03:02.193178 68.48.43.26.137 > 68.48.43.127.137: NBT UDP PACKET(137): QUERY; REQUEST; BROADCAST
+
+This doesn't look very "flow-like" for UDP, so consider this TCP flow in a different directory:
+
+orr:/demux/6/68.48.43.26/66.179.151.30$ tcpdump -n -r 1085778514.142047-1082-80.trace
+17:08:34.142047 68.48.43.26.1082 > 66.179.151.30.80: S 971414932:971414932(0) win 16384  (DF)
+17:08:40.060862 68.48.43.26.1082 > 66.179.151.30.80: S 971414932:971414932(0) win 16384  (DF)
+17:08:40.092702 66.179.151.30.80 > 68.48.43.26.1082: S 2030305390:2030305390(0) ack 971414933 win 16384  (DF)
+17:08:40.092921 68.48.43.26.1082 > 66.179.151.30.80: . ack 1 win 17520 (DF)
+17:08:40.093626 68.48.43.26.1082 > 66.179.151.30.80: P 1:150(149) ack 1 win 17520 (DF)
+17:08:52.077789 68.48.43.26.1082 > 66.179.151.30.80: P 1:150(149) ack 1 win 17520 (DF)
+17:09:16.111018 68.48.43.26.1082 > 66.179.151.30.80: P 1:150(149) ack 1 win 17520 (DF)
+17:10:04.177622 68.48.43.26.1082 > 66.179.151.30.80: P 1:150(149) ack 1 win 17520 (DF)
+17:11:09.376959 66.179.151.30.80 > 68.48.43.26.1082: R 2030305391:2030305391(0) win 17520 (DF)
+
+The non_ip.trace file is also a pcap file.  For the sample I used, it contained ARP traffic and Cisco switch loopback traffic:
+
+17:16:30.074041 0:c:ce:4e:53:a0 0:c:ce:4e:53:a0 9000 60:
+0000 0100 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000
+
+I think this Netdude Demux plugin is very useful, and I thank Christian for his help learning how to use it.  If you'd like to see some of Netdude's other capabities, I feature Netdude in chapter 6 of The Tao of Network Security Monitoring.

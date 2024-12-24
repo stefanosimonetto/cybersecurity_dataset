@@ -1,0 +1,82 @@
+Beyond Virtu(e) and evil
+2007-05-01
+
+Víctor M. Álvarez
+PandaLabs
+,
+Spain
+
+Mario Ballano
+PandaLabs
+,
+Spain
+Editor:
+Helen
+
+Martin
+Abstract
+While not technically a new virus (being modelled on the almost ancient Tenrobot family), W32/Virtu does introduce some interesting changes and new techniques. Víctor Álvarez and Mario Ballano describe this polymorphic file infector that also behaves as an IRC bot.
+Copyright © 2007 Virus Bulletin
+
+Introduction
+File infectors represent only a small percentage of the new malware we receive in our virus lab every day, but cavity, polymorphic, entry point obscuring and memory resident infectors are even rarer. This is the case of W32/Virtu (a.k.a. W32/Virutas or W32/Virut), a virus that has been causing trouble in some corporate networks over recent months.
+W32/Virtu is not really a new virus, it is just a remake of the almost ancient Tenrobot (or Netrobot) family. However, it does introduce some interesting changes and new techniques that are worth looking at.
+
+On the prejudices of emulators
+Being a polymorphic virus, emulation should be the logical approach to detect and disinfect W32/Virtu. Indeed, this seems to be what the virus writer thought when he was creating it, so he decided to make our job a little harder by implementing some anti-emulation tricks. These are executed at the beginning of the virus execution path in some of the infected files.
+Anti-virus emulators must be able to cope with Windows API calls in order to handle modern packers and polymorphic viruses. Most of them already emulate the behaviour of many of the functions commonly used in unpacking code, such as LoadLibrary and GetProcAddress. However, some emulators assume wrongly that API functions will always be invoked with the correct parameters. These assumptions are exploited by W32/Virtu, which performs bogus calls to arbitrary Windows API functions, passing deliberately incorrect parameters to them. As a result, some emulators get confused and stop emulating the virus code too early. All of this assumes that the emulator implements the API in the first place.
+However, emulation is not really necessary to detect or disinfect W32/Virtu, as we will discuss later.
+
+The infectious spirit
+W32/Virtu infects only files with EXE and SCR extensions, also excluding files whose names begin with ‘PSTO’, ‘WC32’, ‘WCUN’ or ‘WINC’. It also checks that the file is neither a DLL nor an executable image for the Windows native subsystem. Files containing a section whose name begins with ‘_win’ are also excluded, in order to avoid infection of certain Winzip Self-Extractor Archives which have a section named ‘_winzip_’. To avoid infecting the same file twice the virus also checks its own infection mark, which is stored in a reserved field of the executable’s DOS header.
+When infecting a file, the virus increases the size of the last section to fit its encrypted body. The polymorphic decryption routine could be also added to the last section, inserted into a cavity between sections if the virus finds a suitable unused space, or could be written over the original host’s entry point. The last section's attributes are modified too, gaining executable and writable flags.
+
+The entry point disposition
+In order to get the execution flow directed to their code, some viruses change the entry point indicated in the PE header, others overwrite the original host code at the entry point, and some use entry point obscuring (EPO) techniques to make detection more difficult. W32/Virtu uses a combination of these three approaches. When it is about to infect a file, the virus decides which one will be used.
+The entry point modification and overwriting approaches are not too different from what we’ve seen before in many other virus families. When the virus overwrites the original entry point of the host, a copy of the overwritten bytes is stored in the encrypted part of the virus body. As always, those bytes are restored in the memory image of the host before it is executed. This means that the virus body must be decrypted in order to disinfect infected files.
+In the case of EPO infection, the virus starts at the host’s entry point looking for CALL instructions pointing to KERNEL32.DLL. When the instruction is found it is replaced by a call to the virus decryption routine. The original bytes overwritten by the virus are stored inside its encrypted body. When the execution flow of the host reaches the modified call instruction, the virus takes control, restores the original bytes on the host, and allows the original call to be executed.
+The virus author was careful to take into account the fact that API calls can be performed in two different ways. An API call can be performed with a memory indirect CALL (opcode 0xFF15) taking as argument the address on the IAT which stores the address of the API function, or it can be done through a relative CALL (opcode 0xE8) to a JMP instruction, which in turn jumps to the corresponding API. Both cases are handled correctly by the virus.
+It should also be noted that, when using EPO, the virus only intercepts calls to KERNEL32.DLL. This is because it uses the address of the intercepted function as a starting point when searching for the base address of the library. To do so, it takes the address, rounds it down to a 4KB boundary, and starts decreasing the address by 256 bytes until it finds the MZ-PE header of kernel32.dll. When the infection is not EPO, the virus relies on the fact that the program entry point is always invoked from a call which resides in KERNEL32.DLL, so it uses the return address pushed on the stack by kernel code as the starting point to search for the base address.
+
+Polymorphism and interlude
+W32/Virtu is only slightly polymorphic. Its decryption algorithm is based on XOR or SUB operations with a variable sliding key. The polymorphic engine also generates superfluous instructions and bogus loops to slow down anti-virus emulators, and is responsible for generating the anti-emulation trick mentioned in the previous section. It doesn’t use FPU instructions or special purpose instruction sets. In fact, for an anti-virus product to decrypt the virus body it is not even necessary to use emulation technology – it can easily be done by employing X-ray techniques.
+Furthermore, the anti-emulation trick mentioned above, which is not under the polymorphic encrypted layer, produces code patterns that can easily be detected by anti-virus engines and considered as a symptom of W32/Virtu infection.
+Polymorphism is certainly not one of the (W32) virtues of this virus.
+
+Natural history of memory residence
+Due to obvious architectural differences between the Windows NT and Windows 9x operating system families, the virus undertakes different strategies to achieve memory residence depending on the platform. From this point on we will use the term ‘Windows NT family’ to describe all NT-based versions with the exception of the original founding fathers: Windows NT 3.x and Windows NT 4.0. This is because the virus makes use of the CreateToolhelp32Snapshot API, which was first introduced in Windows 2000.
+On the Windows NT family the virus performs a form of multi-process residence. It starts by creating a named shared section via NtCreateSection. The section is called ‘W32_Virtu’. Then it copies part of its own code to the shared section and jumps there. It also sets SeDebugPrivilege on the running process in order to access the memory context of other processes in the system. Then it iterates over the processes list, but skips the first four, which in a typical system are: System Idle Process, System Process, Windows Session Manager (SMSS.EXE) and Client Server Runtime Process (CSRSS.EXE). For the remaining processes it creates a view of the shared section in which the virus resides in order to make its code visible to the process, and then it hooks some NTDLL.DLL APIs by overwriting the very first bytes of the functions with a call to its own routines. The intercepted APIs are:
+NtCreateFile
+NtOpenFile
+NtCreateProcess
+NtCreateProcessEx
+By intercepting NtCreateFile and NtOpenFile, the virus has the opportunity to infect any file opened by infected processes. The infection is performed before passing control to the genuine API function. By intercepting NtCreateProcess and NtCreateProcessEx, the virus is also able to place its hooks into newly created processes, so they become infected from the very moment of their creation. In this case the original API is invoked first, and then the virus takes control and uses the handle to the new process to install its hooks. Finally, the virus returns control to the caller.
+Besides API hooking, the virus also attempts to create a thread in the context of the fifth process of the list (remember that the first four are ignored), which is usually WINLOGON.EXE. If the operation fails, it tries with the next process. If it succeeds, it stops trying, resulting in a single thread injection. This thread has two objectives: opening a backdoor on the affected machine, and disabling the Windows System File Checker (SFC) mechanism. We provide more information about these topics below.
+On Windows 9x, the virus follows a more bizarre path to achieve memory residence. First, it calculates the address of the undocumented function VxDCall, which is exported by ordinal on KERNEL32.DLL. The virus gets the function RVA from the memory image of KERNEL32.DLL’s export table, and adds the image base to obtain the function’s address. Then it reserves a chunk of memory from the shared memory area, which is a zone above 0x8000000 shared by all processes on Windows 9x systems. This memory chunk is reserved by invoking VirtualAlloc with undocumented flags in the flAllocationType parameter.
+As in the case of Windows NT, the virus copies a portion of its code to the shared memory area and jumps to that code to continue the execution. At this point, it makes use of the VxDCall function to invoke the PagerRegister service from the Virtual Machine Manager (VMM). This service allows a set of routines to be registered, which are invoked by the VMM whenever a page associated with the pager is paged in, paged out, or decommited. The structure for registering a pager, as documented in the Windows 98 DDK, is the following:
+typedef struct pd_s {
+PFUNPAGE pd_virginin;
+PFUNPAGE pd_taintedin;
+PFUNPAGE pd_cleanout;
+PFUNPAGE pd_dirtyout;
+PFUNPAGE pd_virginfree;
+PFUNPAGE pd_taintedfree;
+PFUNPAGE pd_dirty;
+ULONG pd_type;
+} PD;
+The pager registered by W32/Virtu only specifies a routine for the field pd_virginfree of the pager-descriptor structure. This routine is invoked when a page is decommited, but has not been written to since it was committed. After registering the pager with the VMM, the virus commits one page of memory, associates it with that pager, and immediately frees the page without writing anything to it, consequently causing a call to the routine pointed to by pd_virginfree. The interesting thing from the point of view of the virus, and the real motivation behind all of this, is that this routine is invoked at ring-0 privilege level. A very uncommon method for getting ring-0.
+With the absolute freedom of the ring-0 privilege level, the virus queues an asynchronous procedure call by invoking the system service QueueUserApcEx. The procedure provided by the virus is executed in the context of the kernel service process, where the virus creates a new thread. This new thread is responsible for patching the VxDCall function to intercept calls to the VWIN32_Int21Dispatch (0x2A0010) system service. It also opens the backdoor mentioned when describing its behaviour on the Windows NT family. In fact, the code executed by this thread is the same on both platforms, with the exception of certain platform-dependent portions which may or may not be executed, depending on the operating system version returned by GetVersion.
+The interception of the VWIN32_Int21Dispatch service by patching the code of VxDCall is a well-known technique employed by other viruses such as W95/Blackbat and W95/HPS (see VB, June 1998, p.13). Basically, the virus scans the code of the VxDCall function (in this case 30 bytes from the beginning), searching for the signature 0x2EFF1D which belongs to a memory-indirect FAR CALL instruction. The virus modifies the destination address for the call, which is stored in a writable memory area of KERNEL32.DLL, and inserts a pointer to its own code.
+When the VWIN32_Int21Dispatch service is invoked via VxDCall, the virus checks whether the caller is requesting a file opening operation through a LFN_OPEN_FILE_EXTENDED function code (0x716C). If this is the case the file is infected before passing control to the operating system service. The virus implements its own synchronization mechanism to avoid re-entry due to file opening requests generated by the virus infection routine.
+
+Oh! Scholars
+As mentioned above, the virus disables the SFC mechanism implemented on some Windows versions to enable it to infect system protected files. This is carried out by the thread injected in the fifth process of the process list, which calls an undocumented function exported by SFC.DLL with ordinal number 2. For this function to work, it must be called by WINLOGON.EXE. If it is called by any other process, it simply fails. The virus author made the wrong assumption that WINLOGON.EXE would always be the fifth process of the list. This is true in many cases, but not all. It would be very easy to include the necessary code to determine which process on the list is really WINLOGON.EXE, but the virus author simply took the shortest way.
+
+Backdoor virtues
+Besides being a file infector, W32/Virtu also behaves as an IRC bot which allows a remote attacker to execute arbitrary programs on the infected machine. The resident part of the virus tries to establish a connection to the IRC server proxim.ircgalaxy.pl and join the &virtu channel with a random nick. Once there, it waits for private messages of the form:
+!get http://<URL here>
+Whenever a message like this is received, the virus downloads the file from the specified URL to a temporary file and executes it. However, at the time of writing this article the IRC server was down, rendering this part of the virus useless.
+
+Aftersong
+O noon of life! O time to celebrate! O summer garden! Relentlessly happy and expectant, standing. Watching all day and night, for friends I wait Where are you, friends? Come! It is time! It’s late!
+These extracts from Friederich Nietzsche’s Beyond Good And Evil: Prelude to a Philosophy of the Future appear inside W32/Virtu. Perhaps the virus author was simply trying to spread the German philosopher’s work – in which case it’s a shame that, being within a double-encrypted virus body, it will not have a very broad audience at all.

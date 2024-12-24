@@ -1,0 +1,63 @@
+Joomla Security – Pornography Spam Campaign in the Wild
+
+One of the worst experiences for a website owner is finding out that the search results for your site have turned into a pharmacy, a fashion outlet, or even a porn dump.
+Those unwanted keywords are a result of Search Engine Poisoning (SEP) attacks. This blackhat SEO technique is used by attackers to take advantage of your rankings on Search Engine Result Pages (SERPs).
+One of the ways that hackers avoid being noticed is to hide the spam content from normal visitors. By allowing only search engine crawlers to see them, the spam keywords and links are indexed for ranking but they are not visible to visitors. We still find spam hidden in less sophisticated ways, i.e. hidden divs, negatively-located iframes, etc. Of course, security companies are always trying to detect and remove hidden spam – and we are usually pretty successful.
+Black Hat SEO Spammers Target Joomla!
+This time I’ll tell you about yet another interesting blackhat SEO attack that we’ve been watching for the last year. Recently, we came across a Joomla website displaying the usual (blackhat) SEO spam warning on SiteCheck. However, in this case, the client had noticed the following additional symptoms:
+
+Visitors were being redirected if the website was reached through any search engine result link.
+In all other cases (not coming from SERPs), the redirects were also being triggered.
+
+Because of this, there wasn’t any noticeable condition triggering the redirect.
+I found the infection below in the Joomla core file ./includes/application.php. This was easy for us to spot since Joomla core files are not supposed to have encoded strings.
+$data = $document->render( $this->getCfg('caching'), $params);
+$data = str_replace(base64_decode("VHJhY3RvciBNb3VudGVkIExhbmRz..lvLUZ1ZWwgQ2hpcHBlcnM"),
+base64_decode("VHJhY3RvciBNb3VudGVkIExhbmRzY2..Z1ZWwgQ2hpcHBlcnM8YSBocmVmPSJodHRwOi8vam
+F2cmlwLm5ldCIgc3R5bGU9InBvc2l0aW9uOmFic29sdXRlOyBsZWZ0Oi0xMjc1cHg7IHRvcDowIj5qYXZyaXAubmV0PC9hPg"),
+$data); JResponse::setBody($data);
+
+Infecting a core file like application.php is interesting for the attacker because when Joomla creates the application object (which is on every load), it ends up loading the JSite class from the file includes/application.php. This class extends the JApplication class. A similar JAdministrator class in administrator/includes/application.php is used when Joomla creates a backend application object.
+After deobfuscation, sure enough, we found the malicious code:
+$data = $document->render( $this->getCfg('caching'), $params);
+$data = str_replace('Tractor Mounted Landscape and Bio-Fuel Chippers',
+'Tractor Mounted Landscape and Bio-Fuel Chippers<a href=\"http[:]//javrip[.]net\"
+style=\"position:absolute; left:-1275px; top:0\">javrip[.]net</a>', $data);
+JResponse::setBody($data);
+
+Therefore, the content above will be injected and the website will arbitrarily redirect the visitor to a porn website: javrip[.]net.
+More and More Porn Redirects
+With malware infections, there’s only so many places to hide – it’s just a matter of ruling things out until you have your culprit. This time wasn’t any different. I found more files involved with this infection in the template’s directory ./templates/rt_versatility4_j15/index.php:
+<?php endif; ?><?php if($_SERVER['REQUEST_URI'] == '/' || $_SERVER['REQUEST_URI'] == '/index.php'
+|| $_SERVER['REQUEST_URI'] == '/joomla/') { ?> <a href="http://gay-file[.]com"
+style="position:absolute; left:-1275px; top:0">gay-file[.]com</a> <?php } ?>
+Here is the list of blackhat websites involved in this redirect infection so far:
+
+javrip[.]net
+gay-file[.]com;
+dmmjav[.]com;
+filesmonster[.]porn
+
+Deep Analysis of Blackhat Sites
+Let’s try to get more information by taking a look at the first blackhat site we mentioned – javrip[.]net.
+The malware campaign redirects users from infected websites to the blackhat site to make it look like it’s getting more pageviews than it actually is. The blackhat sites are not blacklisted because they contain no malicious or dangerous code.  They’re just receiving the traffic coming from “infected” websites to bring more pageviews and visitors, which increases ranking positions by manipulating Google’s algorithm.
+Traffic Increase from Spam Redirects
+Here is some information about the site:
+Server IP: 5.44.218.112
+ASN: AS51109
+ISP: Camelhost Sia
+Server Location: Latvia
+Domain Created: 2014-12-12
+According to Alexa, this page is popular in Japan and also has 239 daily pageviews (1.30 per visitor), most coming from Japan itself, followed by Taiwan and Peru. It’s also being hosted in Latvia (a country on the Baltic Sea between Lithuania and Estonia).
+
+Since January 2016, we’ve seen an increase in traffic going to javrip[.]net, an impact of the spam campaign that redirects users to that domain.
+
+The Joomla! Vulnerability Responsible
+According to our research, the majority of identified hacked websites are running Joomla 1.5.26. This version has several security issues, especially in the TinyMCE editor.
+If you are using Joomla!, now is a good time to check if your sites are updated. Some high severity vulnerabilities were identified in recent years, especially for those still on the 1.5.x branch. This branch is very dated, and while it’s ill-advised, we understand that you can’t always update. This is where things like cloud WAFs come into play, which can protect your site by virtually patching vulnerabilities like these:
+
+CVE-2015-8562
+Critical 0-day Remote Command Execution Vulnerability in Joomla
+
+Joomla 1.5.x, 2.x, and 3.x before 3.4.6 allow remote attackers to conduct PHP object-injection attacks and execute arbitrary PHP code via the HTTP user-agent header. It was first exploited in December 2015 and is still happening today.
+If you have not updated your Joomla site since then, you are likely already compromised. We have a new guide on how to clean a hacked Joomla site that you can follow. If you are unable to do it yourself, we can help with our professional incident response services.

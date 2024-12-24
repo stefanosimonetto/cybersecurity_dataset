@@ -1,0 +1,17 @@
+Portsnap and Squid
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+June 28, 2005
+
+At BSDCan this year I listed to Kris Kennaway describe the FreeBSD package cluster (.pdf).  He said he uses a caching Web proxy to optimize retrieval of source code when building packages.  This makes an incredible amount of sense.  Why download the same archive repeatedly from a remote site when you can download it once, and transparently let other clients retrieve the archive from the Web cache?I decided I needed to emulate this sort of environment for several of my FreeBSD systems.  I use Colin Percival's excellent portsnap to keep my FreeBSD ports tree up-to-date.  If one of my systems retrieves the necessary updates through a Web cache, the other systems can get the same files from the Web cache.  That saves Colin bandwidth and me time.I set up Squid using the www/squid port.  The only changes I made to the /usr/local/etc/squid/squid.conf file are listed below.http_port 192.168.3.7:3128icp_port 0acl our_networks src 10.1.0.0/16 192.168.3.0/24http_access allow our_networksThe first line tells Squid to listen to the internal private interface of a dual-home VPN concentrator / firewall / gateway (CFG).  I didn't want the external interface of the CFG offering a Web proxy to the world.  I set the standard Squid port, 3128 TCP.  The second line shuts down the ICP service on port 3130 UDP, since I don't use it.  Line three sets up an ACL and defines the networks I allow to talk to the Squid proxy.  I tell Squid to allow the IP addresses of remote systems connecting via IPSec tunnel (addressed in 10.1.0.0/16 space), and systems on the internal network provided by the VPN CFG (addressed in 192.168.3.0/24 space).  The last line enables the ACL.Before Squid can operate, I tell it to build its cache directories by running 'squid -z' as root.Finally I edit my /etc/rc.conf file with this entry:squid_enable="YES"With this line added, I can use the /usr/local/etc/rc.d/squid.sh shell script to 'start' or 'stop' or 'restart' Squid.  Prior to this I did not know that I needed to modify /etc/rc.conf before the squid.sh script would work.Once Squid was running and listening on port 3128 TCP, I had a system (192.168.3.12) use the proxy through portsnap.  First I set the environment variable which tells fetch to use a proxy.setenv http_proxy 192.168.3.7:3128When I ran 'portsnap fetch', I could see the program working through Squid to get the files it needed.  Here is an excerpt from the /usr/local/squid/logs/access.log file.1119988542.131    142 192.168.3.12 TCP_MISS/200 668 GET http://portsnap.daemonology.net/t/001b134d2c8210e43d2cad5072c8c78a6d21a576c7e14f46e751ba7b5d2474c7 - DIRECT/72.21.59.250 text/plainThis is a TCP_MISS because this request is new to Squid.Later I ran portsnap on two other systems, 192.168.3.11 and 10.1.2.1, and saw different Squid results.1119988702.146     95 192.168.3.11 TCP_MEM_HIT/200 677 GET http://portsnap.daemonology.net/t/ 001b134d2c8210e43d2cad5072c8c78a6d21a576c7e14f46e751ba7b5d2474c7 - NONE/- text/plain1119989557.080     99 10.1.2.1 TCP_MEM_HIT/200 678 GET http://portsnap.daemonology.net/t/ 001b134d2c8210e43d2cad5072c8c78a6d21a576c7e14f46e751ba7b5d2474c7 - NONE/- text/plainIn both cases, Squid provided the request files from its cache, and didn't need to request the files from daemonology.net.I plan to use this system to let remote sensors perform all of their updates through a central location, my VPN CFG system.  That one box will run the Squid proxy and retrieve all necessary files once.

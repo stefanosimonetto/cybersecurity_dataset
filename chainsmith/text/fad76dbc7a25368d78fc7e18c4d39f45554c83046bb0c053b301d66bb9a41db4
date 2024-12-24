@@ -1,0 +1,74 @@
+Unwanted Pop-ups Caused by Injectbody/Injectscr Plugins
+
+On February 8th, 2018, we noticed a new wave of WordPress infections involving two malicious plugins: injectbody and injectscr. These plugins inject obfuscated scripts, creating unwanted pop-up/pop-unders. Whenever a visitor clicks anywhere on an infected web page, they are served questionable ads.
+Plugin Location
+The malicious plugins possess a very similar file structure:
+Injectbody
+wp-content/plugins/injectbody/
+
+injectbody.php: 2146 bytes (the plugin code)
+inject.txt: 2006 bytes (injected JavaScript)
+
+Injectscr
+wp-content/plugins/injectscr/
+
+injectscr.php: 1319 bytes (the plugin code)
+inject.txt: 3906 bytes (injected JavaScript)
+
+The functionality of these plugins are also very similar. As their names imply, they inject a script from inject.txt and hide their presence on the plugin list within the WordPress dashboard.
+Plugin Code
+Let’s take a look at the short and simple code for these plugins:
+injectbody.php
+injectscr.php
+As you can see, both of the plugins include functions to hide their existence: injectscr_hide and injectbody_hide. These functions remove the malicious plugins from the list of active plugins. Only the attackers, who can log into WordPress using the malicious admin users INJECTBODY__ADMIN or INJECTSCR__ADMIN, or alternatively use legitimate admin credentials and append “?INJECTBODY__ADMIN=1” or “?INJECTSCR__ADMIN=1” GET parameters in the URL, are able to detect the presence of these malicious plugins on an infected website.
+Injected scripts
+Once a website has been infected, the hidden injectbody plugin begins injecting an obfuscated script into a website page:
+var _0xc3ce=["\x32\x20\x35\x3D\x7B\x61\x3A\x27...removed for brevity... new RegExp(_0xc3ce[7]+ _0xf262x5(_0xf262x3)+ _0xc3ce[7],_0xc3ce[8]),_0xf262x4[_0xf262x3])}};return _0xf262x1}(_0xc3ce[0],27,27,_0xc3ce[3][_0xc3ce[2]](_0xc3ce[1]),0,{}))
+It adds a Viglink ad script with the “ca8b3984fdf6c76dc2fe3325feb58eba” key to a page.
+The injectscr plugin injects a similar obfuscated script:
+var _0x3fdb=["\x39\x20\x62\x28\x6B\x29\x7B\x33\x20...removed for brevity...new RegExp(_0x3fdb[8]+ _0x3e49x5(_0x3e49x3)+ _0x3fdb[8],_0x3fdb[9]),_0x3e49x4[_0x3e49x3])}};return _0x3e49x1}(_0x3fdb[0],62,63,_0x3fdb[3][_0x3fdb[2]](_0x3fdb[1]),0,{}))
+The script adds an “onclick” handler that opens a popup window with the following URL: hxxp://1aqy.xn--o1aqy[.]xn--p1ai/stats/fri.php?affid=79803 This is just the first step in a chain of ad redirects.
+
+When the popup is opened, the script sets the “clickund_expert=1” cookie for one hour and removes itself from the onlick event handler.
+Log Analysis
+After analyzing the logs of infected websites, we discovered that the attackers added the plugins after they had logged into WordPress dashboard:
+110.45.58.78 - - [08/Feb/2018:10:02:38 -0500]
+"GET http://redacted/wp-login.php HTTP/1.1" 200 4571 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/793A"
+110.45.58.78 - - [08/Feb/2018:10:02:41 -0500]
+"POST http://redacted/wp-login.php HTTP/1.1" 302 - "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/793A"
+110.45.58.78 - - [08/Feb/2018:10:02:43 -0500]
+"GET http://redacted/wp-admin/plugin-install.php HTTP/1.1" 200 83955 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/793A"
+110.45.58.78 - - [08/Feb/2018:10:02:49 -0500]
+"POST http://redacted/wp-admin/update.php?action=upload-plugin HTTP/1.1" 200 32291 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/793A"
+110.45.58.78 - - [08/Feb/2018:10:02:55 -0500]
+"GET http://redacted/wp-admin/plugins.php?action=activate&plugin=injectscr%2Finjectscr.php&_wpnonce=e22822dda4 HTTP/1.1" 302 - "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/793A"
+217.64.111.207 - - [09/Feb/2018:02:59:18 -0500]
+"GET http://redacted/wp-login.php HTTP/1.1" 200 4565 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/7003"
+217.64.111.207 - - [09/Feb/2018:02:59:20 -0500]
+"POST http://redacted/wp-login.php HTTP/1.1" 302 - "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/7003"
+217.64.111.207 - - [09/Feb/2018:02:59:22 -0500]
+"GET http://redacted/wp-admin/plugin-install.php HTTP/1.1" 200 83025 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/7003"
+217.64.111.207 - - [09/Feb/2018:02:59:26 -0500]
+"POST http://redacted/wp-admin/update.php?action=upload-plugin HTTP/1.1" 200 31747 "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/7003"
+217.64.111.207 - - [09/Feb/2018:02:59:30 -0500]
+"GET http://redacted/wp-admin/plugins.php?action=activate&plugin=injectscr%2Finjectscr.php&_wpnonce=0c451eb625 HTTP/1.1" 302 - "-" "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/7003"
+These plugin installation requests are most likely automated. It takes only a mere 10-20 seconds from opening the login page to fully installing and activating the plugins. These installation requests have been primarily coming from random IPs, but we’ve listed a few of the IP addresses that have been participating in this attack: 95.221.199.162, 186.95.168.192, 220.79.30.57, 1.179.244.194. These requests utilize fake Firefox user agents like “Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:50.0) Gecko/20100101 Firefox/4912” and include weird random 3-4 digit versions of Firefox like 4912 or 793A – however, the latest version of Firefox at the moment is just 58.0.1 (Firefox/58.0)
+Related Infections
+Our researchers have identified a number of websites with injectbody/injectscr plugins that were previously infected in January with a related infection. This malware sent out tons of spammy emails using uploaded files with random names like “class-mailer.php”, “wp-scsys.php”, “wpn-sops.php”, “wp-sclouds.php”, etc. The attack also created backdoors and file uploading scripts in random locations on the server.
+Mitigation
+There are a number of ways that you can mitigate some of the risks of this infection.
+1. Don’t rely on what you see in the WordPress admin interface, as some active plugins may be hidden from you. Please inspect wp-content/plugins manually for anything that should not be there. If located, you should remove wp-content/plugins/injectbody/ and wp-content/plugins/injectscr/.
+2. Hackers logged into WordPress to install the plugins. This means they either know your admin password or created rogue admin users for themselves so it’s important that you do the following:
+2.1. Change all WordPress passwords (at least for admins) ASAP!
+2.2. Review the list of users, especially those with administrator roles. You should definitely delete any users with the following logins: INJECTBODY__ADMIN or INJECTSCR__ADMIN.
+3. Make sure your site is not infected with older types of malware associated with these same attackers – or any other malware, for that matter. Be sure to keep an eye out for any backdoors as well, as they frequently contribute to website reinfections.
+For more information about cleaning hacked WordPress sites, you can check our guides on WordPress security.
+Update (Feb 15, 2018):
+We’ve identified a couple more malicious plugins installed by this attack: plugins/antisp/antisp.php and plugins/spamdetectvr/spamdetectvr.php.
+These plugins possess the same structure as injectbody/injectscr, but include different rogue admin users: antisp__ADMIN and SPAMDETECTVR__ADMIN respectively. The injected scripts (from inject.txt) are also a bit different.
+The antisp plugin injects a script that begins with “var _0xa7af=[…”, which is a variation of the “clickund_expert” script from the injectscr plugin, with a different interstitial domain (xn--i1av6a.xn--p1ai / яфй.рф – created on February 6, 2018 ). A variation of the Injectscr plugin also uses the яфй.рф domain and, in this case, the obfuscated script may begin with “var _0xde98=[…”.
+Spamdetectvr injects a script that begins with “eval(function(p,a,c,k,e,d){e=function…” and, when decoded, it is similar to the viglink ad script injected by the injectbody plugin, but with “af3e68a3f417d7dd0db45cfcfb34cbb1” as the key.
+Update (Feb 16, 2018):
+We have identified another malicious plugin: wpheadsp.php with wpheadsp__ADMIN user and “var _0xa7af” script in the in.txt file.
+On some sites, the malicious scripts are also appended to the core WordPress .js files: wp-includes/js/jquery/jquery-migrate.min.js and wp-includes/js/wp-embed.min.js.
+SiteCheck detected malware in .js files

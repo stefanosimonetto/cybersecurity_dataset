@@ -1,0 +1,83 @@
+Hancitor: fileless attack with a DLL copy trick
+This article was authored by David Sánchez, Mickaël Roger, and Jérôme Segura
+During the past few years, malicious spam campaigns have proven to be one of the most efficient infection vectors, in part due to a combination of social engineering and a regular number of Office vulnerabilities.
+The interesting aspect about social engineering is that it capitalizes on the user’s poor decision to execute code that would have been much harder to inject, or that could have been caught by security solutions otherwise. In other words, letting victims do the work remains an effective means for attackers to compromise endpoints.
+We recently came across an interesting attack vector brought to us courtesy of a fresh Hancitor (a payload delivery piece of malware) spam run where users are tricked to download a fake Paypal invoice laced with malicious code.
+
+Hancitor has had a clever delivery mechanism that allows for fileless infections. A blog post from Morphisec in 2016 already detailed a technique via process hollowing that allowed it to bypass security products.
+While this latest attack also shares the same process hollowing technique, it performs different actions to subvert hook protections, and ultimately results in infections that are harder to detect.
+Overview
+The attack involves making a copy of the kernel32.dll library, which exposes some of the most important Windows APIs, in order to create a new malicious process via this innocuous copy. As we will see, this simple trick bypasses Ring 3 hook protections.
+
+Technical analysis
+The Word macro decodes the first stage of the payload and then calls the NtAllocateVirtualMemory API to copy the decoded code to a newly allocated memory area. Then, the macro takes the pointer to that code and calls the CreateTimerQueueTimer API so that the malicious code will be executed directly in memory.
+By setting a breakpoint there, we can catch the payload before it executes:
+
+The payload then gets the address of the ntdll.ldrLoadDll API and calls it to get the handle of the kernel32.dll and psapi.dll libraries, the latter being used to obtain information on the status of processes and drivers.
+
+It then finds the addresses of the following APIs:
+
+dll->ExpandEnvironmentStrings
+dll->GetMappedFileNameA
+kernel32!VirtualQuery
+kernel32!lstrcmpA
+kernel32!VirtualAlloc
+
+kernel32!VirtualAlloc is used to allocate a new area in memory; after some decoding operations, we can see that the payload is indeed a PE file residing in memory:
+
+Now, the payload looks for other APIs:
+
+ntdll!ZwUnMapViewOfSection
+kernel32!VirtualAllocEx
+kernel32!ResumeThread
+kernel32!WriteProcessMemory
+kernel32!Wow64SetThreadContext
+kernel32!Wow64GetThreadContext
+kernel32!IsWow64Process
+
+After some operating system checks, it calls the kernel32! ExandEnvironmentStringsW API to get the path of the svchost.exe process.
+This is followed by a lookup of these APIs:
+
+CreateProcessW
+CopyFileExW
+LoadLibaryW
+GetModuleFileNameW
+
+After finding those API functions it calls the kernel32!ExandEnvironmentStringsW API to get the path of the %temp%\krnl32.dll string. This is used to call the kernel32.CopyFileExW API so that a copy of the original kernel32.dll file can be made in the current user’s temporary folder.
+This operation is key to understanding the user-land monitoring evasion attempt that the malware authors planned. krnl32.dll is loaded into memory by calling kernel32.LoadLibraryW. Then the payload uses the krnl32.CreateProcessW API instead of calling kernel32.dll as one would have expected.
+The payload creates a suspended svchost.exe process as shown below:
+
+Eventually, it calls the ntll.ZwUnmapViewOfSection API to unmap the view of a section from the suspended svchost.exe process’ virtual address at 0x400000. Then it calls WriteProcessMemory of the real kernel32.dll library to copy the content of the malware into the real svchost.exe process’ memory.
+
+Finally, it calls to the WriteProcessMemory API to overwrite other areas of the suspended svchost process and eventually resumes the process (process hollowing trick). At this point, the malware is running and the system has been fully compromised.
+
+Mitigation
+Malwarebytes protects users running the latest versions of the Windows operating system and Microsoft Office from this new technique via its signature-less anti-exploit engine. We are working on releasing a patch to cover particular scenarios on older systems where only our web protection module would currently mitigate this attack.
+
+Conclusion
+This is another fileless attack that uses a neat trick to create a new process from a copy of the legitimate kernel32.dll library. It does this to avoid user-land hooking technologies, followed by a process hollowing technique to run the malware code.
+It’s interesting to note that this technique still relies on user interaction to begin with, as most malspam attacks do these days. Once the attack has been initiated, the malware authors are in full control and can throw a variety of methods at the system to attempt to bypass its defenses.
+Indicators of compromise
+Hancitor payloads:
+1D63CFE0C0B6C80212AAFEF737FC63F63415634C74AC3159966F63C31C1A08D4
+60149ABF042392E352795C4BB2D731A75332E4BCEB0DAF83164BAA0DCFA0DCD3
+DB020A0D727A43FA018AA530630A9B186222F85C9AF50D4B5720FC180551C277
+
+Domains and IPs:
+batcommunications[.]com
+cirewandbut[.]com
+mypartnerforever[.]me
+euforia-piekna[.]pl
+tebabretof[.]com
+dinglebetna[.]ru
+etranutha[.]ru
+babronwronot[.]ru
+romfinothad[.]ru
+herttannarit[.]com
+sarattatit[.]ru
+uldminyran[.]ru
+
+95.213.200[.]176
+93.189.40[.]107
+192.254.185[.]27
+185.204.219[.]210

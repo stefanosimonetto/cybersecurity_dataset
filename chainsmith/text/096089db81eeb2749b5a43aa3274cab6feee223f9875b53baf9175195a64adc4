@@ -1,0 +1,283 @@
+Cut the Cutwail
+2010-02-01
+
+Kyle Yang
+Fortinet
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+After playing the cat-and-mouse game with AV companies for several months, the author(s) of Pushdo/Cutwail finally decided to change their advanced installer, in doing so changing the communication mechanism between the servers and bots. Kyle Yang reveals the details of the new protocol.
+Copyright © 2010 Virus Bulletin
+
+After playing the cat-and-mouse game with AV companies for several months, the author(s) of Pushdo/Cutwail finally decided to change their advanced installer – previously codenamed ‘Siberia’ (as per the project name extracted from debugging strings in the binary) – to a brand new piece codenamed ‘Revolution’. The changes mainly concern the communication mechanism between the servers and bots. More specifically, the mechanism changed from a direct communication mode using the HTTP GET method (single packet request) to a sophisticated two-way communication mode between servers and bots. In this paper, we will reveal the details of this new protocol.
+
+When and why it changed
+As far as we know, the Cutwail spam botnet used to seed its own executable, which usually came without an obfuscation layer. Then, around the end of October 2009, Cutwail began to seed Pushdo binaries via the infamous DHL/UPS email seeding campaign. This time it came with an obfuscation layer in order to dodge AV detection. Among the binaries was a new version string, codenamed ‘Revolution6’ – possibly indicating six major updates. Previously, this number only reached two (‘Siberia2’) – which suggests that the author(s) may have spent more time on this major update. On reversing its binary, we found that the author(s) had put a tremendous amount of work into the communication protocol, which is now both more complex and robust, and of course stealthier than the previous one (thanks to a custom packer made from a custom stub and UPX). As for what drove this change, it must certainly have something to do with the fact that the Pushdo binary and the previous communication protocol had been around for a long time, and were well known by AV companies. For instance, its critical communication packets were blocked by IPS systems. This would have disrupted the attackers’ business model on a large scale, preventing them from making easy, dirty money.
+Looking at our statistics, we can see that Pushdo very rapidly became one of the most prevalent threats running from October 2007 to March 2008. It is interesting to note that the original HTTP GET communication was slightly modified in December 2007 [1] to avoid detection, but seemed to quickly be thwarted as activity became significantly reduced from March 2008 onwards.
+Figure 1. Initial Pushdo seeding (HTTP GET).
+Until recently, Pushdo activity failed to return to the levels experienced during its initial outbreak. In October 2009 we observed tremendous activity with the updated version: nearly ten times the level detected two years ago. This signifies an aggressive approach to seed a new, revolutionized version of the Pushdo malware installation system. Indeed, the gang behind Pushdo must have quite some resources at their fingertips with the ability to seed in such high volume.
+Figure 2. Pushdo/Cutwail – first gen vs. next gen.
+The Revolution6 version is marked by debug ASCII strings in the unpacked binary, showing a ‘pdb’ filepath. PDB (program database) files contain debug and project state information for builds. In this case, the filepath shows the project name and debug name, for instance: ‘f:\\programs\\revolution6\\loader\\objfre_wxp_x86\\i386\\Loader.pdb’. In some samples, while the project name remained the same, the volume changed (e.g. ‘c:\\programs’), indicating that there was more than one build.
+
+What changed
+There are two main changes in the Pushdo payload. Firstly, in the main routine there is now a condition that leads the malware to delete itself and exit when the OS language is Russian. This is not uncommon: for instance, Conficker avoids infecting Ukrainian systems, and various Scareware flavours do the same. In fact, there might be some connection between the Conficker and Pushdo/Cutwail gangs, although the nature of that connection remains a mystery.
+The other radical change concerns the ‘injection’ code, the main function of which is to control the communications between the servers and the bots, for the purpose of retrieving all the malware modules (rootkit component, mailer component, etc.) that characterize the Cutwail botnet. Let’s take a closer look at this process.
+Nowadays, the communication channels of most infamous botnets are encrypted, either using a public encryption algorithm (e.g. AES-CBC, Base64 in Waledac, etc.) or a custom, private one. Pushdo is no exception; it resorts to many custom encryption algorithms, leveraging two main encryption/decryption keys stored in memory. Figure 3 shows the stored key pattern.
+Figure 3. Figure 3: Encryption/decryption key.
+The data circled in red is the key for encrypting/decrypting the Pushdo communication packet ‘header’ (made up of a start identifier and content length – eight bytes total). It should be noted that this key is hard coded in the Pushdo binary. Even more interesting is the fact that, based on the samples retrieved from different sources/spreading methods, this hard-coded key has never changed across samples. This explains why Pushdo doesn’t have a routine to communicate the key to the server – the server already knows it. This is quick and efficient, and saves the cost of implementing a ‘safe’ exchange of symmetric keys via public key encryption schemes. But of course it is tremendously lacking in flexibility, putting the botnet at risk once the hard-coded key has been discovered (although, as we will see later, this only concerns the packet headers).
+The data circled in blue is the return value of a call to QueryPerformanceCount, an API function frequently used to generate pseudo-random values. This data will be used as the key for encrypting/decrypting the Pushdo communication packet ‘content’. Being generated randomly rather than pre-shared, the key must be sent to the server (see Figure 4 below).
+
+Sending random encryption/decryption key to the server
+Figure 4. Sending encryption/decryption key to the server.
+As can be seen above, the random key is sent to the server in plain text.
+
+Sending bot and loader info to the server
+The data shown in Figure 5 below is the ‘clear-text’ data block generated by Pushdo, which we ‘intercepted’ in memory prior to encryption. It appears that every data piece starts with the tag ‘PROP’. This looks familiar, and is similar to the XML format used by Waledac. The difference is that Pushdo has dropped the ‘<tag></tag>’ pairs in order to reduce the packet length and make the communication faster. Moreover, Pushdo will only send data containing the fields ‘ldrver’ and ‘winver’ to the first server it connects to (i.e. even if the rest of the communication fails, thus warranting an attempt to connect to another server, these will not be re-sent).
+Figure 5. Clear data block sent from UPS/DHL spam sample.
+Let’s break the whole data block into ‘fields’ for better comprehension. The two first fields are the ‘header’, encrypted by the pre-shared key, while the rest is the ‘content’, encrypted by the random key.
+Start identifier (dd)
+Data length (dd)
+Key word identifier (dw)
+Key word length (dw)
+Content length (dw)
+Key word (00 ending)
+Content
+Description
+50 52 4F 50 PROP
+1B
+16
+5
+8
+75 6E 69 71 00 uniq
+C1 84 5D 78 B7 98 9D 24
+encrypted data of system info
+50 52 4F 50 PROP
+18
+14
+6
+4
+63 6F 75 6E 74 00 count
+00 00 00 00
+send packet counter
+50 52 4F 50 PROP
+1A
+14
+8
+4
+73 65 73 73 69 6F 6E 00 session
+E8 F1 CE EA
+random number to identify the connection
+50 52 4F 50 PROP
+19
+14
+7
+4
+76 65 6E 64 6F 72 00 vendor
+11 00 00 00
+hard-coded in Pushdo
+50 52 4F 50 PROP
+18
+12
+8
+2
+6C 64 72 74 79 70 65 00 ldrtype
+01 00
+hard-coded in Pushdo
+50 52 4F 50 PROP
+19
+14
+7
+4
+6C 64 72 76 65 72 00 ldrver
+37 00 00 00
+hard-coded in Pushdo
+50 52 4F 50 PROP
+28
+19
+7
+13
+77 69 6E 76 65 72 00 winver
+05 00 00 00 01 00 00 00 28 0A 00 00 03 00 00 00 00 01 01
+windows version Info
+52 45 43 56 RECV
+08
+N/A
+N/A
+N/A
+N/A
+N/A
+end of the packet content
+Table 1. Clear data block structure and description.
+There are two main pieces of information in this data block. One is the basic host-related information, including volume information, system bios date, video bios data, processor model, OS ID and Windows version.
+The other is the (malware) loader information, including loader type, loader version and vendor number. The latter is very interesting, as we are about to see. First, note that this data block is generated from a sample which is the attachment of a fake UPS/DHL email. Now, let’s compare it with data from other samples with different spreading methods to see what changes in the information reported to the server by the loader.
+Figure 6 shows the data sent to the server by a loader seeded by Bredolab. The code shown in red highlights an interesting difference: the vendor number is 0x10 in this sample (rather than 0x11 in our UPS sample). So what is this vendor number?
+Figure 6. Clear data block sent from Bredolab downloaded Pushdo.
+Based on the semantics of ‘vendor’, and on the observations above, it could be some sort of affiliate ID, used to remunerate partners who distribute the malware. In any case, it also has a practical purpose here: it indicates which method to use to get and inject the corresponding rootkit and mailer modules.
+Specifically, vendor 0x11 determines that they are loaded from multiple TCP streams and a report is sent back to the server. Meanwhile, under vendor 0x10 they are loaded in a single TCP stream and no report is sent back to the server. The fact that this vendor number is hard coded in the Pushdo binary indicates that the author(s) made independent/custom/private binaries for different ‘vendors’; in the process, they introduced a new operation mode – rush mode (more on which later).
+In order to better reveal the different server responses which could be possible based on the ‘vendor’, we carried out some fuzzing on the Pushdo request packet (more details later).
+After generating this data buffer for the server, Pushdo will encrypt it prior to sending it. As we have hinted before, the encryption routine has two separate phases. One uses the hard-coded key to encrypt the start identifier and data length (‘header’). The other uses the randomly generated key that has already been sent to the server to encrypt the rest of the data (‘content’).
+Encryption algorithm A: encrypt start identifier and data length
+In this case, the ‘Start Identifier’ and ‘Data Length’ are simply XORed with the hard-coded key.
+For example:
+50 52 4F 50 1B 00 00 00 ^ 45 9A B3 61   8E 20 3F 19 = 15 C8 FC 31   95 20 3F 19
+
+52 45 43 56 08 00 00 00 ^ 45 9A B3 61   8E 20 3F 19 = 17 DF F0 37   86 20 3F 19
+As mentioned previously, the key is likely pre-shared with the server (albeit the server could get this encryption key simply by XORing the original data (50524F501B0000) with the encrypted data received from the bot).
+Encryption algorithm B: encrypt rest of data
+In this case, the first three bytes of the randomly generated key are used. For each byte of data to encrypt, the remainder of the quotient ‘byte offset / 4’ is computed, and its value is the index of the encryption operation to apply to that byte.
+For example:
+Key: 37 8A 3A
+Original data: 16 00 05 00 08 00 75 6E
+Encrypted data: 21 76 3f c4 3f 76 AF AA
+Offset % 4
+Method
+0
+Byte ^ 37
+1
+Byte - 8A
+2
+Byte + 3A
+3
+Byte ^ (3A + 8A)
+Table 2. Data encryption algorithm.
+The encrypted block is then sent to the server. The interesting thing is that the server could use the Volume Info in the ‘uniq’ to identify whether the bot is running under a virtual machine environment, but it seems to ignore this.
+
+Retrieving other components
+There are two possible kinds of reply from the server, which are identified by their ‘start identifier’. Those with ‘PROP’ as a start identifier contain the server list. Pushdo will update its list based on this message. Those with ‘FILE’ as a start identifier contain other components, including rootkits and the spam engine. As mentioned before, Pushdo has two operation modes for retrieving those (based on the vendor number): stepping mode and rush mode.
+
+Stepping mode
+Just as its name implies, in stepping mode Pushdo will retrieve the rootkit and spam engine step by step, one by one. More specifically, it will send the bot status back to the server to determine the next step after every module/list retrieved (see Figure 7, Figure 8 and Figure 9).
+Figure 7. Clear FILE data block – rootkit installer (partial).
+Figure 8. Clear FILE data block – spam engine (partial).
+Figure 9. Clear FILE data block – mail relay server.
+Table 3 breaks down the whole data block into fields.
+Type
+Start identifier (dd)
+Data length (dd)
+TMP file determiner (dw)
+Key word length (dw)
+File type identifier (dw)
+File length (dd)
+Content identifier (dd)
+Key word (00 Ending)
+Content
+Rootkit installer
+46 49 4C 45 FILE
+0x9224
+2
+0B
+1
+0x9200
+0x34
+52 6F 6F 74 4B 69 74 5F 31 37 00 00 RootKit_17
+N/A
+Spam engine
+46 49 4C 45 FILE
+0x45E2A
+0
+11
+1
+0x45E00
+0x12
+4D 61 69 6C 65 72 5F 52 53 31 5F 65 6D 70 74 79 00 00 Mailer_RS1_empty
+N/A
+Relay server info
+46 49 4C 45 FILE
+0x5E
+0A
+22
+20
+0x4
+0x63
+4D 61 69 6C 65 72 5F 52 53 31 5F 37 38 5F 31 35 39 5F 31 32 31 5F 34 31 28 44 69 6D 61 72 69 6B 29 00 Mailer_RS1_78_159_121_41(Dimarik)
+/host:78.159.121.41 /port:38811
+Table 3. FILE message structure.
+The retrieved message process routine depends on the ‘TMP file determiner’ and ‘file type identifier’. If the ‘file type identifier’ equals 1, then it will check the ‘TMP file determiner’. If a result of 1 occurs after a logical AND, a temporary file will be created before injecting into a suspend mode svchost.exe. Otherwise, it will be injected directly into a suspend mode svchost.exe, but it will always perform a sanity check before the injection. The svchost.exe process info will be stored in the memory and a partial file checksum value will be used when reporting bot status. Figure 10 shows the structure of the bot status info.
+Figure 10. Bot status data – one process (rootkit installer) running.
+Pushdo will use the bot status data to form the report communication packet. Figure 11 shows an example of the content of such a report packet.
+Figure 11. Clear report data block.
+If the injection fails, or if the bot needs to change to another server (perhaps because the current connection broke), Pushdo will always retrieve the rootkit installer until the injection succeeds. Therefore, the ‘botstatus’ could contain information for more than one running process. This also indicates that Pushdo has the ability to load other malware and report back to the server.
+
+Rush mode
+The major difference between rush mode and stepping mode is the absence of reports (‘botstatus’) in rush mode and the fact that the rootkit installer and spam engine are retrieved at the same time (single TCP stream). Thanks to the well-organized data structure, Pushdo can process them as easily as in stepping mode and even faster. Bredolab has been downloading Pushdo binaries, and this mode has only been seen in the Bredolab-downloaded Pushdos. The report will only be sent when the process is running. It’s a possibility that Bredolab just tries to use the Cutwail spam engine to spread itself.
+
+Fuzzing Pushdo botnet request packet
+The main purpose of this part of the paper is to reveal the relationship between different vendor ID and server responses, and to gain an idea of how many custom/private Pushdo binaries there are now, by fuzzing the vendor value.
+Method: We use protocol re-writer to customize the vendor value before it sends out, then intercept the response packets.
+The vendor ID with corresponding server response will be the following (partial):
+Rootkit_[number] represents the ‘Key Word’.
+Loader_V0x[number] represents the Pushdo binary with hard-coded vendor ‘number’
+Vendor=0x00, downloaded Modules:
+Rootkit_1, Loader_V0x01, Mail Sniff, Filter
+Vendor=0x01, downloaded Modules:
+Rootkit_1, Loader_V0x1, Mail Sniff, Filter
+Vendor=0x02, downloaded Modules:
+Rootkit_2, Loader_V0x2
+Vendor=0x09, download Modules:
+Rootkit_9, Loader_V0x9
+Vendor=0x10, downloaded Modules:
+Rootkit_16, Spam Engine
+Spam Engine served for Bredolab.
+Vendor=0x11, downloaded Modules:
+Rootkit_17, Spam Engine
+Spam Engine served for Pushdo itself.
+Vendor=0x12, downloaded Modules:
+Rootkit_18, Loader_V0x12, Spam Engine
+Spam Engine served for ???
+Vendor=0x13, downloaded Modules:
+Rootkit_19, Loader_V0x13, Spam Engine
+Spam Engine served for ???
+Vendor=0x14, downloaded Modules:
+Rootkit_20, Loader_V0x14, Spam Engine
+Spam Engine served for ???
+Vendor=0x15, downloaded Modules:
+Rootkit_21, Loader_V0x15, Spam Engine
+Spam Engine served for ???
+Vendor=0x16, downloaded Modules:
+Rootkit_22, Loader_V0x16, Spam Engine, Web Mailer
+Spam Engine served for ???
+Vendor=0x17, downloaded Modules:
+Rootkit_23, Loader_V0x17, Spam Engine
+Spam Engine served for ???
+Vendor=0x18, downloaded Modules:
+No Modules downloaded.
+Vendor=0x19, downloaded Modules:
+No Modules downloaded.
+Vendor=0x1A, downloaded Modules:
+No Modules downloaded.
+Vendor=0x1B, downloaded Modules:
+Rootkit_1, Loader_V0x01, Web Mailer
+Vendor=0x20, downloaded Modules:
+Rootkit_1, Loader_V0x01, Web Mailer
+Vendor=0x63, downloaded Modules:
+Rootkit_1, Loader_V0x1
+Vendor=0xfd, downloaded Modules:
+Rootkit_1, Loader_V0x01
+Vendor=0xfe, downloaded Modules:
+Rootkit_1, Loader_V0x01, Web Mailer
+Vendor=0xff, downloaded Modules:
+Rootkit_1, Loader_V0x01
+Vendor=0x100, downloaded Modules:
+Rootkit_1, Loader_V0x01
+Vendor=0xfffe, downloaded Modules:
+Rootkit_1, Loader_V0x01, Web Mailer
+Vendor=0xffff, downloaded Modules:
+Rootkit_1, Loader_V0x01
+Vendor=0xffffff, downloaded Modules:
+Rootkit_1, Loader_V0x01
+Vendor=0xffffffff, downloaded Modules:
+Rootkit_1, Loader_V0x01
+From the above fuzzing results (gathered 18 December 2009), we can see that both the rootkit and loader version number is related to the vendor ID. There may also be 23 private/custom Pushdo binaries based on the different hard-coded vendor IDs. As mentioned previously, the vendor may be related to the partners who distribute the malware. In this case we only revealed two: 0x10 and 0x11, but there are still more to be revealed. We have even seen some new modules with another new project name: ‘webbot’. The debug build has now reached three, ‘WebMailer3’. After reversing this binary, it appears to still be experimental and that the author(s) are still trying to debug it since there is a ‘/debug’ switch. Fortinet’s FortiGuard Labs has dubbed this new engine ‘Webwail’. Webwail has the ability to register new email accounts and send spam from the web. Around 15 January 2010, Pushdo started to download this new spam engine, spreading Webwail with the help of its old friend Bredolab once again. At the time of writing, Webwail is registering Hotmail accounts [2].
+
+Detection
+Thanks to its well-organized data structure, Pushdo can communicate a large amount of information from and to its command and control server. We can read that information as well, the only issue being the encryption key. However, the encryption key doesn’t change even in custom/private builds for other malware, thus making detection easier.
+
+Bibliography
+[1] SecureWorks. http://www.secureworks.com/research/threats/pushdo/.
+[2] More information on Webwail can be found at http://blog.fortinet.com/bredolab-gearing-up-to-spam-the-web/.
+[3] More information on Pushdo/Cutwail can be found at http://www.fortiguard.com/analysis/pushdoanalysis.html.
+[4] More information on Crime Services can be found at http://blog.fortinet.com/adaptive-crime-services/.

@@ -1,0 +1,96 @@
+Detecting bootkits
+2009-11-01
+
+Alisa Shevchenko
+eSage Lab
+,
+Russia
+
+Dmitry Oleksiuk
+eSage Lab
+,
+Russia
+Editor:
+Helen
+
+Martin
+Abstract
+Alisa Shevchenko and Dmitry Oleksiuk decided to find out whether anti-virus software has learned to cope successfully with Mebroot and MBR infectors in general a few years after the first appearance of this type of malware.
+Copyright © 2009 Virus Bulletin
+
+This is a short essay about the generic detection of MBR-infecting malware and, in a wider sense, the generic detection of malware.
+
+Introduction
+As a previous tool we developed – TDSS remover (see VB, August 2009, p.6) – proved to be popular with users, we decided to continue exploring the capabilities and attempting to fix the shortcomings of anti-virus software.
+A concept presented at a recent conference – the Stoned Bootkit – reminded us of another popular and poorly managed threat: the Mebroot (aka Sinowal or Torpig) trojan, and MBR infectors in general. So we decided to find out whether, a few years after the first appearance of this type of malware, anti-virus software has learned to cope successfully with it.
+A very simple test was performed in order to exercise the capabilities of different software in detecting and removing MBR-infecting malware, as well as to explore the software’s approaches to such detection. Despite the test’s relatively amateur methodology, the results clearly showed that most anti-virus software is far from able to cope successfully with MBR-infecting malware. It also showed that most anti-virus software detects MBR-infecting malware by signature matching, which means that any Mebroot specimen can be made undetectable in a matter of minutes.
+We decided to create a trivial tool presenting a generic approach to the detection and cleaning of MBR-infecting malware.
+
+Background
+Mebroot’s boot-code-infecting capability is based entirely on the eEye Boot Root concept [1] presented at Black Hat 2005. Beyond the concept, Mebroot variants have driver-loading and self-hiding functionality, the latter of which makes the trojan’s detection and removal particularly tricky.
+Let us remind you about Mebroot’s basic features:
+Mebroot starts from a modified piece of the Master Boot Record code. It doesn’t have its own executable file on the filesystem; instead, it stores its code in the MBR and first disk sectors.
+During system boot, malicious boot code hooks IoInitSystem after the operating system kernel code is read from disk.
+The IoInitSystem injection provides mapping of a malicious driver into kernel memory.
+The malicious driver code hooks filesystem drivers, so that an attempt at reading the system MBR would return a seemingly normal boot code.
+Finally, payload code is injected into user-mode processes from the driver.
+
+The Stoned Bootkit
+Technologically, the Stoned Bootkit [2] is no different from Mebroot where MBR infection is concerned. This is exactly why it is frustrating that anti-virus tools fail to detect it.
+
+The test
+The main objective of the test was to figure out whether anti-virus tools can detect and remove MBR malware in general, rather than just known Mebroot variants. The idea is that those that can, would certainly succeed in the detection of a theoretical new Mebroot variant which is different from an ordinary Mebroot only in its boot code.
+To emulate such a piece of malware, a regular Mebroot body (MD5: c8b9853a2a40ab6e9f0363397386f86e [3]) was utilized. We applied a simple obfuscation to the real Mebroot’s boot code, so that it could no longer be detected by signature.
+Two other test goats were:
+A regular, second-generation Mebroot variant (same MD5) – as a historical, ‘must succeed’ case.
+The above-mentioned Stoned Bootkit – as a real-world ‘new challenge’.
+We focused on testing specific anti-Mebroot tools, since they must embody anti-virus best practices. Some other cleaning tools and anti-virus solutions were also tested. In the results table, target software is grouped as follows:
+A random selection of major anti-virus solutions.
+Specific anti-Mebroot anti-virus tools.
+Non-specific advanced cleaning tools from anti-virus vendors.
+A third-party anti-rootkit solution.
+The test conditions were kept simple:
+All tests were run on the same snapshot of VMWare, i.e. in identical conditions.
+Windows 2003 Server was installed on VMWare.
+The latest stable releases of software were installed.
+Anti-virus software was configured to provide maximum protection.
+Anti-virus databases were up to date.
+The test results can be seen in Figure 1.
+Figure 1. Test results for detection and disinfection of three pieces of malware ('+' signifies the product detects/disinfects successfully, '-' signifies the product fails to detect/disinfect successfully).
+
+Analysing the results
+As can be seen from the results table, none of the anti-virus solutions tested is ready for a simple new Mebroot.
+Q: Is it easy to produce a new Mebroot variant that would be undetected by the listed software?
+A: It is as trivial as a 10-minute exercise in assembly.
+Q: Why is ESET Antivirus the only software to detect the Stoned Bootkit?
+A: Probably because ESET is the only anti-virus among those listed that adds signature detections for proof-of-concept code.
+Q: Why did ESET Antivirus fail to cure a regular Mebroot infection in the first test, while the ESET Mebroot Remover tool succeeded in the same task?
+A: Actually, ESET Antivirus does cure the Mebroot infection. But, because such cleaning requires non-trivial scripting manipulations, we decided to put a ‘-’ in the results table.
+Q: Why did some specific anti-Mebroot tools and some advanced virus cleaning tools fail completely?
+A: As opposed to automatically updated anti-virus solutions, stand-alone tools are not updated regularly, and thus easily and quickly become outdated. This is not a problem unless a stand-alone tool relies on signatures or other fast-expiring technology, while its nature is to rely on advanced generic solutions.
+Q: In the second test, why did most of the software succeed in detecting an active rootkit, but fail to disinfect it?
+A: Probably because they detected (and tried to cure) a Mebroot driver in memory while ignoring (and thus missing the fix of) the unknown boot code.
+Q: Why did software ignore the modified Mebroot boot code?
+A: Probably because a boot code detection is triggered by a known signature and not triggered by modified boot code. Even stand-alone, non-standard boot code is worthy of suspicion. In combination with invisibility, it presents clear evidence of an MBR infector.
+Q: Why did RootRepeal succeed in the first two tests, and fail in the last?
+A: It looks like RootRepeal is the only software to implement the anomaly-based detection of MBR malware mentioned in the previous paragraph. A detection is triggered if a custom boot code is found, and if it is hidden. In this case, the boot sector is disinfected. Stoned Bootkit isn’t detected since it doesn’t hide.
+Q: What is the idea behind detecting MBR-infecting malware generically?
+A: A generic detection is the detection of the essential characteristics of a malware family. As an example, the essential characteristic of any Mebroot-like malware is boot code infection. Thus, a generic detection of Mebroot-like malware would be detecting boot code anomalies. With such an approach, detection and disinfection of the driver in memory and other malware evidence can be skipped, because cleaning of the boot code will cure an MBR infector completely.
+Q: Why is generic detection necessary?
+A: Because a detection that can be bypassed in 10 minutes is a waste.
+
+Bootkit Remover
+We created a simple tool that is capable of detecting and disinfecting MBR malware: Bootkit Remover [4].
+In the tool’s output, three verdicts are possible:
+Boot code is clean
+Boot code is modified
+Boot code is hidden by a rootkit.
+Modified boot code can be cleaned by launching the tool with the ‘fix’ command. In this case, the infected MBR will be overwritten by the operating system’s default boot code. Without an infected boot code the Mebroot (or similar malware) will fail to start at the next reboot, so no further cleaning is necessary.
+Currently the tool does not recognize custom boot sector code (such as GRUB or Lilo), which means that the second verdict (‘boot code is modified’) will not necessarily reflect a malicious boot code modification. However, all MBR malware hides its boot code, which means that in case of an MBR infection one will always get the third verdict.
+It should be underlined that we are not claiming to present an infallible technology. Basically, Bootkit Remover is an advanced analogue of fixmbr with rootkit detecting capabilities. At the same time, the tool does allow easy detection and disinfection of virtually any piece of MBR malware, thus demonstrating the concept of generic detection of the latter.
+
+Bibliography
+[1] http://www.blackhat.com/presentations/bh-usa-05/bh-us-05-soeder.pdf.
+[2] http://www.stoned-vienna.com/.
+[3] http://www.virustotal.com/analisis/b29a3d803c513b4ce3b5e10c1455669ccc3581b3d01270840d509af70e3b4130-1254266311.
+[4] http://esagelab.com/resources.php?s=bootkit_remover.

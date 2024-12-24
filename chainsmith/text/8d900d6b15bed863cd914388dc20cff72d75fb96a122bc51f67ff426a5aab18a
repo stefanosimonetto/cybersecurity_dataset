@@ -1,0 +1,155 @@
+Locky distributor uses newly released quant loader sold on Russian underground
+
+On September 1, 2016 a new trojan downloader became available to purchase on various Russian underground forums. Named "Quant Loader" by its creator, the downloader has already been used to distribute the Locky Zepto crypto-ransomware, and Pony (aka Fareit) malware families.
+Locky Zepto & Pony E-mail Campaign
+On September 12, 2016 Forcepoint Security Labs™ noticed an e-mail campaign which was typical of one we mainly see distributing the Locky or Dridex botnet 220 malware families. The e-mails themselves masqueraded as an invoice document like the one below.
+The attached ZIP file contained a malicious Windows Script File (WSF) with obfuscated Javascript. Upon execution the WSF file downloaded an encrypted payload from one of several URLs and then decrypted and executed it.
+In this case the payload turned out to be something different from the usual Locky or Dridex payload. Upon further analysis we discovered that this was a newly released trojan downloader known as "Quant Loader". This went on to download both Locky Zepto and Pony.
+Quant Loader's Features
+Described as a "professional exe loader / dll dropper" Quant Loader is in fact a very basic trojan downloader. It began being advertised on September 1, 2016 on various Russian underground forums:
+
+A rough translation reveals that Quant Loader claims to include the following capabilities:
+
+Support for downloading & executing both EXEs and DLLs
+Privilege escalation (without using "aggressive" techniques)
+An administrative control panel
+Geographical targeting
+Limiting the amount of downloads
+Load balancing across servers
+
+Quant Loader's Origins
+Quant Loader is currently being advertised by a user known as "MrRaiX" aka "DamRaiX". This user has advertised several tools in the past including a DDoS system, a credential stealing trojan, and a BitCoin wallet stealer.
+After some digging it appears as though these malware families were developed by a Russian cybercrime team known as "C++ GURU" aka "CPPGURU". The control panel login page for Quant Loader confirms this:
+We were also able to find an old image taken from their "Madness DDoS System" control panel:
+In fact both the DDoS system and Quant Loader share a lot of the same code. A VirusTotal report from March 17, 2016 shows how the DDoS bot behaves:
+Our analysis of Quant Loader (below) reveals that it behaves in an almost identical manner. This discredits the claim of Quant Loader being "developed from scratch" as their advert states. In fact the code base is so similar that many anti-viruses already detect Quant Loader as "Pliskal" or "Crugup".
+Quant Loader Analysis
+The Quant Loader payload used in the Locky & Pony e-mail campaign (SHA1 43be8c385b69dfb21bbee8e655068aa2aafb22a2) was packed and crypted, making static analysis difficult. The packer is not very sophisticated however, so it was trivial to unpack and extract the original binary.
+After unpacking the loader we noticed that there were still several encrypted strings. The decryption routine is a simple subtraction algorithm which intends to use the following hard-coded ASCII key:
+
+614b5e3c4536082dc6ec5f2a4029d69e
+But the implementation here appears to be incorrect and the decryption routine skips the first byte ("6" or 0x36).
+This mistake also results in an extra byte being read at the end of the intended ASCII key. This does not matter though because the key has a hard-coded size of 512 bytes. Ultimately the decryption routine works so the encryption routine used by the developer must use the same algorithm, albeit with an addition used instead of a subtraction.
+When the loader starts it will copy itself to %APPDATA%\<uid>\svchost.exe where <uid> is an eight-digit unique ID generated for the machine. The ID is generated in the following manner:
+
+Obtain the Windows "MachineGuid" value from HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\Cryptography (i.e. "7a2cf192-7254-3a2e-b4c1-22239f61f2ac")
+Extract only the number values, no letters or dashes (i.e. "721927254324122239612")
+Copy 8 of the numbers, beginning with the 5th number (i.e. "27254324")
+
+Quant Loader also adds a firewall rule to allow outbound traffic using the following command line:
+
+netsh.exe advfirewall firewall add rule "name=Quant" "program=c:\users\appdata\<uid>\svchost.exe" dir=Out action=allow
+The current user's permissions for the file and folder are then changed to read-only using further command line invocations:
+
+cmd.exe /c echo Y|CACLS "c:\users\<user>\appdata\roaming\<uid>\svchost.exe" /P "user:R"
+cmd.exe /c echo Y|CACLS "c:\users\<user>\appdata\roaming\<uid>" /P "user:R"
+When the malware is re-launched under svchost.exe it proceeds to write a file to %temp%\per with the following contents:
+
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run [7]
+This file is then used as the parameter for regini.exe with the following command line:
+
+regini.exe C:\Users\<user>\Local\Temp\per
+This grants full world access to the registry key, ensuring that the malware can write to it. A new value is then written to the registry key to make Quant Loader persistent on the system:
+The registry key permissions are then changed to world read-only by using the %temp%\per file and regini.exe again with the following content in the "per" file:
+
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run [8]
+This of course prevents the user from deleting the key unless they manually change the permissions back to read/write.
+Finally, the malware decrypts its command-and-control (C&C) addresses and sends a request to each of them containing the following fields:
+
+"id" - the unique ID of the machine based on the "MachineGuid" registry value
+"c" - the current index of the server being used (i.e. if this is the first server contacted, the value will be "1")
+"mk" - a hard-coded string likely used as an affiliate or campaign identifier
+
+Quant Loader will then receive back a list of EXEs and DLLs to download and execute.
+During our analysis we saw no evidence of the privilege escalation claims given in the Quant Loader advert. This capability may or may not exist in some versions, or may be sent back by the C&C in the form of an EXE or DLL to execute.
+Protection Statement
+Forcepoint™ customers are protected against this threat via TRITON® ACE at the following stages of attack:
+
+Stage 2 (Lure) - Malicious e-mails associated with this attack are identified and blocked.
+Stage 5 (Dropper File) - The Quant Loader, Locky Zepto, and Pony malware files are prevented from being downloaded.
+Stage 6 (Call Home) - Attempts by Quant Loader and Pony to contact their C&C servers are blocked.
+
+Summary
+Criminals continue to look for new ways to distribute their malware in order to bypass security products. Within two weeks of a new downloader being made available on the Russian underground an actor distributing the Locky and Pony malware families began using it. The advertisement for the downloader makes claims that do not hold up to scrutiny, but we expect the malware to be improved in the future. We will continue to monitor activity on Russian crime forums advertising Quant Loader.
+Blog contributors: Nick Griffin, Ran Mosessco
+Indicators of Compromise
+WSF Downloader Samples (SHA1)
+
+d4594309ff5c94673e34f447c8a8366175e9f572
+67660ea4822f06618aedde3571b79674089429b8
+8e7d6467bb812d03a6ea422ff8aa2129abb88a77
+Quant Loader Sample (SHA1)
+
+43be8c385b69dfb21bbee8e655068aa2aafb22a2
+
+Locky Zepto Sample (SHA1)
+
+ddc92ae95c68145fd5331e408cdb58dafd637821
+Pony Sample (SHA1)
+
+75277bf9896f029fbabcb0f6e301d34942948a07
+WSF Downloader Payload URLs (Quant Loader)
+
+hxxp://abcdraw.biz/8fh34f3
+hxxp://adasurgical.com/8fh34f3
+hxxp://adss30.net/8fh34f3
+hxxp://allcateringservices.in/8fh34f3
+hxxp://ativa3.tempsite.ws/8fh34f3
+hxxp://aycilinsaat.com/8fh34f3
+hxxp://bangbang55.com/8fh34f3
+hxxp://biogreentech.in/8fh34f3
+hxxp://cardimax.com.ph/8fh34f3
+hxxp://cbautocare.com.au/8fh34f3
+hxxp://clickroses.com/8fh34f3
+hxxp://craskart.com/8fh34f3
+hxxp://dashingleather.com/8fh34f3
+hxxp://demo.hubliclick.in/8fh34f3
+hxxp://eaglecorp.nl/8fh34f3
+hxxp://files.mostafaahmadi.ir/8fh34f3
+hxxp://gift2belgaum.com/8fh34f3
+hxxp://goldenladywedding.com/8fh34f3
+hxxp://gunturnayeebrahminemployees.com/8fh34f3
+hxxp://herosoft.biz/8fh34f3
+hxxp://hostit.co.in/8fh34f3
+hxxp://iandiinternational.com/8fh34f3
+hxxp://jmetalloysllp.com/8fh34f3
+hxxp://kitsgnt.com/8fh34f3
+hxxp://mylespollard.com.au/8fh34f3
+hxxp://partyeazy.com/8fh34f3
+hxxp://perfectfixuae.com/8fh34f3
+hxxp://platformarchitects.com.au/8fh34f3
+hxxp://platforms-root-technologies.com/8fh34f3
+hxxp://pmlojistik.com/8fh34f3
+hxxp://samssara.com/8fh34f3
+hxxp://sasmgs.org/8fh34f3
+hxxp://scpolytechnic.com/8fh34f3
+hxxp://site1382371826.provisorio.ws/8fh34f3
+hxxp://sowhatresearch.com.au/8fh34f3
+hxxp://syamasahithi.com/8fh34f3
+hxxp://synergyconnect.in/8fh34f3
+hxxp://synergywaterproofing.com.au/8fh34f3
+hxxp://Ungelie.com/8fh34f3
+hxxp://utsavi.net/8fh34f3
+hxxp://vajrammatrimony.com/8fh34f3
+hxxp://wamasoftware.com/8fh34f3
+hxxp://websamrat.in/8fh34f3
+hxxp://www.alfajerdecor.com/8fh34f3
+hxxp://www.ausaf.pk/8fh34f3
+hxxp://www.jmetalloysllp.com/8fh34f3
+hxxp://www.mehrabtech.ae/8fh34f3
+hxxp://www.pstimes.com/8fh34f3
+hxxp://www.rajashekharkubasad.com/8fh34f3
+hxxp://www.villakeratea.it/8fh34f3
+hxxp://yesiloglugrup.com/8fh34f3
+Quant Loader C&Cs
+
+hxxp://kruibhez.ws
+hxxp://ufqeatci.org
+Locky Zepto & Pony Payload URLs
+
+hxxp://supperuploadtestspeed.ws/1.dll
+hxxp://factumtech.com/p.exe
+hxxp://shagunproperty.com/1.dll
+Pony C&C
+
+hxxp://supperuploadtestspeed.ws

@@ -1,0 +1,45 @@
+SQL Injection in bbPress
+Security Risk: DangerousExploitation Level: Easy/RemoteDREAD Score: 7.2/10Vulnerability: SQL InjectionPatched Version: Not patched by bbPress / Updating to WordPress 4.8.3 fixes this issue
+During regular audits of our Sucuri Firewall (WAF), one of our researchers at the time, Slavco Mihajloski, discovered an SQL Injection vulnerability affecting bbPress. If the proper conditions are met, this vulnerability is very easy to abuse by any visitors on the victim’s website.
+Because details about this vulnerability have been made public today on a Hackerone report, and updating to the latest version of WordPress fixes the root cause of the problem, we chose to disclose this bug and make the details public.
+Vulnerability Disclosure Timeline
+
+March 20th – Initial report to the bbPress team.
+March 20th – Initial answer from bbPress, patch said to be expected in the next 40 hours.
+April 5th – Sucuri makes 1st request for updates.
+April 18th – Reply from bbPress, patch planned for the 2.5 and future 2.6 branches.
+April 25th – Sucuri requests an ETA for these two patches.
+June 9th – Sucuri makes 2nd request for updates.
+June 9th – Two patches are available on bbPress’s own Trac server (for 2.5 and the future 2.6 branch), not on the official WordPress.org repository.
+July 11th – Sucuri announces imminent full disclosure but patch is still not on WordPress repository.
+July 20th – Sucuri discovers the patch doesn’t fix the issue, halting full disclosure plans. We submit a patch to help.
+July 21st – bbPress acknowledges the issue, saying they will reply back ASAP with more information.
+October 31st – WordPress 4.8.3 is released, fixing this vulnerability.
+November 13th – This same bbPress bug is disclosed in a Hackerone report.
+
+Are You at Risk?
+This bug can be exploited when the Anonymous posting option is enabled on a bbPress-powered WordPress site – something an attacker can easily notice.
+If you’re not sure whether or not you have this option enabled, you can refer to the plugin’s Setting page.
+
+When this option is set, the security bug can be exploited by attackers by creating/replying to posts as anonymous users. Because of the way SQL injection attacks work, there are many ways an attacker could cause harm – examples include leaking password hashes and other cryptographic keys.
+Technical Details
+The attack vector used here is the same we described in our earlier post about how we found an SQL Injection in Nextgen Gallery, which was caused by an improper use of the WordPress database abstraction class (wp-db).
+In short, it was possible for user input to be inserted in a prepared statement using $wpdb’s prepare method. Because this method takes advantage of sprintf format tags and does additional processing on top it, even input that was sanitized against SQL injections could be used to insert arbitrary SQL statements.
+We highly recommend you refer to this last blog post to get more details about the specifics of this attack vector.
+The culprit is located in the bbp_check_for_duplicate function, located in bbpress/includes/common/functions.php.
+
+As you can see in the snippet above, the get_meta_sql function is designed to generate part of the WHERE clause that is concatenated to the SQL query prepared later in the code, and it does that using some parameters that we control, namely the $r[‘anonymous_data’] array. Of course, the generated output will contain our input, sanitized to prevent traditional SQL injection attacks.
+Now, let’s take a deeper look at that last snippet. It generates a WHERE SQL clause, and directly appends it to $wpdb->prepare()‘s first argument (the SQL query). As some of you may remember from our last blog post using that same attack vector, this is not a good thing. Even if the SQL clause was sanitized against traditional injection attacks, it does nothing to prevent an attacker from inserting rogue sprintf format specifiers, which, as you might recall, allow us to insert arbitrary SQL statements to the query.
+With these details in mind, it is fairly easy to see where the user input comes from: it originates from the Anonymous Reply/New Post forms.
+
+As a result, submitting this payload will result in execution of the following query on the server side:
+SELECT ID FROM wp_posts  INNER JOIN wp_postmeta ON (
+wp_posts.ID = wp_postmeta.post_id ) WHERE post_type = 'reply' AND
+post_status != 'trash' AND post_author = 0 AND post_content = 'or 1=1))
+#'  AND (
+( wp_postmeta.meta_key = '_bbp_anonymous_email' AND wp_postmeta.meta_value = 'or 1=1)) #'or 1=1)) #'@test.com' )
+) AND post_parent = 11 LIMIT 1
+This can be exploited as a classic blind SQL injection.
+Update as Soon as Possible!
+If you’re using this plugin with the aforementioned configuration and your site wasn’t updated automatically to 4.8.3, do so as soon as possible!
+In the event where you cannot do this, we strongly recommend leveraging the Sucuri Firewall or equivalent technology to have the vulnerability patched virtually.

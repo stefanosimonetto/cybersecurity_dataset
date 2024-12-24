@@ -1,0 +1,225 @@
+The problem of backscatter – part 1
+2008-09-01
+
+Terry Zink
+Microsoft
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Backscatter is one of the hot issues in the world of spam filtering. So what exactly is backscatter? Why does it occur? How do we stop it? And why can’t we do a better job of filtering it? Terry Zink explains all.
+Copyright © 2008 Virus Bulletin
+
+Have you ever received a message in your inbox informing you that an email you sent was undeliverable, and yet when you looked at the message that failed to be delivered, you saw that it contained spam – and in fact you hadn’t sent it? Such notifications are known as backscatter, and backscatter is one of the hot issues in the world of spam filtering. So what exactly is backscatter? Why does it occur? How do we stop it? And why can’t we do a better job of filtering it?
+These are some of the questions that I will answer in this two-part article (part 2 will appear in next month’s issue of VB).
+
+The legitimate case
+Before getting into the problem of backscatter, let’s look at how the system was intended to work before spammers ruined it for everyone.
+Let’s imagine that you want to mail a letter to your friend. You write the letter, put it in an envelope, and write your friend’s address in the centre of the front of the envelope. You then put your own address on the top left-hand corner of the envelope, put a stamp on the top right-hand corner, walk to the nearest mailbox and drop the envelope in the slot. A post office representative comes, picks up the letter and then through some seemingly magical process, your friend receives the letter a few days later.
+But suppose there is a problem. Let’s say you write the letter to your friend and address it this way:
+Homer Simpson
+771 Evergreen Terrace
+Springfield, USA
+Aside from the fact that Homer lives at 742 Evergreen Terrace (or 743 depending on the episode), you have specified neither the state nor the zip code at which Homer lives. The post office is unable to deliver your letter so they mark it and return it to you (since you put your return address at the top of the envelope). On the letter, they put a notice such as ‘Bad address’ or ‘Insufficient postage’ or something similar. In other words, they mark the message as undeliverable.
+Email works in the same way. You write an email, put your name and email address in the P1 From field (SMTP MAIL FROM) and address it to your friend, whose address you put in the P2 From field (SMTP RCPT TO). You hit ‘send’ in your email client and by a seemingly magical process your email is delivered to your friend in a matter of seconds.
+But what happens if there is a typo in your friend’s email address? Just like the post office, the email postmaster has ways of letting you know that your message was unable to be delivered. Suppose Homer did this:
+From: Homer Simpson <
+[email protected]
+>
+To: Krusty the Klown <
+[email protected]
+>
+But Krusty’s email address is actually krustyK[email protected] Krusty’s recipient mail server gets Homer’s email, looks at the To: address and then tries to deliver the mail. But it sees that the email address doesn’t exist so it sends a notification back to Homer that the message could not be delivered because the email address that he specified was invalid. This is known as a Non-Deliverable Receipt (NDR) or a Delivery Status Notification (DSN). Suffice to say, the email postmaster Homer has been sending to has been kind enough to notify him that his message did not go through. Homer gets the NDR back in his own email inbox so he can take action on it.
+That’s the general process of how things work.
+Whose server is responsible for generating a bounce message, and under what circumstances does this occur? Once Homer’s mail server has accepted the message, it must either pass it along to Krusty’s mail server, or else deposit a bounce message in Homer’s mailbox.
+Let us say that Homer’s mail server passes the message on to Krusty’s mail server (at demonstration.com), which accepts the message for delivery. Unfortunately, however, a moment later the disk space on the demonstration.com server fills up, and so the mail daemon cannot deposit the message in Krusty’s mailbox.
+The demonstration.com mail server must then send a bounce message to [email protected] informing Homer that his message could not be delivered to Krusty’s mailbox.
+Had the demonstration.com mail server known that the message would be undeliverable (for instance, if Krusty had no user account there) then it would not have accepted the message in the first place, and therefore would not have sent the bounce. Instead, it would have rejected the message with an SMTP error code. This would have left Homer’s mail server (at example.com) the obligation to create and deliver a bounce.
+So, the recipient mail server does not always generate an NDR; only in some of the cases after it has accepted the message and the SMTP conversation has finished (i.e. after the DATA command) will the recipient mail server be responsible for generating an NDR. If the reject happens during the SMTP conversation, then it is the transmitting mail server that generates the bounce.
+
+When should bounces be sent?
+When a mail server accepts a message and later decides that it can’t deliver the message, it is required to send a bounce notification to the sender of the original message. There are a few kinds of bounce notification that a mail server can send, which include:
+Recipient does not exist.
+Recipient’s email inbox is full.
+Your mail server is on an IP blocklist and therefore the recipient’s mail server is rejecting your mail.
+Out of office notifications (not technically NDRs but close enough).
+For the first one, let’s say you send a message and the recipient you are sending to does not exist; the recipient mail server lets you know by sending you a message indicating as much.
+Some recipient mail servers are nice about this and they attach the original message to their email. For example, the message you get back might look something like this:
+Date: Fri, 27 Jun 2008 06:56:00 +0000 (UTC)
+From: MAILER-DAEMON (Mail Delivery System)
+Subject: Undelivered Mail Returned to Sender
+To: Bob’s Test Account <
+[email protected]
+>
+Reporting-MTA: dns; mail111-de3.example.com
+X-Postfix-Queue-ID: CCCDA18680DA
+X-Postfix-Sender: rfc822;
+[email protected]
+
+Arrival-Date: Fri, 27 Jun 2008 06:55:54 +0000 (UTC)
+
+Final-Recipient: rfc822;
+[email protected]
+
+Action: failed
+Status: 5.0.0
+Diagnostic-Code: X-Postfix; host winse-6216-mail4.customer.example.com
+[123.21.222.101] said: 550 5.7.1 Email rejected because recipient
+
+[email protected]
+does not exist. (in reply to end of DATA command)
+
+Subject: This is a test
+From: Bob’s Test Account <
+[email protected]
+>
+Date: Thu, 26 Jun 2008 23:55:49 -0700
+To: Bob’s Real Account <
+[email protected]
+>
+This is a test to see if I get can generate an NDR.
+The message contains the reason the email was bounced back to Bob and the last part shows the original message (usually sent as an attachment but sometimes sent inline). Note the key characteristics of the NDR message:
+The message that arrives in your inbox is From: something that you wouldn't initially recognize like the MAILER-DAEMON, or Mail Delivery System, or something similar.
+The Subject: line of the message contains the notification that your mail could not be delivered (in this case ‘Undelivered Mail Returned To Sender’).
+The reason that your message could not be delivered is included in the bounce message.
+Your original message is included in the bounce message.
+Here’s where things get interesting. There is no set format about how NDRs should be structured. Or rather, there is no set format that everyone follows. In this case the From: address is ‘Mail Delivery System’, but it could be ‘Mailer System’, ‘Recipient Mailer’, or some other description that doesn’t even contain the word mail.
+The Subject: line could say ‘Undelivered Mail’, ‘Undeliverable Mail’, ‘Your Message could not be Delivered’, ‘Delivery Status Notification’, ‘550 Status Notice’, ‘We Don’t Know What To Do With Your Mail’, etc. The messages are usually in a foreign language if we are in Europe. In other words, this subject line could contain a variety of messages.
+The reason for the bounce, like the two cases above, could be phrased in a variety of ways, in a variety of languages.
+Finally, the bounced message is usually included (although this is not always the case). It could be sent inline, it could be an attachment, or it could be truncated (i.e. a partial message).
+The SMTP MAIL FROM is usually a null sender, that is the SMTP MAIL FROM is < >. This is legal within the SMTP protocol. An NDR is usually sent as a null sender, but not always; sometimes they are <[email protected]> or <[email protected]> or something similar. To make matters worse, others use null senders for non-NDR messages. This happens often with automated messages that send out reports. So, you can’t count on NDRs to have null senders one hundred per cent of the time, and you can’t count on null senders to be NDRs one hundred per cent of the time.
+To sum up, NDRs from legitimate servers can take on a variety of forms. Everyone does it differently.
+
+How DSNs should be formatted… according to the RFC
+There is actually a specification for how DSNs should be sent; RFC 3464 specifies the content-type for Delivery Status Notifications. This isn’t an article about the RFC specification so I shall attempt to summarize it as best I can (RFC 3464 can be found at http://tools.ietf.org/html/rfc3464).
+A DSN must provide the following:
+It must be readable by humans as well as being machine-parsable.
+It must provide enough information to allow message senders to associate a DSN unambiguously with the message that was sent and the original recipient address for which the DSN is issued.
+It must be able to preserve the reason for the success or failure of a delivery attempt in a remote messaging system, using the ‘language’ (mailbox addresses and status codes) of that remote system.
+It must also be able to describe the reason for the success or failure of a delivery attempt, independent of any particular human language or of the ‘language’ of any particular mail system.
+It must preserve enough information to allow the maintainer of a remote MTA to understand (and if possible, reproduce) the conditions that caused a delivery failure at that MTA.
+
+Format of a Delivery Status Notification
+A DSN is a MIME message with a top-level content-type of multipart/report. In other words, it has a Content-Type header with multitype/report following it. When a multipart/report content is used to transmit a DSN:
+The report-type parameter of the multipart/report content is ‘delivery-status’.
+The first component of the multipart/report contains a humanly readable explanation of the DSN.
+The second component of the multipart/report is of content-type message/delivery-status.
+If the original message or a portion of the message is to be returned to the sender, it appears as the third component of the multipart/report.
+We’ll see an example a little later on in this article.
+The From: field of the message header of the DSN should contain the address of a human who is responsible for maintaining the mail system at the reporting MTA site, such as [email protected]
+The envelope sender address of the DSN should be chosen to ensure that no delivery status reports will be issued in response to the DSN itself, and must be chosen so that DSNs will not generate mail loops. Whenever an SMTP transaction is used to send a DSN, the MAIL FROM command must use a null return address, i.e. MAIL FROM: < >. The MAIL FROM is not to be confused with the From: field in the message headers.
+At this point, I will draw to a close the summary of the proper format of an NDR. If you’re any more interested in it, please read the RFC. The bottom line is we need to know that it’s a bounce, the reason for the bounce and we need to see the bounce message itself. However, after having seen a lot of NDR messages, it seems to me that mail operators treat the RFC a lot like the ‘Pirates’ Code’ from Pirates of the Caribbean – they’re not really rules, they’re more like guidelines.
+
+So what is backscatter?
+Having worked our way through how NDRs and DSNs are supposed to work, we can now finally look at backscatter.
+According to the SMTP protocol, when you send a message, you specify the HELO, the MAIL FROM, the RCPT TO, the DATA (email contents including other miscellaneous headers) and the QUIT. Here’s a sample email (my comments are shown in bold):
+HELO mail.evergreenterrace.com
+MAIL FROM:
+[email protected]
+
+RCPT TO:
+[email protected]
+
+(this is wrong, it should be
+[email protected]
+)
+
+DATA
+
+This is a sample message to generate an NDR message.
+
+[email protected]
+does not exist, it will bounce.
+.
+QUIT
+The message goes out from Homer’s web server. The mail is routed to example.org’s mail server. Rather than looking up the email address during the SMTP conversation and rejecting the message with a 5xx level error (which would force Homer’s email server to send the NDR), Krusty’s email server accepts the message with a 250. Later on, however, Krusty’s email server sees that the email address Homer sent to doesn’t exist, so it looks at the SMTP MAIL FROM, in this case [email protected], and sends an NDR back to Homer indicating that the message couldn’t be delivered.
+But, what if it wasn’t Homer who sent the message? Let’s say Nubar Q. Spammer decides to send a spam message to Krusty. What Nubar would do if he were a nice guy is put his email address in the SMTP MAIL FROM. But Nubar isn’t about to do that. He puts Homer’s email address in the SMTP MAIL FROM, because the SMTP protocol allows you to put any email address you want in the field (again, my comments appear in bold):
+HELO mail.scammers.com
+MAIL FROM:
+[email protected]
+
+(this is not Homer, it is Nubar Q. Spammer forging Homer’s email address)
+
+RCPT TO:
+[email protected]
+
+DATA
+
+Get cheap Viagra!  Check out the following website to get it because you
+obviously need it!
+.
+QUIT
+Once again, Krusty’s email web server accepts the message with a 250 but finds that it cannot deliver it so it looks at the email address in the SMTP MAIL FROM field. In this case, it is and the mail server sends an NDR ‘back’ to Homer.
+Homer turns on his computer and opens up his email. He takes a look and sees the following in his email inbox (the first six lines below are the message headers and do not appear in the body content, and the text in bold are my comments):
+Return-Path: <>
+(MAIL FROM is often called the Return-Path… note that it  is null)
+
+Date: Tue, 8 Jul 2008 22:26:56 +0000 (UTC)
+From: MAILER-DAEMON (Mail Delivery System)
+Subject: Undelivered Mail Returned to Sender
+To:
+[email protected]
+
+Content-Type: multipart/report; report-type=delivery-status;
+boundary=”67A3E14185FC.1215556016/mail.example.org”
+(Remember this from
+the Pirate’s Code? I mean RFC? It’s required.)
+
+This is the Postfix program at host mail.example.org. I’m sorry to have to
+inform you that your message could not be delivered to one or more
+recipients. It’s attached below. For further assistance, please send mail
+to <postmaster>
+
+- The Postfix program
+
+(That’s the human readable part)
+
+[email protected]
+: host mail.example.org[292.85.201.114] said:
+550-5.1.1 The email account that you tried to reach does not exist. (in
+reply to the end of DATA command)
+
+(That’s the machine-parsable part, and it includes the reason why it could not be delivered)
+
+--- Below this line is a copy of the message.
+Return-Path:
+[email protected]
+
+Received: (qmail 32443 invoked by uid 507); 9 Jul 2008 05:02:16 +0800
+Delivered-To:
+[email protected]
+Date: Tue, 08 Jul 2008 10:47:32 -0700
+From: Homer Simpson <
+[email protected]
+>
+To: Krusty the Klown <
+[email protected]
+>
+Subject: Get cheap viagra!
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+Content-Transfer-Encoding: 7bit
+
+Get cheap Viagra! Check out the following website to get it because you
+obviously need it!
+Homer didn’t send the message but it certainly looks like he did. In fact, Nubar Q. Spammer forged Homer’s email address and the receiving email server sent the bounce to Homer rather than Nubar, even though Homer didn’t send it. The result? Homer receives an NDR message with spam attached to it, and this entire type of spamming by proxy is known as backscatter.
+Figure 1 illustrates the problem of backscatteron a wider scale.
+Figure 1. The problem of backscatter.
+Getting a single piece of backscatter is one thing, getting dozens, hundreds or even thousands of them is a major problem. While spammers may be nefarious in attempting to spam indirectly, what’s more annoying is that legitimate hosts are sending piles of messages that are cluttering up inboxes and it takes forever to sort through them all.
+
+Why is it so hard to block?
+So why is backscatter so difficult to defend against? Here are some reasons:
+IP reputation analysis doesn’t work – spammers who spam from botnets have a weakness: public RBLs like Spamhaus will list them and so content filters can reject all mail from them. In the case of backscatter, the sending mail server is not a bot and is known to send good mail so it doesn’t belong on a blacklist (a good blacklist, anyway).
+Finding sources of mail servers that send NDR backscatter exclusively is one thing, but if you ban all mail servers that send you backscatter, you will end up blocking a lot of legitimate mail.
+Sender reputation doesn’t work – or rather, regular sender reputation doesn’t work. When most MTAs send backscatter, they usually send with an SMTP MAIL FROM as < >. This is so that if they send the NDR and their NDR bounces, the recipient MTA doesn’t bounce it back again; you can’t bounce to a null sender < >.
+Traditional sender reputation assumes that the inbound message is coming to you directly from another sender. So you can perform an SPF check on the SMTP MAIL FROM, but since the sender is empty, you can’t verify the source of the message. The spam filter is forced to rely on something else.
+Content filtering is more difficult – NDR messages are a pain to handle. You can’t do regular sender or IP reputation analysis on NDRs in the SMTP conversation, so you have to accept the body contents of the message. Then, if you want to do the above you need to parse the body contents of the message (and not the message headers of the NDR itself) in order to extract the information you need.
+If you were to do this your spam filter would need specialized logic to recognize that the message is a bounce message and to treat it differently to extract the tokens in the message. This is trickier than it sounds because different bouncing MTAs will bounce messages differently. Remember the RFC guidelines? Hopefully, the bouncing MTA sends back the message contents including the headers. If not, or if it changes them in transit or corrupts them, header analysis is not going to work too well.
+Regular content filtering is more difficult – if you don’t want to go to the trouble of extracting many different tokens and running checks that you would normally do during the SMTP conversation (i.e. SPF or DKIM checks or IP reputation), you could default to regular content filtering. Your inbound spam filter can simply examine the message content and if there is spam, filter out the message regardless of whether or not it is an NDR.
+The problem here is that often, content filters will detect the spam and mark it as spam but they will also detect that the message is a bounce and ‘de-spamify’ its earlier spam classification. ('De-spamify' is my own term derived from the words ‘spam’ and ‘classify’. To de-spamify is to reverse the judgment of a spam filter that has previously classified a message as spam. ) In other words, the filter is intelligent enough to detect that this is a bounce message and possibly legitimate, thus lowering the overall spam score of the total message with spam attached. This leads to inconsistent spam filtering of backscatter. Not all of it gets through to the user’s inbox, but some of it does.
+
+Summary
+That summarizes the problem of backscatter. Relying on regular inbound mail filtering to detect and filter backscatter introduces problems because NDR messages are different from regular mail. They are notifications. In order to catch them we need a different method from those normally used to catch spam.
+Next month, we’ll look at some of the ways in which we can defend against backscatter.

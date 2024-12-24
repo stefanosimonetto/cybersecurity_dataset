@@ -1,0 +1,125 @@
+W3 Total Cache and WP Super Cache Vulnerability Being Targeted in the Wild
+
+As if on queue, almost 7 days since we released the post about the latest W3TC and WP Super Cache remote command execution vulnerability, we have started to see attacks spring up across our network.
+In our post you might remember this:
+
+<!–mfunc echo PHP_VERSION; –><!–/mfunc–>
+
+In this example we explained how it was a very simple approach to displaying the version of PHP on your server. There were a lot of questions following that saying, well what’s so harmful in that. Etc… With little help from us the attackers go on to show us what they can do.
+Taking a Look at the Attacks
+In this section I’ll show you three of the various attacks we’re seeing. In each you can see how they abuse the mfunc vulnerability, one in a more traditional approach of injecting a backdoor and other in a more creative way that allows them to abuse HTTP headers. In either case they all seem to be getting passed via comments, and we give an example of that below. This is obviously for educational purposes only.
+
+Example One – Targeting HTTP Headers
+So in this example we see them abusing the mfunc vulnerability to pass shell commands via the HTTP headers in the place of the URL itself.
+
+In this instance they are attacking your site while leaving very little trace, for instance they can do things like:
+
+HTTP_CMD: Base64 encode of the backdoor/code they want to run
+
+And it works with GET. Here is a better explanation if you’re not following:
+A normal header would look something like this:
+
+Connected to site.com (IP) port 80 (#0)
+GET / HTTP/1.1
+User-Agent: curl/7.24.0 (x86_64-apple-darwin12.0) libcurl/7.24.0 OpenSSL/0.9.8r zlib/1.2.5
+Host: blog.sucuri.net
+Accept: */*
+
+With this attack it’d look something like this:
+
+Connected to site.com (IP) port 80 (#0)
+GET / HTTP/1.1
+User-Agent: curl/7.24.0 (x86_64-apple-darwin12.0) libcurl/7.24.0 OpenSSL/0.9.8r zlib/1.2.5
+Host: blog.sucuri.net
+HTTP_CMD: Base64 encode of the backdoor/code they want to run
+Accept: */*
+
+Most folks would never even log that, so forensically speaking it’d be hard to know they were attacking this way.
+Example Two – Passing a Backdoor
+So in this example they misuse the mfunc and use it to pass a backdoor into your server. Not nice at all.
+
+In this case it looks a bit worse, but when you decode it, it’s a lot easier to understand, her it is decoded:
+
+Do you see what they’re doing? How they’re passing basic PHP commands to your server? Look here:
+
+fopen
+fputs
+eval
+base64_decode
+fclose
+
+They’re using basic PHP functions against you. They use the fopen to open a new file called maeksv.php. They then inject the payload into that file using puts, they encode it, and proceed to close the file. If you look at the payload that was dropped into that file you find something like this:
+
+Don’t worry, a little fine tuning and you see it’s real intention here:
+
+Using this the attacker can now do something like this:
+
+http://goodsitebeingexploited/wp-content/cache/dcfay.php?jebfvlg=
+
+Example Three – Embedded with Comments
+We know that these are occurring via comments but it’s always fun to see the things they say, like this for instance:
+
+Or even this:
+
+So in these scenarios they are leaving you what appear to be legitimate, yet silly, comments. If you’re none the wiser that’s all you’d see, approve and be on your way.
+Where are they Coming From
+Well, here are some of the IPs we’re picking up via our network:
+
+188.142.107.174
+122.72.12.90
+91.224.160.104
+91.224.160.104
+119.36.87.32
+92.126.217.47
+74.91.17.35
+58.23.3.190
+220.255.1.77
+220.255.1.44
+220.255.1.31
+95.154.243.11
+91.224.160.104
+201.59.55.142
+201.249.21.35
+119.36.87.32
+125.67.234.251
+177.12.227.13
+77.175.95.163
+190.205.16.152
+109.123.111.99
+211.138.151.117
+183.63.27.145
+84.39.28.158
+91.224.160.104
+94.199.60.19
+54.248.89.183
+185.12.46.81
+87.236.208.232
+36.48.69.182
+83.236.193.82
+177.10.24.34
+118.186.86.38
+114.80.136.171
+77.235.192.178
+58.240.98.179
+85.15.227.78
+78.46.64.21
+119.254.84.87
+78.46.64.21
+91.224.160.104
+78.46.64.21
+78.46.64.21
+91.224.160.104
+124.227.191.75
+54.234.65.111
+54.246.89.20
+
+Some quick look ups show us IPs coming from all over – Netherlands, Brazil, China, Russia, Singapore..
+What To Do?
+The most obvious thing is to update immediately, both authors have made changes to their core to address these issues. That in it of itself will help you. Other options include the following:
+
+Leveraging a Web Application Firewall (WAF)
+Adding Captcha’s to comments to deter spam bots
+Ensure all comments are going through some kind of moderation
+Don’t land the comments on your server, leverage 3rd party plugins – e.g., Disqus
+
+In the guidane above do realize that the captcha won’t necessarily protect you if you accept it, but it should slow bot attacks.

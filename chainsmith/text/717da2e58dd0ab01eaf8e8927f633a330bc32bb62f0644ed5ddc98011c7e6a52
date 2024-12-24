@@ -1,0 +1,29 @@
+The curiosity killed the cat
+
+During the last few months we have been releasing numerous free online tools at Sucuri. One to scan web sites for security issues, another one to text-browse sites, one to check if a twitter account is spammer and a few more.
+Some have been more famous than others, but one think I noticed in all of them: Users were always testing our security. Always.
+I am not saying that users were in fact trying to hack us, but that they were just curious to see how we responded to “different” (malicious) inputs. Plus, being a site focused on web security probably increased their interest.
+One thing to note is that we developed our application from scratch and took the follow precautions:
+
+We logged everything. You have no idea what kind of errors you will get into, so we made sure to log every request and every error. Lots of the attacks we will show would never get noticed if we didn’t.
+
+We were very restrictive on what we accepted. We took the approach to htmlspecialchars() every single GET/POST variable even before processing them. After that, when validating the inputs, we took the approach to white list what we accepted instead of using less-safe blacklists.
+
+We used OSSEC to parse our custom logs and generate alerts/block the offending ip addresses automatically.
+
+In another post I will cover these precautions in more detail.
+Users and their curiosity
+As soon as I released our first tool to check small URLs, I noticed that on the logs:
+2009-07-02 08:15:38 66.187.233.202 ERROR: Check URL: Invalid user provided site: ‘‘.2009-06-16 08:15:39 a.b.c.12 ERROR: Check URL: Invalid user provided site: ‘‘.2009-06-16 08:15:42 a.b.c.202 ERROR: Check URL: Invalid user provided site: ‘‘.2009-06-16 08:15:43 a.b.c.12 ERROR: Check URL: Invalid user provided site: ‘‘.2009-06-16 08:15:48 a.b.c.202 ERROR: Check URL: Invalid user provided site: ‘http://‘.2009-06-16 08:15:49 a.b.c.12 ERROR: Check URL: Invalid user provided site: ‘http://‘.
+Yes, a valid user, coming from my Twitter post, decided to check if we allowed raw HTML to be displayed. You see that they started with just  followed by multiple combinations to test how we was parsing the data.
+A little after, a user checks their URL properly, visits some of our documents and try:
+2009-06-16 11:17:25 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘http://digg.com/d1txsN><">2009-06-16 11:17:52 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘bar’.2009-06-16 11:18:04 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘bar">,asdf’.2009-06-16 11:18:54 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘http://google.com">2009-06-16 11:18:58 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘http://google.com?">2009-06-16 11:19:14 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘http://google.com?">2009-06-16 11:20:24 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘http://google.com?">2009-06-16 11:21:26 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘http://google.com??">2009-06-16 11:22:35 209.90.77.5 ERROR: Check URL: Invalid user provided site: ‘http://google.com?">
+You can see by the distance in time that he was thinking on ways to by pass our filters…
+Another very interesting attack was against our text-browser tool. We allowed the user to choose Lynx, Links or W3m to test if their web site was showing up properly on these tools. A few days after the release, one user tried to bypass our filtering to see our own php files:
+2009-06-01 11:50:18 aa.bb.177.221 ERROR: Text-browser: Invalid user provided site: ‘file://index.php’.2009-06-01 11:51:03 aa.bb.177.221 ERROR: Text-browser: Invalid user provided site: ‘file://../index.php’.
+You see, very simple target attack from someone that knows how Lynx works and that it will treat file:// to attempt to read local files. That’s why in our code, we checked for http:// and if it wasn’t present, we added.
+The last one for today was against our ossec log testing tool, where some people tried to trick bash to see if they could execute other commands on the system. These are some of the attacks they tried:
+From: a.b.c.26; ls -lh
+From: x.174.169.117ssss; dss; d’^M-V-h-v^Mwww.xx.com && ls ./
+Nothing really big you might say. That’s because we blocked the attempts and generated the error to the user. If we were vulnerable, I am 100% sure that they would try to hack us in some way.. Not for malicious reasons, but for fun (I hope).
+To conclude, make sure you are watching your logs and monitoring what your users are doing! If your application doesn’t have proper logging, make sure to add asap to it.

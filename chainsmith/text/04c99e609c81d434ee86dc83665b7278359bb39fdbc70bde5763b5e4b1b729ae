@@ -1,0 +1,64 @@
+SweetCAPTCHA Service Used to Distribute Adware
+
+SweetCaptcha is a free CAPTCHA service that offers to match “sweet” images instead of making you recognize distorted digits and characters.
+
+It has integrations with many website platforms including;  pure PHP, WordPress (10,000+ plugin installs –EDIT: The plugin was taken out from the repository since this post, however, we found out that the plugin has returned to the WordPress repository under a different name: jumpple which is a discontinued WordPress security plugin). The plugin files are the same as we analyzed in this blog post. WordPress was already notified.), Drupal, Joomla, ModX, .NET, JavaScript, and even offers an API that can be used on other platforms.
+So far so good.
+Malicious Pop-ups
+We began to receive complaints from website owners using the sweetCAPTCHA service, claiming their visitors would occasionally see pop-ups and pop-unders that promote tech support scams, dating sites with fake badges, or offer to install malicious software (drive-by-downloads).
+Below is an image that would show the user a “security error” on the site and offer them a helpline to get support on the issue:
+
+Ad script inside sweetCAPTCHA code
+A quick investigation revealed that websites using the sweetCAPTCHA service normally include this JavaScript:
+hxxp://www . sweetcaptcha . com/api/v2/apps/csrf/(digit_id)?ver=3.1.0
+… Which loads this code:
+
+In the middle of the code it tries to load a script from //clktag .com/adServe/banners?tid=SWTMPOP&tagid=2.
+The URL is quite self-descriptive and it’s obvious that it has to do with advertising. But wait, what do CAPTCHA and banners have in common? Not much, really. And that is very suspicious.
+Could it be that the sweetCAPTCHA site was compromised and hackers injected that clktag .com code into their scripts? Maybe. But there seems to be another explanation. If you read the sweetCAPTCHA Terms of Use, in the “5. Use of the Services by You” section you’ll find this:
+5.2 You acknowledge that within the sweetCAPTCHA service and/or sweetCAPTCHA API, There might be included 3rd party content which will be displayed for the purpose of user interaction. This content might include but will not be limited to ads, banners, links, search engine input fields and etc.
+This explains the use of an ad script in CAPTCHA and why they provide this service for free.
+Malicious clktag ads:
+Let’s dig a bit deeper and check if that clktag script is really the source of the nasty pop-ups.
+When I opened it in a Windows sandbox, it loaded the following chain of URLs:
+1. hxxp://t . mtagmonetizationc . com/build/c66fd9/v1/script/?sourceURL=012420312&cacheBuster=[cacheBuster]
+2. hxxp://creative .speednetwork9 . com/speednetwork9/scripts/direct/direct.html?a=12624189&serverdomain=s.speednetwork9.com&context=c36771041&size=800×600&rt=popunder&ci=10&cb=1433844662858
+3. hxxp://s . speednetwork9 . com/ul_cb/imp1822?a=12624189&context=c36771041&size=800×600&rt=popunder&ci=10&cb=1433844662858
+Here we see a pop-up that “requires” us to install a Media Player HD.
+
+If you click on Update, you’ll be redirected to the following page:
+4. http://cdn . downloaddart . com/lp/?appid=1435&subid=ff7d244e9-d619-9346-7ca2c009feb49688a71a2e5783ffb0195c4bc433114001e&c8=service.quicksear.com&btp_h=5ce92a83379e88bf88172db6aeff5064
+It then shows you installation instructions and automatically begins downloading the hxxp://software . softwareserver04 . com/MediaDownloader/setup.exe file.
+Fake Media Player download page
+Here is what VirusTotal thinks about this file: Detection ratio: 7 / 57 – (Trojan, PUP, Artemis)
+
+If I load that sweetCAPTCHA script in Linux it automatically opens pages with a fake tech support scam from:
+"hxxp://help .arubatechhelp .com/callflow/lp17iktyyr/?a=HT&u=...&clickid=...&ent=yes&ext=yes&rec=yes&au=yes&lo=yes......."
+… and a dating site that looks like another scam:
+"hxxp://www .charmdate .com/qa/internationaldating/register06.php?aid=82&oid=CP224643&qpid_offer_id=CD_226513TK".
+So the answer is: Yes, the sweetCAPTCHA script is responsible for unwanted and potentially malicious popups.
+Note, the ad script tracks users and in most cases, you’ll only see those nasty pop-ups when you visit a site for the first time.
+Adware History of sweetCAPTCHA
+The sweetCAPTCHA service has been ad-supported for a long time (check this one-year-old topic on the WordPress.org forum) but it didn’t cause a lot of problems. Just an occasional hiccup in September of 2014, when one user noticed an unwanted search bar. Back then, the SweetCAPTCHA support team gave this explanation:
+SweetCaptcha is a FREE project, we had some pilots for a very short time with monetization solutions back in the past, but they were just pilots, meaning ended long time ago.
+sweetCaptcha was always Free from ads and will stay so.
+Apparently, around June 8, 2015 sweetCAPTCHA began another similar pilot which did not go unnoticed by site owners who use their service. Here are the recent forum posts about unwanted pop-ups:
+
+June 8, 2015 Sweet Captcha Injects Popup Ads
+June 9, 2015 pop-under ads come with the plugin
+June 9, 2015 Injects Spam with Malicious Code
+June 9, 2015 SweetCaptcha Injecting Pop Up Ads on Purpose
+June 9, 2015 Sweetcapcha hacked and causing malicious popups
+
+SweetCAPTCHA is Not Alone
+Using potentially unwanted third-party scripts on client sites is not a new monetization model. Some other “free” services use it too. The most known are probably Sitemeter.com — a “free” site counter that loads tons of third-party ad scripts behind the scenes. They also disclose this in their terms of use and privacy policy — but apparently, very few users read them.
+Dangers of Hidden Ad Scripts
+You may think that hidden ad scripts are not that bad as long as they don’t inject annoying ads and pop-ups. Well, this practice is not that benign.
+First of all, the main purpose of such hidden ad scripts is to spy on web surfers. When you visit a site with a banner or hidden ad script (e.g. a site that only has a Sitemeter script) that script places a cookie on your computer. Now they know what sites you visit and can target specific ads to you.
+The second issue is that it’s usually not just one third-party script. At the top level it may be just one script from a third-party domain (principal partner), however, that partner ad network usually has a few other partners and it allows them to load their own scripts on your site too. The second level partners usually have third-level partners and so on. It is quite typical to see that one ad network script initializes downloading content from dozens of third-party sites. In one extreme case that we worked on, three ad scripts resulted in requests to over a thousand third-party domains — it took several minutes to completely load a simple blog page.
+The third issue is malvertising. When you allow multiple unknown third-parties to load arbitrary content on your site, the chances are one or more of them will eventually join the dark side (or just get hacked) and start serving malicious content. This is what happened quite often with sites that use the Sitemeter counter and this is now what has happened with sweetCAPTCHA-powered sites.
+Summary
+
+If you use sweetCAPTCHA, you might want to remove it (at least for now).
+Carefully read term of services when you install something on your site – the software might include unwanted extras that they don’t advertise on their homepages.
+Think twice before installing any third-party scripts on your site. You lose control over content of your web pages. You should only install scripts that you really trust.

@@ -1,0 +1,93 @@
+Napoleon: a new version of Blind ransomware
+The ransomware previously known as Blind has been spotted recently with a .napoleon extension and some additional changes. In this post, we’ll analyze the sample for its structure, behavior, and distribution method.
+Analyzed samples
+31126f48c7e8700a5d60c5222c8fd0c7 – Blind ransomware (the first variant), with .blind extension
+9eb7b2140b21ddeddcbf4cdc9671dca1 – Variant with .kill extension
+235b4fa8b8525f0a09e0c815dfc617d3 – .napoleon (main focus of this analysis)
+//special thanks to @demonslay335  for sharing the older samples
+Distribution method
+So far we are not 100 percent sure about the distribution method of this new variant. However, looking at the features of the malware and judging from information from the victims, we suspect that the attackers spread it manually by dropping and deploying on the hacked machines (probably via IIS). This method of distribution is not popular or efficient, however we’ve encountered similar cases in the past, such as DMALocker or LeChiffre ransomware. Also, few months ago, hacked IIS servers were used as a vector to plant Monero miners. The common feature of samples dropped in this way is that they are not protected by any cryptor (because it’s not necessary for this distribution method).
+Behavioral analysis
+After the ransomware is deployed, it encrypts files one-by-one, adding its extension in the format [email].napoleon.
+
+Looking at the content of the encrypted test files, we can see that the same plaintext gave different ciphertext. This always indicates that different key or initialization vectors were used for each file. (After examining the code, it turned out that the difference was in the initialization vector).
+Visualizing the encrypted content helps us guess the algorithm with which the files were encrypted. In this case, we see no visible patterns, so this leads us to suspect an algorithm with some method of chaining cipher blocks. (The most commonly used is AES in CBC mode, or eventually in CFB mode). Below, you can see the visualization made with the help of the file2png script: On the left is a BMP file before encryption. And on the right, after encryption by Napoleon:
+
+At the end of each file, we found a unique 384-long block of alphanumeric characters. They represent 192 bytes written in hexadecimal. Most probably this block is the encrypted initialization vector for the particular file):
+
+The ransom note is in HTA format and looks like this:
+
+It also contains a hexadecimal block, which is probably the victim’s key, encrypted with the attackers’ public key.
+The GUI of Napoleon looks simplified in comparison to the Blind ransomware. However, the building blocks are the same:
+
+It is common among ransomware authors to prepare a tor-base website that allows automatic processing for payments and better organizes communication with the victim. In this case, the attackers decided to use just an email—probably because they planned for the campaign to be small.
+Among the files created by the Napoleon ransomware, we will no longer find the cache file (netcache64.sys) that in the previous editions allowed to recover the key without paying the ransom.
+Below is the cache file dropped by the Blind ransomware (the predecessor of Napoleon):
+
+Inside the code
+The malware is written in C++. It is not packed by any cryptor.
+The execution starts in the function WinMain:
+
+The flow is pretty simple. First, the ransomware checks the privileges with which it runs. If it has sufficient privileges, it deletes shadow copies. Then, it closes processes related to databases—Oracle and SQL Server—so that they will not block access to the database files it wants to encrypt. Next, it goes through the disks and encrypts found files. At the end, it pops up the dropped ransom note in HTA format.
+Comparing the code of Napoleon with the code of Blind, we see that not just the extension of encrypted files has has changed, but also many functions inside have been refactored.
+Below is a fragment of the view from BinDiff: Napoleon vs Blind:
+
+What is attacked?
+First, the ransomware enumerates all the logical drives in the system and adds them into a target list. It attacks both fixed and remote drives ( type 3 -> DRIVE_FIXED  and 4 -> DRIVE_REMOTE):
+
+This ransomware does not have any list of attacked extensions. It attacks all the files it can reach. It skips only the files that already have the extension indicating they are encrypted by Napoleon:
+
+The email used in the extension is hardcoded in the ransomware’s code.
+Encryption implementation
+Just like the previous version, the cryptographic functions of Napoleon are implemented with the help of the statically-linked library Crypto++ (source).
+Referenced strings pointing to Crypto++:
+
+Inside, we found a hardcoded blob—the RSA public key of the attackers:
+
+After conversion to a standardized format, such as PEM, we were able to read its parameters using openssl, confirming that it is a valid 2048 bit–long RSA key:
+Public-Key: (2048 bit)
+Modulus:
+00:96:c7:3f:aa:71:b1:e4:2c:2a:f3:22:0b:c2:88:
+8c:87:63:b3:fa:31:97:9b:48:1b:64:2a:14:b9:85:
+0a:2e:30:b2:22:c2:ee:fe:ce:de:db:b9:b7:68:3f:
+12:a6:b3:e1:2b:db:ac:90:ea:3e:0a:07:25:3d:19:
+f2:98:b3:b2:e3:1b:22:e6:0d:ad:d5:97:6f:57:cd:
+77:6c:68:16:49:db:7d:c0:b8:03:e3:81:f5:62:ce:
+22:ae:d9:71:f4:ed:28:f0:29:0b:e3:3c:ea:2d:d8:
+13:fd:00:ff:da:4a:55:b8:70:c3:9f:ef:32:43:4b:
+3f:82:fe:26:31:03:99:fd:b0:1a:2d:7b:f8:b6:65:
+ab:d8:65:f3:c6:f3:e3:06:a9:58:5f:3e:35:0e:4c:
+f0:9e:94:49:66:2e:9c:6c:51:27:62:c1:39:02:cc:
+fb:32:4f:9a:92:f5:f9:99:96:5d:a7:65:5f:1c:fc:
+0a:1e:8b:45:53:06:89:9f:50:11:d6:06:84:a2:f2:
+5f:ab:e4:fb:cf:0d:09:64:d7:7c:99:f9:2a:b7:f5:
+c6:e4:c1:23:24:4e:2b:9f:0b:98:c3:94:93:4f:ca:
+c3:ff:ec:70:9d:df:78:37:56:0d:8b:c4:db:6d:b3:
+73:ac:0a:cb:ac:28:b2:d4:54:61:3e:3c:7e:67:97:
+f5:d9
+Exponent: 17 (0x11)
+This attacker’s public key is later used to encrypt the random key generated for the particular victim. The random key is the one used to encrypt files – after it is used and destroyed, it’s encrypted version is stored in the victim’s ID displayed in the ransom note. Only the attackers, having the private RSA key, are capable to recover it.
+The random AES key (32 bit) is generated by the function provided by Crypto++ library:
+
+It uses underneath the secure random generator: CryptGenRandom:
+
+All the files are encrypted with the same key, however the initialization vector is different for each.
+Encrypting single file:
+
+Inside the function denoted as encrypt_file, the crypto is initialized with a new initialization vector:
+
+The fragment of code responsible for setting the IV:
+
+Setting initialization vector:
+
+Encrypting file content:
+
+The same buffer after encryption:
+
+Conclusion
+Napoleon ransomware will probably not become a widespread threat. The authors prepared it for small campaigns—lot of data, like email, are hardcoded. It does not come with any external configuration like Cerber that would allow for fast customization.
+So far, it seems that the authors fixed the previous bug in Blind of dropping the cache file. That means the ransomware is not decryptable without having the original key. All we can recommend is prevention.
+This ransomware family is detected by Malwarebytes as Ransom.Blind.
+
+Appendix
+Read about how to decrypt the previous Blind variant here.

@@ -1,0 +1,70 @@
+Spartacus ransomware: introduction to a strain of unsophisticated malware
+Spartacus ransomware is a new sample that has been circulating in 2018. Written in C#, the original sample is obfuscated, which we will go over as we extract it to its readable state.
+Spartacus is a relatively straight-forward ransomware sample and uses some similar techniques and code to others we have seen in the past, such as ShiOne, Blackheart, and Satyr. However, there is no sure relationship between these samples and the actors. I mention it mainly to show that they share similar functionality and are basic in form.
+In the case of Satyr and Blackheart, the code is nearly identical, with Spartacus following almost the same code flow with some modifications. If I were to make an assumption, I would say they are either the same actor or the actors for each of them used the same code. But again, there are no facts to prove this as of now.
+In general, what we notice is that there is a string of these .NET ransomware popping up, all of them more or less the same or similar. It is just an easy form of ransomware that criminals are creating, as it obviously does not take much time or thought to make.
+There is nothing impressive about them, in fact just the opposite. I would say they are boring at best. So why are we writing about one of them? The analysis of Spartacus can essentially be used as a base knowledge and reference for anyone analyzing variants of these basic .NET ransomware that they may come across in the future.
+The two take aways from this article will be understanding the code in detail, and understanding how to get an obfuscated .NET sample into a readable state.
+Spartacus
+Before we begin, I want to mention one characteristic about Spartacus’ encryption method. Spartacus starts by generating a unique key for encryption done with the Rijndael algorithm. (The Rijndael algorithm is a version of AES.)
+This key is saved and used to encrypt every single file, meaning that two identical files will have the same cipher-text. The AES key is encrypted with a RSA key embedded in the file. The cipher-text is encoded and shown to the user in the ransom note.
+
+The fact that the RSA key is statically embedded in the ransomware implies that the private key exists on the server side of the ransomware author’s system. Thus, all AES keys from all victims of this particular strain can be decrypted using this one key if it is ever leaked.
+As this ransomware is not extremely complex, we will go straight to the deep technical analysis and code walkthrough.
+Unpacking
+When we first open the sample of Spartacus in ILSpy, we see this:
+
+The code of the functions is not visible and as you can see, everything is obfuscated. In these scenarios, I like to use a tool called de4dot. It will process the file and output a clean readable version. The -r flag is where you set the directory, which contains the obfuscated .NET sample.
+
+This gives us the clean version, which we will be using for our analysis going forward.
+
+Analysis
+Let’s begin with the Main function shown below.
+
+It starts by making sure there is only one instance of this malware running on the system. It does so by the CheckRunProgram function, which, among other things, creates a mutex and makes sure it is unique.
+
+After this check is complete, it executes smethod_3 in a thread.
+Before the smethod_3 begins, the constructor for this class gets automatically called now and sets up all the private members (variables), which include all special folders to search and encrypt. It also generates the AES key, which is unique to the victim, using the KeyGenerator.GetUniqueKey(133) function. The special folders can be viewed below and will be referenced throughout the ransomware to begin folder traversing.
+
+The keygen function as I mentioned is GetUniqueKey(), the details of which are below. Essentially, it just creates a series of cryptographically strong random numbers using the RNGCryptoServiceProvider.GetNonZeroBytes API function. It then uses that series of random numbers as indexes to the character set
+array = “abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890” to build a unique string of characters. This is the AES key, which will encrypt all files going forward.
+
+Now that the constructor of the class has been initiated, let’s take a look at the smethod_3 function that was called.
+
+This function iterates the list of special folders, which was generated in the constructor and begins its recursive traversal encrypting every file in the folders using the smethod_6 function. One thing I will note here is that the encryption loop does not discriminate file types or special files. It will encrypt everything it comes across. Also, you can see smethod_1 being called. This may be a leftover mistake of the programmer, as its output is not used anywhere in the program and is called later on when it’s time to display the encrypted key to the user.
+As I mentioned, the smethod_6 function is the one doing all the encryption, but the smethod_5 function is the recursive function that will dig into each sub folder of whatever location it starts at, calling smethod_6 on each iteration to encrypt the files in that sub folder.
+
+As you can see, it calls itself so that it will eventually cover every single sub folder. Then it calls smethod_6 to do the actual encryption, looping through every file in that folder.
+
+This method iterates all files in the current folder. The only stipulation is that the file is not already encrypted. This is the portion here, which simply makes sure the extension is not already .Spartacus:
+if (Path.GetExtension(text) == ".Spartacus")
+{
+return;
+}
+If this check passes, it calls smethod_7, which does the file content rewriting with the encrypted version.
+
+The function calls smethod_0, which encrypts the original file data, and then the next two lines write the encrypted data into the file and rename it with the .Spartacus extension. A quick note: Another sign that every single file is encrypted with the same key is that this ransomware does not write the encrypted AES key into the file, which we see in other ransomware that perform unique file encryptions.
+
+As you can see here, it uses the Rijndael method—AES using ECB mode. The key that was generated in the constructor is hashed with MD5, and that is actually what is used as the key itself.
+Now we have gone through the whole process for file encryption on the main file system, through all the sub functions called inside of the parent function smethod_3.
+Let’s go back to the main function now to the next line, which calls smethod_4():
+
+smethod_4 basically performs exactly the same set of recursive function calls as we saw in smethod_3, however, rather than looping through special folders, it is now iterating over all logical drives that are attached to the system. So all external or mapped drives will be encrypted as well.
+
+We do not need to go through all these details now as we have already covered their functionality, being that they are identical to the earlier function calls. The only thing I will mention is that smethod_6 is called twice. This is done most likely to speed up the encryption by having it run on two threads.
+Back to main: the next and final important function call is:
+Application.Run(new Form1());
+This will display the ransom note to the user and show the encrypted AES key in the ransom note.
+
+It starts by calling smethod_1(). As I mentioned above, this simply takes the AES key, which was generated at the beginning and encrypts it using the hard-coded public RSA key.
+public static string smethod_1()
+{
+return Convert.ToBase64String(Class1.smethod_2("<RSAKeyValue><Modulus>xA4fTMirLDPi4rnQUX1GNvHC41PZUR/fDIbHnNBtpY0w2Qc4H2HPaBsKepU33RPXN5EnwGqQ5lhFaNnLGnwYjo7w6OCkU+q0dRev14ndx44k1QACTEz4JmP9VGSia6SwHPbD2TdGJsqSulPkK7YHPGlvLKk4IYF59fUfhSPiWleURYiD50Ll2YxkGxwqEYVSrkrr7DMnNRId502NbxrLWlAVk/XE2KLvi0g9B1q2Uu/PVrUgcxX+4wu9815Ia8dSgYBmftxky427OUoeCC4jFQWjEJlUNE8rvQZO5kllCvPDREvHd42nXIBlULvZ8aiv4b7NabWH1zcd2buYHHyGLQ==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>", Encoding.UTF8.GetBytes(Class2.smethod_0())));
+}
+The RSA key is hard coded and embedded into the ransomware, which means that the author has generated the private key in advance on his side.
+It then iterates all drives and writes the ransom note there. Finally, it opens the ransom note displaying the message and the RSA-encrypted AES key, which will be used by the victim in order to decrypt.
+After all of this, the final thing it does is call smethod_0, which deletes shadow volumes in order to prevent the user from using as a Windows restore point.
+
+This ransomware is purely offline in that there are no network communications back to the author or any C2 server. The ransomware author does not know who he has infected until they email him with their personal ID, which is the AES key. This also means that the decryption tool the author will send is likely embedded with the AES key, which unfortunately will be unique to the specific victim.
+There is nothing special or innovative about this sample, but that does not mean it is not dangerous. It will still do its job—at the moment there is no decryptor for this. The only slight possibility to save yourself if you realize you are being hit with this malware is to perform a process memory dump, in which case there is a slight possibility of extracting the keys from memory.
+In general, it is always a good idea to perform a memory dump of any malware on your system before killing the process in the slight chance that some keys can be recovered.

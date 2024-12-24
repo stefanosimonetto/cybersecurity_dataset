@@ -1,0 +1,96 @@
+The current state of ransomware: CryptoWall
+
+Written by
+Editor
+
+December 17, 2015
+
+Enduser Network Security Tips Threat Research Cryptolocker Cryptowall Ransomware
+
+Ransomware has become one of the most widespread and damaging threats that Internet users face. Since the infamous CryptoLocker first appeared in 2013, we’ve seen a new era of file-encrypting ransomware variants delivered through spam messages and exploit kits, extorting money from home users and businesses alike.
+The current wave of ransomware families can have their roots traced back to the early days of fake antivirus, through Locker variants and finally to the file-encrypting variants that are prevalent today. Each distinct category of malware has shared a common goal – to extort money from victims through social engineering and outright intimidation.
+SophosLabs has published new research examining the recent evolution in file-encrypting ransomware, in our paper titled The Current State of Ransomware. We look at the most prevalent variants including CryptoWall, TorrentLocker, CTB-Locker and TeslaCrypt – as well more obscure variants that employ novel or interesting techniques. In this blog post, the first in a series about ransomware, we take an in-depth look at CryptoWall.
+CryptoWall
+CryptoWall is a family of file-encrypting Ransomware that first appeared in early 2014. It is notable for its use of unbreakable AES encryption, unique CHM infection mechanism, and robust C2 activity over the Tor anonymous network. The miscreants running the CryptoWall operation also provide a free single-use decryption service to prove they hold the keys necessary to restore the hijacked files.
+CryptoWall gained notoriety after the downfall of the infamous CryptoLocker, which was later taken down by Operation Tovar. It used to appear under different names such as Cryptorbit, CryptoDefense, CryptoWall 2.0 and CryptoWall 3.0, among others.
+It is widely distributed using various exploit kits, spam campaigns and malvertising techniques. Initial variants used an RSA public key, generated on the command and control server, for file encryption. Later variants, however, including CryptoWall 3.0, use an AES key for file encryption and further encrypt the AES key using a unique public key generated on the server – making it impossible to get to the actual key needed to decrypt the files.
+CryptoWall 3.0 uses I2P network proxies for communicating with the live command and control server and Tor network for payments using Bitcoins, which makes it even harder for antivirus to trace back the malware author, as I2P uses anonymity networks.
+Infection Vectors
+Earlier CryptoWall infections were almost always distributed via exploit kits. Another recent infection vector is a spam attachment that contains a CHM file which links to the CryptoWall payload.
+The RAR attachment contains a CHM file which, upon opening, downloads the CryptoWall binary and copies itself into the %temp% folder. The CHM file type is basically an interactive html file that is compressed inside a CHM container. It can also hold many other files inside it such javascript or image files, etc.
+Figure 1 shows one example of a spam email that contains a CHM file inside a RAR attachment. The user is often fooled into opening the attachment, assuming it’s from a legitimate financial institution. However, in actual fact, downloading the attachment causes malware to download in the background, as shown in Figure 2.
+
+Execution
+On disk, the CryptoWall binary is usually compressed or encoded with lots of useless instructions and anti-emulation tricks which are inserted deliberately to break AV engine protection.
+On execution, it first launches a new instance of the explorer.exe process, injects its unpacked CryptoWall binary and executes the injected code. The original process exits by itself after launching the injected explorer process.
+Next, it makes sure there is no way to recover encrypted files by deleting volume shadow copies using the vssadmin.exe tool.
+vssadmin.exe Delete Shadows /All /Quiet
+The original binary is copied into various locations in the system, such as:
+<%appdata%>, <%startup%> and <%rootdrive%>/random_folder/
+These copies are then added in the auto start key, which makes them persistent even after the machine is rebooted.
+Next, it launches a new legitimate svchost.exe process with user privilege (not system privilege which could be launched and runs as a child process under services.exe) and injects its malicious binary code into the newly launched svchost process.
+It tries to connects to the I2P proxies to find a live command and control server using a hash value that is created by taking a randomly generated number followed by a unique identification value. This is generated using system-specific information such as computer name, OS version, processor type, volume serial number, etc.
+Once the server replies with the public key, generated specifically for the infected computer, it displays ransom notes in the language based on the geolocation of the machine IP address.
+Once the public key is granted, it starts the file encryption thread – dropping ransom notes in all the directories where the user files have been encrypted.
+Finally, it launches Internet Explorer to show the ransom notes, before the hollowed svchost process gets killed by itself.
+Encryption
+CryptoWall has a big list of file extension types for encryption, examples of which are listed below:
+xls, wpd, wb2, txt, tex, swf, sql, rtf, RAW, ppt, png, pem, pdf, pdb, PAS, odt, obj, msg, mpg, mp3, lua, key, jpg, hpp, gif, eps, DTD, doc, der, crt, cpp, cer, bmp, bay, avi, ava, ass, asp, js, py, pl, db, c, h, ps, cs, m, rm.
+CryptoWall 3.0 file encryption is slightly different from in the 2.0 version. In 2.0, the user files are encrypted directly using public key but in 3.0 a local symmetric AES 256 key is used for file encryption. This key is further encrypted using the public key in order to avoid revealing the AES key – encrypting in this way makes the process much faster and more efficient.
+For every file encryption, CryptoWall 3.0 first copies the same file with an additional random character, encrypts the file content and writes it back, before deleting the original file.
+Every encrypted file starts with a hash value of the public key received from the server, followed by an AES 256 encrypted key using the public key.
+It also saves all the encrypted filenames under the below registry key:
+HKCU\Software\<unique Identifier>\ as shown in Figure 3.
+
+Network Communication
+CryptoWall 3.0 uses I2P network proxies and hardcoded URLs to connect to its live command and control server, making multiple connections to the command and control server before and after the file encryption.
+proxy1-1-1.i2p
+proxy2-2-2.i2p
+proxy3-3-3.i2p
+proxy4-4-4.i2p
+proxy5-5-5.i2p
+It first sends user-specific identifier information and registers the infected machine, before fetching the public key and storing it in the registry after importing it. Based on the public key, CryptoWall 3.0 generates a unique ID for the infected user so they can be identified (when they pay, for example).
+Unlike CryptoWall 3.0, older variants use hardcoded domains in the binary to receive the public key from the command and control server.
+Ransom Demand
+Once all the files are encrypted, CryptoWall 3.0 displays ransom notes which give instructions about how to make payment. The text content is hardcoded in the binary itself and adds generated Tor links and user-specific ID to it. As mentioned previously, the identifier generated by the command and control server is unique to the infected user, in order to identify the user machine.
+The same ransom demand text is written into several files with “DECRYPT_INSTRUCTIONS” in their file names, and is displayed in three different applications – the web browser, a text file and a png in the image viewer, as shown in Figures 4 and 5.
+
+Ransom Payment
+As with most Ransomware, payment is made with Bitcoins as shown in Figure 6 and the instructions are accessed through Tor. Since the actual AES key is encrypted further by a public key, it is impossible to decrypt without the private key.
+The CryptoWall author provides a free decryption service as shown in Figure 7, in order to convince the infected user to believe that they have the key to decrypt. The victim can then upload one encrypted file to their given link in order to get a decrypted version of the file back.
+
+Below is the screenshot of a “free decryption service” webpage.
+
+Statistics
+CryptoWall infections are seen all around the world due to its widespread infection mechanisms. North America is most affected, with the US and Canada making up 13% of infections. Great Britain, the Netherlands and Germany also feature with 7%, 7% and 6% respectively.
+
+Protection
+Sophos protects against CryptoWall at runtime using HIPS technology with HPmal/Ransom-I, HPmal/Ransom-O, HPmal/Ransom-R and statically with a variety of detection names including: Mal/Ransom-* and Troj/Ransom-*.
+These HIPS signatures often don’t require any updates as they detects on the unpacked memory code irrespective of files on disk that are either packed, obfuscated or encrypted.
+Hence having Sophos HIPS technology enabled is strongly recommended to block ransomware proactively.
+If you suspect you’ve been compromised by ransomware, you can remove the malware using our Free Virus Removal Tool. Sadly, there’s not much you can do to get your files back yourself as the encryption is often too strong to crack, so it’s your decision about whether or not you want to pay to retrieve them.
+Apart from having your antivirus up to date, there are additional system changes to help prevent or disarm ransomware infections that a user can apply.
+1. Back up your files.
+The best way to ensure you do not lose your files to ransomware is to back them up regularly. Storing your backup separately is also key – as discussed, some ransomware variants delete Windows shadow copies of files as a further tactic to prevent your recovery, so you need to store your backup offline.
+2. Apply windows and other software updates regularly.
+Keep your system and applications up to date. This gives you the best chance to avoid your system being exploited using drive-by download attacks and software (particularly Adobe Flash, Microsoft Silverlight, Web Browser, etc.) vulnerabilities which are known for installing ransomware.
+3. Avoid clicking untrusted email links or opening unsolicited email attachments.
+Most ransomware arrives via spam email either by clicking the links or as attachments. Having a good email anti-virus scanner would also proactively block compromised or malicious website links or binary attachments that lead to ransomware.
+4. Disable ActiveX content in Microsoft Office applications such as Word, Excel, etc.
+We’ve seen many malicious documents that contain macros which can further download ransomware silently in the background.
+5. Install a firewall, block Tor and I2P, and restrict to specific ports.
+Preventing the malware from reaching its call-home server via the network can disarm an active ransomware variant. As such, blocking connections to I2P or Tor servers via a firewall is an effective measure.
+6. Disable remote desktop connections.
+Disable remote desktop connections if they are not required in your environment, so that malicious authors cannot access your machine remotely.
+7. Block binaries running from %APPDATA% and %TEMP% paths.
+Most of the ransomware files are dropped and executed from these locations, so blocking execution would prevent the ransomware from running.
+
+DEEP LEARNING FOR DEEPER CYBERSECURITY  Watch Video
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn
+
+15

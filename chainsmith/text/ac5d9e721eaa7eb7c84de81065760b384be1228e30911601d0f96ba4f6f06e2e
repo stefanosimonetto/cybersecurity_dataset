@@ -1,0 +1,77 @@
+Top reason to apply October, 2020’s Microsoft patches: Ping of Death Redux
+
+A vulnerability in Windows' TCP/IP driver handling of IPv6 allows denial of service—and possibly remote code execution.
+
+Written by
+SophosLabs Offensive Security
+
+October 13, 2020
+
+SophosLabs Uncut 2020-10 CVE-2020-16891 CVE-2020-16898 CVE-2020-16911 CVE-2020-16915 CVE-2020-16923 CVE-2020-16947 CVE-2020-16951 CVE-2020-16952 CVE-2020-16966 Microsoft Patch Tuesday
+
+Microsoft is releasing a substantial number of security fixes again in October’s Patch Tuesday release—with 11 rated “Critical” by Microsoft (including the latest Adobe Flash security update). But two vulnerabilities among those being patched stand out above these others: CVE-2020-16898 and CVE-2020-16899. These vulnerabilities—caused by a bug in Windows’ TCP/IP driver—harken back to the “Ping of Death” vulnerability fixed in Windows in 2013. They make denial of service and potential remote code execution possible with a crafted packet.
+The vulnerability in tcpip.sys, a logic error in how the driver parses ICMP messages, can be triggered remotely with a crafted IPv6 router advertisement packet containing a Recursive DNS Server (RDNSS) option. The RDNSS option typically contains a list of the IPv6 addresses of one or more recursive DNS servers.
+The RDNSS option format for IPv6 ICMP packets.
+There is a logic flaw in tcpip.sys that can be exploited by crafting a router advertisement packet containing more data than expected, which results in the driver putting more bytes of data on its memory stack than provided for in the driver’s code, resulting in a buffer overflow. In theory, this could be used for both denial of service and remote code execution attacks. But in practice, achieving remote code execution would be extremely difficult.
+SophosLabs developed its own proof-of-concept for an attack, based on information provided by Microsoft. It leverages the vulnerability to cause a “blue screen of death” on the targeted computer.  The details of the POC are being withheld to prevent exploitation by attackers.
+
+Once we understood the bug, developing a “Blue Screen of Death” proof-of-concept was fairly straightforward. But taking it to the level that Microsoft has warned is possible—remote code execution (RCE)—is not. Modern defensive coding standards and practices would slow down an effort to build a reliable generic RCE exploit, for two reasons.
+First, TcpIp.sys is compiled with GS flag— which prevents a typical stack overflow from directly controlling the return address.
+
+The stack cookie, also known as a stack canary, is a random value generate at loading time. Its value is XOR’d with the stack pointer, making it extremely hard to predict reliably—especially in a full remote exploitation.
+
+There are two typical techniques used to bypass stack canaries, neither of which really apply in this case:
+
+Using another information leak vulnerability (arbitrary read)—which won’t help much in exploiting tcpdrv.sys, because the canary value is XOR’d with the stack pointer.
+Overwriting a Structured Exception Handling (SEH) handler, which would be useful only if a structured exception record has been set—which is not the case here.
+
+The second roadblock to an effective RCE exploit is kernel Address Space Layout Randomization (kASLR). Even if it was possible can reliably predict the stack canary (big if) landing back to a system shell in user mode would require to correctly (and again remotely) determine the base address of the Windows kernel.
+That means that even when the exact nature of the bug in tcpdrv.sys becomes more widely known, it may be some time before anyone can exploit it in a way that reliably injects code into the Windows kernel space. Even so, the threat of denial of service at will with a relatively easily-crafted packet should be enough by itself to prompt rapid patching—which is the only real fix for this vulnerability.
+Sophos is in the process of deploying signatures for attacks based on this vulnerability to XG Firewall and Endpoint IPS (in EAP). The signature IDs are sid:2304055 and sid:2304163, respectively. Other short-term mitigations fir potential denial of service attacks include:
+
+Disable IPv6 if not used, or
+Make Windows discard router advertisement packets using the netsh command (netsh int ipv6 set int *INTERFACENUMBER* rabaseddnsconfig=disable).
+
+The rest of this month’s critical vulnerabilities patched are all potential remote code execution bugs as well:
+
+CVE-2020-16891: Windows Hyper-V Remote Code Execution Vulnerability
+CVE-2020-16911: GDI+ Remote Code Execution Vulnerability
+CVE-2020-16915: Media Foundation Memory Corruption Vulnerability
+CVE-2020-16923: Microsoft Graphics Components Remote Code Execution Vulnerability
+CVE-2020-16947: Microsoft Outlook Remote Code Execution Vulnerability
+CVE-2020-16951 and CVE-2020-16952: two Microsoft SharePoint Remote Code Execution Vulnerabilities
+CVE-2020-16966: Open Enclave SDK Remote Code Execution Vulnerability
+CVE-2020-16967: Windows Camera Codec Pack Remote Code Execution Vulnerability
+
+Windows Spoofing Vulnerability
+Another interesting bug fixed in this Patch Tuesday’s release is CVE-2020-16922 , a bug in Windows’ verification of digital signatures of Security Catalog (.CAT) files that could potentially be used to spoof verification of trust for a potentially malicious file.
+Normally, any modification done to a digitally signed file should result in the invalidation of its signature.  However, it was discovered that appending arbitrary data of any size onto the end of a signed .CAT file does not invalidate its signature in the eyes of Windows, which fails to account for the extraneous data.
+This bug bears a resemblance to the Curveball vulnerability from earlier this year, but is not as critical and poses a lesser threat to users—because unlike with Curveball,  “Man-in-the-Middle” attacks are not of concern. The bug could be exploited in malware deployments, however—for example, in the crafting of a  malicious Java Archive (.JAR) file.
+By taking an existing Microsoft-signed .CAT file, appending the contents of a .JAR file to it, and changing the file’s extension to .JAR, a file is produced that looks and runs like a .JAR file, but has a “spoofed”, valid digital signature. This works because the Java Runtime will search a given .JAR file for Java contents to execute, even if they are present in the middle of the file.
+Most other file types do not work this way, and cannot be abused for this purpose. Attackers might use this type of vulnerability to circumvent security software around their handling of malware: a file with a spoofed digital signature can fool security software into regarding it as a legitimate Microsoft-made file and therefore increase its “reputation,” potentially to such an extent that a blind eye would be turned to an actual malware file that would have otherwise get detected.
+Sophos protection
+Here is a list of protection released by SophosLabs in response to this advisory to complement any existing protection and generic exploit mitigation capabilities in our products.
+
+CVE
+
+IPS
+
+CVE-2020-16898
+SID:2304055,2304163
+
+CVE-2020-16899
+SID:2304058
+
+CVE-2020-16922
+SID:2304140,2304142
+
+CVE-2020-16915
+SID:2304212
+
+This and all the other vulnerabilities revealed in October’s Patch Tuesday release—especially the critical ones—offer plenty of reasons to patch as quickly as possible.
+
+Share on Facebook
+
+Share on Twitter
+
+Share on LinkedIn

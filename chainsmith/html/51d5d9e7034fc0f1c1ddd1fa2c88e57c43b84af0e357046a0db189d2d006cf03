@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<script type="text/javascript">var BOOTSTRAP_VERSION ="lumen";
+	var BOOTSTRAP_JS_HEAD =1;
+	var BOOTSTRAP_CDN_ENABLE =0; var BOOTSTRAP_NAVBAR_TYPE =0; var BOOTSTRAP_LOGO_OPTION =0; var BOOTSTRAP_NAVBAR =1; var BootstrapInputFix =true;var BootstrapNavbarLineHeightFix =true;var BOOTSTRAP_EDT= 0; </script>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<title>Virus Bulletin :: evilMule in kernel mode – an analysis of the network functionality of Sirefef</title>
+<meta name="description" content="Win32/Sirefef (a.k.a. ZeroAccess) is one of the most prevalent threats in the wild today. Its main component is a kernel-mode driver, which implements a kernel-mode P2P file distribution system to deploy new malware components and upgrade existing ones. Chun Feng describes the design and implementation of this P2P file distribution system." />
+<meta name="generator" content="concrete5 - 5.6.3.5" />
+<script type="text/javascript">
+var CCM_DISPATCHER_FILENAME = '/index.php';var CCM_CID = 1928;var CCM_EDIT_MODE = false;var CCM_ARRANGE_MODE = false;var CCM_IMAGE_PATH = "/concrete/images";
+var CCM_TOOLS_PATH = "/index.php/tools/required";
+var CCM_BASE_URL = "https://www.virusbulletin.com";
+var CCM_REL = "";
+
+</script>
+<link rel="shortcut icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="icon" href="/files/8914/5459/9485/VBIcon.png" type="image/x-icon" />
+<link rel="stylesheet" type="text/css" href="/concrete/css/ccm.base.css" />
+<script type="text/javascript" src="/concrete/js/jquery.js"></script>
+<script type="text/javascript" src="/concrete/js/ccm.base.js"></script>
+<script type="text/javascript">
+var COOKIES_ALLOWED=false;
+</script>
+<link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure.css" />
+<!--[if lte IE 8]><link rel="stylesheet" type="text/css" href="/packages/free_cookies_disclosure/css/cookies_disclosure_ie.css" /><![endif]-->
+<script type="text/javascript">
+var COOKIES_DISCLOSURE_HIDE_INTERVAL=10;
+</script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_hide.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/lumen/bootstrap-overwrites.css" />
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/css/members.css" />
+<script type="text/javascript" src="/packages/bootstrap/js/common/prettify.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/jquery.easing.1.3.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/bootstrap.min.js"></script>
+<link rel="stylesheet" type="text/css" href="/libraries/css/jquery.fancybox.css" />
+<script type="text/javascript" src="/libraries/js/jquery.fancybox.pack.js"></script>
+<link rel="stylesheet" media="screen" type="text/css" href="/files/cache/css/bootstrap/typography.css" />
+<script type="text/javascript" src="/index.php/tools/packages/free_cookies_disclosure/disclosure_i18n_js"></script>
+<script type="text/javascript" src="/packages/free_cookies_disclosure/js/disclosure_ajax_form.js"></script>
+<link rel="stylesheet" type="text/css" href="/concrete/blocks/page_list/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/remo_expand/blocks/remo_expand/templates/vbexpand/view.css" />
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.color.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/jquery.ba-hashchange.js"></script>
+<script type="text/javascript" src="/packages/remo_expand/js/remo.expand.js"></script>
+<link rel="stylesheet" type="text/css" href="/packages/bootstrap/blocks/search/templates/VB_global_search/view.css" />
+<link rel="stylesheet" type="text/css" href="/packages/travisn_spacer/css/ccm.tnspacer.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" integrity="sha384-T8Gy5hrqNKT+hzMclPo118YTQO6cYprQmhrYwIiQ/3axmI1hQomh7Ud2hPOy8SP1" crossorigin="anonymous">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prettify/r298/run_prettify.js" integrity="sha256-1SFdTXlsw0RkQ+iO0E91LDshGiIbPiTYqJto0px4wds=" crossorigin="anonymous"></script>
+<!--[if gte IE 9]>
+<script src="/packages/bootstrap/js/common/modernizr.js"></script>
+<![endif]-->
+
+<!--[if lt IE 9]>	
+	
+	<script src="/packages/bootstrap/js/common/html5shiv.js"></script>
+	<script src="/packages/bootstrap/js/common/respond.min.js"></script>
+	
+<![endif]-->
+</head>
+<body data-spy="scroll" data-target=".bs-sidebar">
+
+<div class="navbar  navbar-fixed-top navbar-default  bs-docs-nav">
+<div class="navbar-inner">
+<div class="container"><div class="row"><div class="col-sm-4 col-md-4 logo-position-1 col-logo">
+<div class="navbar-header">
+<button type="button" class="navbar-toggle btn_navbar_custom">
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+<span class="icon-bar"></span>
+</button><div class="mobile-clearfix"></div><div class="navbar-brand navbar-brand-area"><a href="/"><img border="0" class="ccm-image-block" alt="" src="/files/4614/4535/7515/logo-big.png" width="339" height="92" /></a></div> </div>
+</div><div class="col-sm-8 col-md-8 logo-position-1 col-nav"> <div class="nav-collapse collapse nav_collapse_custom navbar-collapse"> <div style="clear:both"></div>
+<div class="vb-global-search-div">
+<form action="/index.php/global-search-results/" method="get">
+<fieldset>
+<input name="search_paths[]" type="hidden" value="" />
+<input name="query" type="text" class="vb-global-search" placeholder="Search site..." />
+<input name="submit" type="submit" value="Search!" style="display:none" />
+</fieldset>
+</form>
+</div>
+<div class="tnSpacer" style="height:48px"></div>
+<ul class="nav nav-pills"><li class=" nav-first nav-item-6299"><a href="/newsletter/" target="_self" class=" nav-first nav-item-6299 ">Newsletter</a></li><li class=" nav-item-260"><a href="/conference/" target="_self" class=" nav-item-260 ">VB Conference</a></li><li class=" nav-item-166"><a href="/testing/" target="_self" class=" nav-item-166 ">VB Testing</a></li><li class=" nav-path-selected active nav-item-160"><a href="/virusbulletin/" target="_self" class=" nav-path-selected active nav-item-160 ">Bulletin</a></li><li class=" nav-last nav-item-130"><a href="/blog/" target="_self" class=" nav-last nav-item-130 ">Blog</a></li></ul> </div>
+</div>
+</div><div class="clearfix"></div>
+</div>
+</div>
+</div>
+<div class="navbar-top-fixed-space "><div class="clearfix"></div></div>
+
+<div class="container m-top-20">
+<div class="row">
+<div class="col-md-9 col-sm-9 col-lg-9">
+<div class="titlepage" xmlns=""><div><div><h1 class="title" xmlns="http://www.w3.org/1999/xhtml"><a id="vb201205-Sirefef"></a>evilMule in kernel mode &ndash; an analysis of the network functionality of Sirefef</h1></div><div><p class="pubdate" xmlns="http://www.w3.org/1999/xhtml">2012-05-03</p></div><div><div class="authorgroup" xmlns="http://www.w3.org/1999/xhtml"><div class="author titlepage"><h3 class="author"><span class="surname">Chun Feng</span></h3><span class="orgname">Microsoft</span>, <span class="orgdiv">Australia</span></div><b class="editedby">Editor: </b><span class="editor"><span class="firstname">Helen</span> <span class="surname">Martin</span></span></div></div><div><div class="abstract" xmlns="http://www.w3.org/1999/xhtml"><p class="title"><b>Abstract</b></p><p>Win32/Sirefef (a.k.a. ZeroAccess) is one of the most prevalent threats in the wild today. Its main component is a kernel-mode driver, which implements a kernel-mode P2P file distribution system to deploy new malware components and upgrade existing ones. Chun Feng describes the design and implementation of this P2P file distribution system.</p></div></div><div><p class="copyright" xmlns="http://www.w3.org/1999/xhtml"><i>Copyright &copy; 2012 Virus Bulletin</i></p></div></div><hr /></div>
+<div class="ccm-remo-expand">
+<div id="ccm-remo-expand-title-3160" class="ccm-remo-expand-title ccm-remo-expand-closed" data-expander-speed="200">Table of contents</div><div id="ccm-remo-expand-content-3160" class="ccm-remo-expand-content"><div class="toc"><dl><dt><span class="sect1"><a href="#id4898688"></a></span></dt><dt><span class="sect1"><a href="#id2315700">Bypass Windows Firewall</a></span></dt><dt><span class="sect1"><a href="#id3755277">Peer organization</a></span></dt><dt><span class="sect1"><a href="#id4398822">Handling asynchronous IRP</a></span></dt><dt><span class="sect1"><a href="#id3012236">Packet structure of the P2P protocol</a></span></dt><dt><span class="sect1"><a href="#id3502330">&lsquo;getL&rsquo; AND &lsquo;retL&rsquo; commands</a></span></dt><dt><span class="sect1"><a href="#id4428455">&lsquo;srv?&rsquo; and &lsquo;yes!&rsquo; commands</a></span></dt><dt><span class="sect1"><a href="#id3859166">&lsquo;getF&rsquo; and &lsquo;setF&rsquo; commands</a></span></dt><dt><span class="sect1"><a href="#id4690240">&lsquo;news&rsquo; command</a></span></dt><dt><span class="sect1"><a href="#id3860053">Conclusion</a></span></dt><dt><span class="sect1"><a href="#id3635128">Appendix</a></span></dt></dl></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4898688"></a></h2></div></div></div><p>Win32/Sirefef (a.k.a. ZeroAccess and max++) is one of the most prevalent threats in the wild today. The main component of Sirefef is the kernel-mode driver, which is dropped by a Sirefef dropper and replaces a chosen <span class="emphasis"><em>Windows</em></span> device driver. This kernel-mode component of Sirefef is both complicated and advanced [1]:</p><div class="orderedlist"><ol type="1"><li><p>It creates a &lsquo;hidden volume&rsquo;, which is used to store additional malware components. This &lsquo;hidden volume&rsquo; cannot normally be accessed.</p></li><li><p>It implements a disk-level hook to hide its presence on the affected system &ndash; reading from the replaced driver returns the original clean copy; writing to the replaced driver won&rsquo;t actually change the file.</p></li><li><p>It includes a self-defence mechanism to protect itself against security-related software. Any process that attempts to access Sirefef calls ExitProcess() and quits [1, 2] .</p></li></ol></div><p>However, the main payload is in the kernel-mode driver &ndash; details of the network functionality utilized in recent Sirefef variants haven&rsquo;t been published to date. A detailed look into the Sirefef driver reveals that it implements a kernel-mode P2P (peer to peer) file distribution system that can be used to deploy new malware components or upgrade existing ones. This article focuses on the design and implementation of this P2P file distribution system (hereafter referred to as P2P system).</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id2315700"></a>Bypass Windows Firewall</h2></div></div></div><p>Before Sirefef starts executing its network functionality, it attempts to bypass the <span class="emphasis"><em>Windows Firewall</em></span> to make sure the traffic won&rsquo;t be blocked. It does this by:</p><div class="orderedlist"><ol type="1"><li><p>Sending an IRP_MJ_DEVICE_CONTROL request with a particular I/O control code to device \Device\ipnat, which is used by the <span class="emphasis"><em>Windows Firewall</em></span> on <span class="emphasis"><em>Windows XP</em></span> (as a side effect, Network Address Translation (NAT) is turned off).</p></li><li><p>Setting up a symbolic link between \Device\00000033 and a user-visible name for a device used by the <span class="emphasis"><em>Windows Firewall</em></span> on <span class="emphasis"><em>Windows Vista</em></span> and later. The symbolic link causes any attempt to access the original device to be redirected to the new one (\Device\00000033). The new device does not interpret the control codes in the correct way, resulting in the firewall not functioning properly.</p></li></ol></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3755277"></a>Peer organization</h2></div></div></div><p>In a P2P system, peer discovery is the key to supporting the peer organization, so each peer can be aware of other available peers and keep updated when others join or leave. Sirefef&rsquo;s peer discovery mechanism utilizes a simple configuration file. The Sirefef dropper drops a configuration file named &lsquo;@&rsquo; to the hidden volume, e.g. \??\ACPI#PNP0303#2&amp;da1a3ff&amp;0\@, where \??\ACPI#PNP0303#2&amp;da1a3ff&amp;0 is the path of the hidden volume. (When a host is infected with Sirefef, the dropper posts infection information to a remote server in a .cn domain, which presumably is used to collect infection data and generate the peer configuration file.) The configuration file is a binary file that contains a number of eight-byte pairs &ndash; each pair has four bytes for the peer&rsquo;s IP address followed by four bytes for the timestamp (elapsed time, in seconds, since the beginning of 1980) of the last active time of the peer. When the Sirefef peer starts up, it reads up to 256 pairs from the peer configuration file &lsquo;@&rsquo;. Each peer generates a unique 32-bit value derived from ExUuidCreate() as its own peer ID, which is used in peer communication (as discussed below).</p><p>The Sirefef peer listens on one TCP port for the incoming command packet, and one UDP port for the incoming peer status change packet. It updates its peer configuration based on the received peer status change packet. The same hard-coded value (e.g. 5207) is used as both TCP port number and UDP port number. Different Sirefef variants may use different hard-coded values, and Sirefef peers only communicate with other peers that are of the same variant as their own, i.e. peers communicating with each other are always listening on the same port number.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4398822"></a>Handling asynchronous IRP</h2></div></div></div><p>Sirefef uses Transport Driver Interface (TDI) to send and receive TCP/IP packets in kernel mode. Since most TDI operations are asynchronous, TDI IRPs need to be handled asynchronously. Sirefef doesn&rsquo;t use the commonly used I/O completion routine to handle the completed IRP asynchronously; instead it uses the I/O completion port, which can handle many concurrent asynchronous I/Os more quickly and efficiently [3].</p><p>Sirefef adopts object-oriented implementations when handling the IRP with the I/O completion port. It creates an object in which it saves the connection-related information (e.g. remote peer address etc.). To handle the IRP with the I/O completion port, the IRP is populated as follows (also shown in <a href="#figure.1">Figure 1</a>):</p><div class="orderedlist"><ol type="1"><li><p>IRP.CurrentStackLocation-&gt;FileObject-&gt; CompletionContext-&gt;Port is set to a global I/O completion port, so when the IRP is completed, it is queued into this I/O completion port.</p></li><li><p>IRP.CurrentStackLocation-&gt;FileObject-&gt; CompletionContext-&gt;Key is set to the pointer of the aforementioned object as the I/O completion context.</p></li><li><p>IRP.Tail.Overlay.AsynchronousParameters.UserApcContext is a &lsquo;multiplexing&rsquo; of the TDI operation and the corresponding buffer pointer for this TDI operation: the lowest three bits indicate the TDI operation and the highest 29 bits (the buffer is allocated from the kernel memory pool, so it is always eight bytes aligned, i.e. the lowest three bits are always zero) are used as the pointer to an allocated buffer (e.g. the sending/receiving packet buffer). For some TDI operations &ndash; such as TDI_ACCEPT &ndash; the buffer is not used and its pointer value is set to zero (see Table 1).</p></li></ol></div><div class="figure"><a id="figure.1"></a><div class="mediaobject"><img alt="Handling asynchronous IRP with I/O completion port." src="/uploads/images/figures/2012/05/feng-1.jpg" /></div><p class="title"><b>Figure&nbsp;1.&nbsp;Handling asynchronous IRP with I/O completion port.</b></p></div><div class="table"><a id="table.1"></a><table border="1" summary="The multiplexing of UserApcContext."><colgroup><col align="center" /><col /><col /><col /></colgroup><tbody><tr><td align="center">&nbsp;</td><td><span class="bold"><strong>Protocol</strong></span></td><td><span class="bold"><strong>Lowest 3 bits</strong></span></td><td><span class="bold"><strong>Highest 29 bits</strong></span></td></tr><tr><td align="left">TDI_CONNECT(3)</td><td>TCP</td><td>001(1)</td><td>0</td></tr><tr><td align="left">TDI_LISTEN(4)</td><td>TCP</td><td>001(1)</td><td>0</td></tr><tr><td align="left">TDI_DISCONNECT(6)</td><td align="left">TCP</td><td>100(4)</td><td>0</td></tr><tr><td align="left">TDI_SEND(7)</td><td>TCP</td><td>011 (3)</td><td>Pointer</td></tr><tr><td align="left">TDI_RECV(8)</td><td>TCP</td><td>010(2)</td><td>Pointer</td></tr><tr><td align="left">TDI_SEND_DATAGRAM(9)</td><td>UDP</td><td>010(2)</td><td>Pointer</td></tr><tr><td align="left">TDI_RECEIVE_DATAGRAM(0xA)</td><td>UDP</td><td>001(1)</td><td>Pointer</td></tr></tbody></table><p class="title"><b>Table&nbsp;1.&nbsp;The multiplexing of UserApcContext.</b></p></div><p>A thread is created to keep scanning the I/O completion port for any completed IRP. The thread calls the &lsquo;dispatcher&rsquo; functions defined in the virtual function table (VTABLE) of the object stored as IRP.Tail.CompletionKey in the completed IRP. The &lsquo;dispatcher&rsquo; function calls the corresponding virtual function defined in the VTABLE based on the TDI operation (the lowest three bits in IRP.Tail.Overlay. AsynchronousParameters.UserApcContext). The VTABLE structure used by the Sirefef object is defined in <a href="#figure.2">Figure 2</a> and <a href="#figure.3">Figure 3</a>:</p><div class="figure"><a id="figure.2"></a><div class="mediaobject"><img alt="VTABLE for TCP-related TDI operations." src="/uploads/images/figures/2012/05/feng-2.jpg" /></div><p class="title"><b>Figure&nbsp;2.&nbsp;VTABLE for TCP-related TDI operations.</b></p></div><div class="figure"><a id="figure.3"></a><div class="mediaobject"><img alt="VTABLE for UDP-related TDI operations." src="/uploads/images/figures/2012/05/feng-3.jpg" /></div><p class="title"><b>Figure&nbsp;3.&nbsp;VTABLE for UDP-related TDI operations.</b></p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3012236"></a>Packet structure of the P2P protocol</h2></div></div></div><p>Sirefef defines its own packet structure for the P2P protocol used for peer communication. As depicted in Figure 4, all the packets contain a packet header section and a payload section. The header section has a fixed length of 16 bytes and the payload section has a variable length section (four bytes aligned). The header section consists of four fields (each field is four bytes):</p><div class="orderedlist"><ol type="1"><li><p>Key: the key used to encrypt/decrypt the packet. Sirefef uses an algorithm (based on the RC4 algorithm) to encrypt/decrypt all the packets sent between peers. The key is usually a hard-coded constant, e.g. 0xCD6734FE (in little-endian byte order).</p></li><li><p>Checksum: the CRC value used for integrity check purposes. Usually this is the CRC value of the whole packet (the CRC field is filled with zeros when calculating). Packets received with a bad checksum value are discarded by the peer.</p></li><li><p>Command: this indicates which operation (request or response) is made by the peer, which could be one of the following four-byte strings (in little-endian byte order):</p><p>getL</p><p>retL</p><p>getF</p><p>setF</p><p>srv?</p><p>yes!</p><p>news</p><p>Different payload structures are defined for the different commands &ndash; these are discussed later.</p></li><li><p>Payload length: the length (in bytes) of the payload section.</p><div class="figure"><a id="figure.4"></a><div class="mediaobject"><img alt="The packet structure of the P2P protocol used by Sirefef." src="/uploads/images/figures/2012/05/feng-4.jpg" /></div><p class="title"><b>Figure&nbsp;4.&nbsp;The packet structure of the P2P protocol used by Sirefef.</b></p></div></li></ol></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3502330"></a>&lsquo;getL&rsquo; AND &lsquo;retL&rsquo; commands</h2></div></div></div><p>When a peer starts up, it sends a &lsquo;getL&rsquo; command to 64 different remote peers for syncing purposes. The payload section of the &lsquo;getL&rsquo; command is only four bytes, which contains the peer ID of the requesting peer (see <a href="#figure.5">Figure 5</a>).</p><div class="figure"><a id="figure.5"></a><div class="mediaobject"><img alt="Packet structure of the &lsquo;getL&rsquo; command." src="/uploads/images/figures/2012/05/feng-5.jpg" /></div><p class="title"><b>Figure&nbsp;5.&nbsp;Packet structure of the &lsquo;getL&rsquo; command.</b></p></div><p>When the remote peer receives the &lsquo;getL&rsquo; command, it checks whether the request has come from itself by comparing the peer ID in the packet with its own peer ID. If it hasn&rsquo;t come from itself, it replies with a &lsquo;retL&rsquo; command, which contains its own configuration information. The payload section of the &lsquo;retL&rsquo; command consists of two parts (see <a href="#figure.6">Figure 6</a>):</p><div class="orderedlist"><ol type="1"><li><p>The peer configuration information defined in the file &lsquo;@&rsquo;. This starts with a four-byte &lsquo;peer count&rsquo; field which indicates the number of peer records that follow. Each peer record is eight bytes long: four bytes for the IP address and four bytes for the last active stamp.</p></li><li><p>File information. A list of files (up to 16) is stored in the hidden volume&rsquo;s file store directory (e.g. \??\ACPI#PNP0303#2&amp;da1a3ff&amp;0\U). It starts with a four-byte &lsquo;file count&rsquo; field indicating the number of file records that follow. Each record is also eight bytes: four bytes for the file name (the file name is converted to a hex number) and four bytes for the timestamp (which is used as the version number) of the file.</p></li></ol></div><p>Thus, the total payload length is 8*(peer count + file count) + 8.</p><div class="figure"><a id="figure.6"></a><div class="mediaobject"><img alt="Packet structure of the &lsquo;retL&rsquo; command." src="/uploads/images/figures/2012/05/feng-6.jpg" /></div><p class="title"><b>Figure&nbsp;6.&nbsp;Packet structure of the &lsquo;retL&rsquo; command.</b></p></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4428455"></a>&lsquo;srv?&rsquo; and &lsquo;yes!&rsquo; commands</h2></div></div></div><p>When the remote peer receives &lsquo;getL&rsquo; and replies with &lsquo;retL&rsquo; to send the originating peer its own configuration, it also initializes a reverse sync request to sync from the originating peer. The reverse sync command starts with the command &lsquo;srv?&rsquo;. The packet structure of the &lsquo;srv?&rsquo; command is depicted in <a href="#figure.7">Figure 7</a>. The packet structure of &lsquo;srv?&rsquo; is similar to &lsquo;retL&rsquo;, however it doesn&rsquo;t include the peer configuration information. (<span class="emphasis"><em>File information filed as sent is not used by the receiving peer in current Sirefef variants.</em></span>)</p><div class="figure"><a id="figure.7"></a><div class="mediaobject"><img alt="Packet structure of the &lsquo;srv?&rsquo; command." src="/uploads/images/figures/2012/05/feng-7.jpg" /></div><p class="title"><b>Figure&nbsp;7.&nbsp;Packet structure of the &lsquo;srv?&rsquo; command.</b></p></div><p>When the requesting peer receives the &lsquo;srv?&rsquo; command from the remote peer, it replies with the &lsquo;yes!&rsquo; command.</p><p>The packet structure of the &lsquo;yes!&rsquo; command is exactly the same as that of the &lsquo;srv?&rsquo; command &ndash; the receiving peer replies with its own file information.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3859166"></a>&lsquo;getF&rsquo; and &lsquo;setF&rsquo; commands</h2></div></div></div><p>When the &lsquo;retL&rsquo; or &lsquo;yes!&rsquo; commands are received by the peer, it initializes a file syncing process with the remote peer. The receiving peer parses the received file information and if a file doesn&rsquo;t exist locally, or the version of the local copy is older than the remote version, then it sends a &lsquo;getF&rsquo; command to sync the file from the remote peer. The packet structure of the &lsquo;getF&rsquo; command is depicted in <a href="#figure.8">Figure 8</a>. The payload is only four bytes, which is the hex number format of the file name to sync.</p><div class="figure"><a id="figure.8"></a><div class="mediaobject"><img alt="Packet structure of the &lsquo;getF&rsquo; command." src="/uploads/images/figures/2012/05/feng-8.jpg" /></div><p class="title"><b>Figure&nbsp;8.&nbsp;Packet structure of the &lsquo;getF&rsquo; command.</b></p></div><p>The remote peer replies with a &lsquo;setF&rsquo; command to send the file content to the requesting peer. The &lsquo;setF&rsquo; command is split into multiple chunks since the whole size of this command can be very large. First, it sends the 16-byte header; the CRC in the header is only calculated on the header itself and doesn&rsquo;t include the file content, and the payload length is the file length. Then the file content is sent in a number of 0x4000-byte chunks.</p><div class="figure"><a id="figure.9"></a><div class="mediaobject"><img alt="Packet structure of the &lsquo;setF&rsquo; command." src="/uploads/images/figures/2012/05/feng-9.jpg" /></div><p class="title"><b>Figure&nbsp;9.&nbsp;Packet structure of the &lsquo;setF&rsquo; command.</b></p></div><p>When the requesting peer receives the &lsquo;setF&rsquo; command, it saves it with a temporary filename &lsquo;$&lt;hex&gt;&rsquo; in the file store folder of the hidden volume (e.g. \??\ACPI#PNP0303#2&amp;da1a3ff&amp;0\U\), where &lt;hex&gt; is an eight-digit hex number. It then sets the ChangeTime, LastAccessTime, LastWriteTime of the file to 0xffffffff; and the CreationTime is set to the same value as the timestamp in the remote peer. So for a certain file, when it is synced from one peer to another, the CreationTime value remains the same &ndash; i.e. the CreationTime can be used as the file version number. Once the timestamps of the file have been set successfully, the file is renamed to &lsquo;@&lt;hex&gt;&rsquo;. The new copy of the file is loaded by Sirefef if the hex number has the most significant bit set (i.e. the value of &lt;hex&gt; is above 0x80000000). Interestingly, Sirefef uses ZwSetSystemInformation (SystemLoadGdiDriverInSystemSpace,&hellip;) to load the file. The file is loaded into kernel memory space, then Sirefef calls the entry point code explicitly to execute it.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id4690240"></a>&lsquo;news&rsquo; command</h2></div></div></div><p>Sirefef peers use the &lsquo;news&rsquo; command to send notification of other peers&rsquo; status changes.</p><p>When the &lsquo;yes!&rsquo; command is received by a peer, it sends a &lsquo;news&rsquo; command (UDP) to 64 peers in its peer configuration to inform them of the status change of the peer that sent the &lsquo;yes!&rsquo; command. The packet structure of the &lsquo;news&rsquo; command is depicted in <a href="#figure.10">Figure 10</a>.</p><div class="figure"><a id="figure.10"></a><div class="mediaobject"><img alt="Packet structure of the &lsquo;news&rsquo; command." src="/uploads/images/figures/2012/05/feng-10.jpg" /></div><p class="title"><b>Figure&nbsp;10.&nbsp;Packet structure of the &lsquo;news&rsquo; command.</b></p></div><p>The payload length of the &lsquo;news&rsquo; packet is 12 bytes. The first four bytes are the IP address of the peer whose status has changed, and the next four-byte Delta is the number of elapsed seconds between the peer receiving the &lsquo;yes!&rsquo; command and sending the &lsquo;news&rsquo; command (usually it should be 0). The last four bytes are a character, &lsquo;@&rsquo; (ascii 0x40), with the other three bytes zero-filled.</p><p>When the &lsquo;news&rsquo; command is received by a peer, the receiving peer needs to update the last active timestamp of the peer specified in the &lsquo;news&rsquo; command. If the peer&rsquo;s last active time is older than 120 seconds, then it updates the specified peer&rsquo;s last active time as &lsquo;CurrentTime - Delta&rsquo; then it broadcasts this &lsquo;news&rsquo; command to all of the peers in its peer configuration.</p></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3860053"></a>Conclusion</h2></div></div></div><p>Sirefef is one of the most complicated and advanced rootkits seen in the wild to date. It implements a kernel-mode P2P system which can be used to distribute and upgrade its malware components without using a central server. This distributed P2P malware distribution channel is hard to disrupt, since there is no single takedown point. There are clear signs that the authors of Sirefef are very experienced kernel-mode driver developers, and that they have in-depth knowledge of the <span class="emphasis"><em>Windows</em></span> kernel &ndash; many undocumented tricks have been observed in Sirefef and the code is both robust and performance friendly. We believe Sirefef will continue to be active and prevalent in the near future &ndash; we will continue to track and analyse this threat as it develops.</p><div class="bibliography"><div class="titlepage"><div><div><h3 class="title"><a class="chapter" id="id3647692"></a>Bibliography</h3></div></div></div><div class="bibliomixed"><a id="citaiton.1"></a><p class="bibliomixed">[1] ZeroAccess &ndash; an advanced kernel mode rootkit. <span class="bibliosource"><a href="http://ww.prevxresearch.com/zeroaccess_analysis.pdf" target="_blank">http://www.prevxresearch.com/zeroaccess_analysis.pdf</a></span>.</p></div><div class="bibliomixed"><a id="citation.2"></a><p class="bibliomixed">[2] Sz&ouml;r, P. Asynchronous harakiri++. Virus Bulletin, October 2011, pp.11&ndash;13. <span class="bibliosource"><a href="/virusbulletin/2011/10/asynchronous-harakiri
+" target="_top">http://www.virusbtn.com/virusbulletin/archive/2011/10/vb201110-asynchronous-harakiri</a></span>.</p></div><div class="bibliomixed"><a id="citation.3"></a><p class="bibliomixed">[3] I/O Completion Ports. <span class="bibliosource"><a href="https://msdn.microsoft.com/en-us/library/windows/desktop/aa365198(v=vs.85).aspx" target="_blank">http://msdn.microsoft.com/en-us/library/windows/desktop/aa365198(v=vs.85).aspx</a></span>.</p></div></div></div><div class="sect1" lang="en"><div class="titlepage"><div><div><h2 class="title"><a class="chapter" id="id3635128"></a>Appendix</h2></div></div></div><p>The interaction procedure between peers is described in <a href="#figure.11">Figure 11</a>.</p><div class="figure"><a id="figure.11"></a><div class="mediaobject"><img alt="The interaction procedure between peers." src="/uploads/images/figures/2012/05/feng-11.jpg" /></div><p class="title"><b>Figure&nbsp;11.&nbsp;The interaction procedure between peers.</b></p></div></div> </div>
+<div class="col-md-3 col-sm-3 col-lg-3">
+<div id="NDPHPBlock13359" class="NDPHPBlock">
+<div style="width: 100%;"><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Tweet this!' href="https://twitter.com/share?text=evilMule in kernel mode – an analysis of the network functionality of Sirefef&url=https://www.virusbulletin.com/virusbulletin/2012/05/evilmule-kernel-mode-analysis-network-functionality-sirefef"><img src='/uploads/images/buttons/twitter.png' alt='twitter.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Facebook' href='https://www.facebook.com/sharer.php?u=https://www.virusbulletin.com/virusbulletin/2012/05/evilmule-kernel-mode-analysis-network-functionality-sirefef'><img src='/uploads/images/buttons/fb.png' alt='fb.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on LinkedIn' href="https://www.linkedin.com/shareArticle?mini=true&url=https://www.virusbulletin.com/virusbulletin/2012/05/evilmule-kernel-mode-analysis-network-functionality-sirefef&title=evilMule in kernel mode – an analysis of the network functionality of Sirefef"><img src='/uploads/images/buttons/linkedin.png' alt='linkedin.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='Share on Hacker News' href="https://news.ycombinator.com/submitlink?u=https://www.virusbulletin.com/virusbulletin/2012/05/evilmule-kernel-mode-analysis-network-functionality-sirefef&t=evilMule in kernel mode – an analysis of the network functionality of Sirefef"><img src='/uploads/images/buttons/hackernews.png' alt='hackernews.png' width='45' height='45' class='responsive' /></a></center></div><div style='float: left; width: 20%; margin-left: auto; margin-right: auto; text-align: center;'><center><a target='_blank' title='reddit this!' href="https://www.reddit.com/submit?url=https://www.virusbulletin.com/virusbulletin/2012/05/evilmule-kernel-mode-analysis-network-functionality-sirefef"><img src='/uploads/images/buttons/reddit.png' alt='reddit.png' width='45' height='45' class='responsive' /></a></center></div></div></div><p> </p>
+<h2>Latest articles:</h2>
+<div class="ccm-page-list">
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2022/04/cryptojacking-fly-teamtnt-using-nvidia-drivers-mine-cryptocurrency/" target="_self">Cryptojacking on the fly: TeamTNT using NVIDIA drivers to mine cryptocurrency</a>
+</h3>
+<div class="ccm-page-list-description">
+TeamTNT is known for attacking insecure and vulnerable Kubernetes deployments in order to infiltrate organizations&rsquo; dedicated environments and transform them into attack launchpads. In this article Aditya Sood presents a new module introduced by&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/12/collector-stealer-russian-origin-credential-and-information-extractor/" target="_self">Collector-stealer: a Russian origin credential and information extractor</a>
+</h3>
+<div class="ccm-page-list-description">
+Collector-stealer, a piece of malware of Russian origin, is heavily used on the Internet to exfiltrate sensitive data from end-user systems and store it in its C&amp;C panels. In this article, researchers Aditya K Sood and Rohit Chaturvedi present a 360&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/06/fighting-fire-fire/" target="_self">Fighting Fire with Fire</a>
+</h3>
+<div class="ccm-page-list-description">
+In 1989, Joe Wells encountered his first virus: Jerusalem. He disassembled the virus, and from that moment onward, was intrigued by the properties of these small pieces of self-replicating code. Joe Wells was an expert on computer viruses, was partly&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/run-your-malicious-vba-macros-anywhere/" target="_self">Run your malicious VBA macros anywhere!</a>
+</h3>
+<div class="ccm-page-list-description">
+Kurt Natvig wanted to understand whether it&rsquo;s possible to recompile VBA macros to another language, which could then easily be &lsquo;run&rsquo; on any gateway, thus revealing a sample&rsquo;s true nature in a safe manner. In this article he explains how he recompiled&hellip; </div>
+<h3 class="ccm-page-list-title">
+<a href="/virusbulletin/2021/04/dissecting-design-and-vulnerabilities-azorultccpanels/" target="_self">Dissecting the design and vulnerabilities in AZORult&nbsp;C&amp;C&nbsp;panels</a>
+</h3>
+<div class="ccm-page-list-description">
+Aditya K Sood looks at the command-and-control (C&amp;C) design of the AZORult malware, discussing his team's findings related to the C&amp;C design and some security issues they identified during the research. </div>
+</div>
+<p><br /><a class="btn btn-block btn-warning" href="/virusbulletin/archive">Bulletin Archive</a></p> </div>
+</div>
+</div>
+
+<footer class="bs-footer" role="contentinfo">
+<div class="container">
+<div class="bs-social">
+<div class="row ">
+<div class="col-md-3">
+<p><a title="About Us" href="/about-vb/about-us/">About us</a></p>
+<p><a title="Contact Us" href="/about-vb/contact-us/">Contact us</a></p>
+<p><a title="Advisory Board" href="/about-vb/advisory-board/">Advisory board</a></p>
+<p><a title="Press" href="/about-vb/press/">Press information</a></p>
+<p><a title="Security Events Calendar" href="/resources/calendar/">Security events calendar</a></p>
+<p><a title="Newsletter" href="/newsletter/">Virus Bulletin newsletter</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB Testing" href="/testing/">Testing</a></p>
+<p><a title="VB100" href="/testing/vb1001/">VB100</a></p>
+<p><a title="VBSpam" href="/testing/vbspam/">VBSpam</a></p>
+<p><a title="VBWeb" href="/testing/vbweb/">VBWeb</a></p>
+<p><a title="Consultancy Services" href="/testing/consultancy-services/">Consultancy services</a></p>
+<p><a title="The Spammers' Compendium" href="/resources/spammerscompendium/">Spammers' Compendium</a></p> </div>
+<div class="col-md-3">
+<p><a title="VB2021 localhost" href="/conference/vb2021/">VB2021 localhost</a></p>
+<p><a title="VB2020 localhost" href="/conference/vb2020/">VB2020 localhost</a></p>
+<p><a title="VB2019" href="/conference/vb2019/">VB2019 (London)</a></p>
+<p><a title="VB2018" href="/conference/vb2018">VB2018 (Montreal)</a></p>
+<p><a title="VB2017" href="/conference/vb2017">VB2017 (Madrid)</a></p>
+<p><a title="Conference Archive" href="/conference/vb-conference-archive/">Older conferences</a></p> </div>
+<div class="col-md-3">
+<div class="row">
+<table style="float: right;" border="0">
+<tbody>
+<tr>
+<td align="center"><a href="/rss" target="_blank"><img title="Get our blog updates" src="/uploads/images/buttons/rss-square-gray.png" alt="rss.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://twitter.com/virusbtn" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on Twitter" src="/uploads/images/buttons/twitter-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.linkedin.com/company/virus-bulletin" target="_blank"><img class="bhtmbxoyxwpzahwcvxnw" title="Visit us on LinkedIn" src="/uploads/images/buttons/linkedin-square-gray.png" alt="linkedin.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.facebook.com/virusbulletin" target="_blank"><img title="Visit us on Facebook" src="/uploads/images/buttons/fb-square-gray.png" alt="twitter.png" width="35" height="35" /></a></td>
+<td> </td>
+<td align="center"><a href="https://www.youtube.com/user/virusbtn" target="_blank"><img title="Visit us on Youtube" src="/uploads/images/buttons/youtube-square-gray.png" alt="youtube.png" width="35" height="35" /></a></td>
+</tr>
+</tbody>
+</table>
+</div> </div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+</div>
+</div>
+</div>
+</div>
+</footer>
+
+<footer class="bs-footer2" role="contentinfo">
+<div class="container">
+<div class="bs-social2">
+<div class="row ">
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+<div class="col-md-3">
+</div>
+</div>
+<div class="row ">
+<div class="col-md-12">
+<p style="text-align: left;">©1989-2022 Virus Bulletin.        <a title="Privacy Policy" href="/about-vb/privacy-policy/">Privacy policy</a>        <a title="Cookies" href="/about-vb/privacy-policy/cookies/">Cookies</a>        <a title="Terms and Conditions" href="/about-vb/terms-and-conditions/">Terms and Conditions</a></p> </div>
+</div>
+</div>
+</div>
+</footer>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-21876594-2"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-21876594-2', { 'anonymize_ip': true });
+</script><script type="text/javascript" src="/libraries/js/fancybox.load.js"></script>
+<script type="text/javascript" src="/packages/bootstrap/js/common/app.js"></script>
+<div id="ccm-cookiesDisclosure" class="disclosure-bottom">
+<div class="disclosure-container">
+<div class="disclosure-content">
+<p> We have placed cookies on your device in order to improve the functionality of this site, as outlined in our <a href="/about-vb/privacy-policy/cookies" target="_blank">cookies policy</a>. However, you may delete and block all cookies from this site and your use of the site will be unaffected. By continuing to browse this site, you are agreeing to Virus Bulletin's use of data as outlined in our <a href="/about-vb/privacy-policy/" target="_blank">privacy policy</a>.</p>
+</div>
+<div class="disclosure-form">
+<form action="/index.php/cookies_disclosure/" method="POST">
+<input type="hidden" name="allowCookies" value="1" />
+<div class="button">
+<input class="btn btn-info btn-sm" type="submit" name="submit" value="I understand. Don't show this message again!" />
+</div>
+</form>
+</div>
+<div class="ccm-spacer">&nbsp;</div>
+</div>
+</div>
+</body>
+</html>

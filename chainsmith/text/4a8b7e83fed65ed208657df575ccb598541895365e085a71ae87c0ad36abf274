@@ -1,0 +1,195 @@
+Nedsym spamming
+2013-09-02
+
+He Xu
+Fortinet
+,
+Canada
+Editor:
+Helen
+
+Martin
+Abstract
+Despite recent declines, spam still accounts for more than 70% of all email sent. Why does this happen? He Xu exposes the tip of the iceberg by analysing a recent spambot which is driven by the Andromeda botnet: Win32/Nedsym.G.
+Copyright © 2013 Virus Bulletin
+
+A number of security reports in 2012 declared that spam was on the decline [1]. However, spam still accounts for more than 70% of all email sent – an enormous proportion. Why does this happen? In this article we will expose the tip of the iceberg by analysing a recent spambot which is driven by the Andromeda botnet and detected by Microsoft as Win32/Nedsym.G.
+
+Installation
+The bot uses a loader and mailer module mechanism.
+The loader will create a new folder in the %App Data% system folder and generate an extremely long folder name using the following hard coded string prefixed with ‘x’:
+qwertyuiopasdfghjklzxcvbnm123456789
+Then, if the full path of the executing bot does not include the string ‘vcnost.e’, it will enumerate all processes and terminate every one whose filename includes ‘svcnost.’ to make sure that only one instance of the bot is running.
+It then moves itself to the sub-folder as svcnost.exe.
+Next, the bot creates another folder with the same name as the previous one, but with the character ‘2’ added to the end. We will see why later.
+It adds the following registry value to ensure that it runs automatically each time the system is started:
+Key: HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+Name: Windows Init
+Value: %App Data%\x<Random String>2\svcnost.exe
+The bot moves itself again so that its location matches the registry value.
+It starts itself in the new location and then overwrites the system hosts file, as shown in Figure 1, in order to disable various security software updates, including those from Kaspersky Lab, McAfee, Symantec and Microsoft – 195 in total.
+Figure 1. Compromised hosts file.
+We have found newer variants that simplify and customize this routine. First, the malware tries to create a named mutex, ‘MSCTF.Shared.MUTEX.LDR’, to prevent multiple instances running, then it copies itself to %App Data% with the hard coded filename ‘wmprwise.exe’ and adds the following registry entry:
+Key: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+Name: Microsoft Firewall 2.9
+Value: %App Data%\wmprwise.exe
+
+Preparation
+
+Add to firewall list
+The bot adds its path to the firewall’s list of authorized applications by adding the following registry entry:
+Key: HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile\AuthorizedApplications\List
+Name: %App Data%\x<Random String>2\svcnost.exe
+Value: %App Data%\x<Random String>2\svcnost.exe:*:Enabled:ldrsoft
+The embedded module will be decrypted and extracted in memory by simulating the PE loader behaviour, then the loader will call the entry point of the module to run the malicious code there. As we see in Figure 2, the original module’s name is Mailer.dll, and it has export structure, but no export function.
+Figure 2. The mailer module.
+
+Create thread
+As shown in Figure 3, the module simply creates a single new thread then returns.
+Figure 3. The module entry point only creates one thread.
+The loader will then drop in a dead loop that sleeps permanently (Figure 4).
+Figure 4. Loader drops in a dead loop for sleeping.
+The new thread performs the same operation as the new variant – it attempts to create a mutex named ‘LDR.ML.STARTED’ and updates the following registry entry (the value string should be the current BotID, which is generated randomly):
+Key: HKEY_CURRENT_USER\Software\Microsoft\Internet Explorer\LowRegistry
+Name: SavedLegacySettingsML
+Value: 447140859
+
+Drop and load two additional modules
+To encrypt/decrypt packages and support mail server connection by SSL, the bot drops and decrypts two additional DLLs:
+DLL drop path and filename
+Original filename in export table
+%AppData%\desktop.ini
+BTREE.dll
+%AppData%\ntuser.dat
+zlib1.dll
+Figure 5. The dropped DLL desktop.ini export table.
+Figure 6. The dropped DLL ntuser.dat export table.
+All the export functions will be loaded into the bot and will be used for SSL connection with the mail server.
+The bot only needs a handful of APIs from this module for encrypt/decrypt packages (Figure 7).
+Figure 7. The imported APIs from DLL ntuser.dat.
+
+Communication
+
+Different gates for different jobs
+Most strings are encrypted initially, so before talking with the C&C server, the following gates are extracted:
+/stat1.php
+/stat2.php
+/smtps.php
+/u.php
+/error.php
+/logacc.php
+
+Fake traffic
+Similar to the Pushdo botnet, the bot will first send fake traffic to make monitoring more difficult. It will select one IP address from the following IP ranges:
+Initial IP ranges
+“89.149.242.%RND_NUMBER[1-254]”| “89.149.243.%RND_NUMBER[1-254]”| “89.149.244.%RND_NUMBER[1-254]”| “217.20.115.%RND_NUMBER[1-254]”| “217.20.127.%RND_NUMBER[1-254]”| “217.20.112.%RND_NUMBER[1-254]”
+IP ranges after interpretation
+<?“89.149.242.149”|“89.149.243.167”|“89.149.244.62”|“217.20.115.110”|“217.20.127.37”|“217.20.112.235”?>
+Our investigation revealed that all the IP ranges belong to a single organization (see Figure 8).
+Figure 8. The IP ranges belong to a single organization.
+The bot uses the following string as the fake package, and encrypts the package using the deflate API from the dropped ntuser.dat module:
+ver=1&login=kuklachev&macroses_version=2&SMTPWorking=True&SMTPOn=True&SMTPSentNumber=5.x
+As shown in Figure 9, there is no response to the fake traffic.
+Figure 9. Fake traffic example.
+
+Get initial configuration
+For the real traffic, the following pattern is used to generate the package:
+ver=%s&login=%s&macroses_version=2&SMTPWorking=%s&SMTPOn=%s&SMTPOffMessage=%s&SMTPBlockTime=%d&SMTPSentNumber=
+%d&botid=%s&lastsmtp=%s
+The interpreted parameters are as follows:
+ver=200&login=admin6&macroses_version=2&SMTPWorking=untested&SMTPOn=True&SMTPOffMessage=&SMTPBlockTime=
+0&SMTPSentNumber=0&botid=447140859&lastsmtp=
+After deflation, the package will be sent to the C&C server with a POST header. There is a trick in the HTTP POST header: the host is not the real C&C address but a hard coded IP. The gate file on the C&C server is http://sonymaind20k.ru/stat1.php.
+Figure 10. First real traffic.
+Figure 11. Decrypted configuration.
+After inflation we see the configuration file shown in Figure 11.
+To check the validity of the received package, the bot will examine the ‘#BODY’ tag. The first line of configuration data is the list of victim email addresses and will be used for the SMTP ‘RCPT TO:’ command [2]. The second line is the email address for the SMTP ‘MAIL FROM:’ command. The third line is the spamming job ID that is issued by the C&C server, including username and password combined with the ‘/’ symbol. The fourth line is the proxy server. The fifth line is the mail server port mapping table. From the sixth line to the first #BODY tag is the block for updating the bot’s initial options (see Figure 12).
+Figure 12. Initial options.
+The bot can support the following keyword options, and skips lines that it cannot support:
+RAW_FORMAT
+CONF_TIMEOUT
+CONF_RETRIES
+MAXIMUM_THREADS
+MAXSMTPFails
+OneTimeSMTPid
+FULL_REPORTS
+OneTimeSMTP
+SMTPOn
+Remarks
+In the example shown in Figure 11, the C&C server /stat1.php will update bot RAW_FORMAT to YEAH, then turn off and turn on the FULL_REPORTS option. So finally the C&C server has only updated the bot’s CONF_RETRIES value from the default 1 to 2.
+In fact, we can see that the SMTPWorking value is ‘traptesting’, which means that it is not really for spamming but for grabbing local email information in the next section.
+
+Define macro
+The block between the first and second #BODY tags is the macro pattern and range limit.
+There are two different types of macro. The first type, starting with the character ‘R’, is for declaring a random range; the second type, starting with ‘S’, is for declaring the format. The bot will convert each macro beginning with ‘S’ to a fixed string that may be used for spamming later.
+
+Grab local emails
+The bot will try to grab local email information from the following applications:
+RITLabs The Bat! Email Client
+Internet Explorer IntelliForms
+Mozilla Firefox
+Once any information is found and grabbed, the bot will convert it to an extremely long string and add it into the following pattern:
+botid=%s&accs=%s
+Then it deflates the information and sends it to the C&C server http://sonymaind20k.ru/logacc.php with a similar HTTP POST header to the one shown in Figure 10.
+For the grabbed emails, the bot will test the data directly. It will generate an email template according to the pattern that follows the second #BODY tag in the configuration file.
+The bot begins to enter a permanent loop for getting the spam configuration file and spamming routine.
+
+Get spamming template
+The bot will send the same package to the C&C server as it sent to get the initial configuration, but this time the C&C server gate path will be changed to http://sonymaind20k.ru/ stat2.php. In response, it gets the spamming configuration file, as shown in Figure 13.
+Figure 13. Second configuration.
+This set of configuration data is similar to the first. The first line is the list of victim email addresses separated by the symbol ‘,’. The second line is a macro to indicate that the bot should get the email from the LAST_GOOD_MAIL block, or from the first line if the block is empty.
+According to the configuration, the bot will run 30 threads to send spam (Figure 13).
+
+More detail
+In each spamming thread, the bot will get a single address from the list of victim email addresses to use as the destination, then pick up another from the LAST_GOOD_MAIL block to use as the ‘MAIL FROM:’ content, continually interpreting the final spamming email according to the template that follows the second #BODY tag.
+The bot currently supports the following keywords in the spam template:
+RND_UC_CHAR
+RND_LC_CHAR
+RND_DIGIT
+RND_NUMBER
+CURRENT_DATE_TIME
+RND_DATE_TIME
+OUTLOOK_BOUNDARY
+OUTLOOK_MESSAGE-ID
+OUTLOOK_SHORT_MESSAGE-ID
+PROXY
+TO_MAIL
+LOCAL_HOST
+TO_NAME
+TO_CC_DEFAULT_HANDLER
+LAST_GOOD_MAIL
+FROM
+FROM_NAME
+After interpretation, all keywords will be converted to the final spam email content and sent to the mail server according to the SMTP commands (Figure 14).
+Figure 14. SMTP traffic.
+An example of the spam email is shown in Figure 15.
+Figure 15. Example of the spam email.
+The referred URL in the spam message is an online pharmacy – Figure 16 shows a screenshot of the site.
+Figure 16. URL screenshot.
+When the bot has tried all the addresses, it will send a feedback package to the C&C server using the following pattern:
+ver=%s&login=%s&id=%s&totalsent=%d&totallost=%d&totaldrop=%d&SMTPSent=%d&Remarks=%s&macroses_version=2&botid=
+%s&lastsmtp=%s&SMTPWorking=%s&sent=%s&lost=%s&drop=%s
+The bot does not need the C&C server to respond, so once the feedback package has been sent, it will close the connection and prepare for the next spamming routine (Figure 17).
+Figure 17. The feedback package is one way only, so the bot closes the connection.
+
+Error feedback in SEH routine
+To improve the bot’s next generation and fix possible bugs, it has added code for feedback traffic in SEH routines. When an exception occurs, the bot will not try to fix it, but will generate a package using the following pattern and send it back to the /error.php C&C server:
+id=%s&botid=%s&error=%d
+The bot feeds back one of the following error codes to the C&C server:
+Error code
+Description
+1
+Keywords interpretation exception
+2
+Spam template interpretation exception
+3
+Convert string or number range exception
+4
+Pattern interpretation exception
+
+Conclusion
+Through our analysis of this spambot, we have seen a glimpse of how it spreads and works. The bot herder has never given up any opportunities to earn money. Each time we thought that the situation was improving, the bot herder was ready to launch a new round of attacks. It is a good idea to upgrade insecure email servers to ensure that they block spam.
+
+Bibliography
+[1] Gudkova, D. Kaspersky Security Bulletin Spam Evolution 2012. January 2013. http://www.securelist.com/en/analysis/204792276/Kaspersky_Security_Bulletin_Spam_Evolution_2012.
+[2] RFC 821 Simple Mail Transfer Protocol. http://tools.ietf.org/html/rfc821.

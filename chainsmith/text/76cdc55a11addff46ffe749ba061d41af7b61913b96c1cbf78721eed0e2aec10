@@ -1,0 +1,91 @@
+Encryption 101: ShiOne ransomware case study
+In part one of this series, Encryption 101: a malware analyst’s primer, we introduced some of the basic encryption concepts used in malware. If you haven’t read it, we suggest going back for a review, as it’s necessary in order to be able to fully follow part two, our case study. In this study, we will be reviewing the encryption of the ransomware ShiOne line by line.
+The main focus of this case study will be to fully understand an example of the encryption process that ransomware can use. We are using ShiOne as the practical portion of the lesson not because it is particularly unique or uses any novel techniques, but just the opposite: It’s relatively straight-forward and is written in C#, which will make it much easier to show key components.
+Encryption method
+In the previous article, we spoke of a couple different encryption methods ransomware can use. They include the following:
+
+The encryption keys are generated locally on the victim computer and sent up to the C2 server.
+Keys are generated pre-distribution and embedded within the ransomware.
+
+For this particular sample, we will be showing the second case. The encryption keys are generated offline and embedded into the malware before being sent out for an attack.
+When I say the encryption keys are generated offline and embedded, I am speaking specifically of the asymmetric keys. We will see going forward that we have both RSA and AES encryption algorithms used in this ransomware.
+AES is a symmetric algorithm, which means that the same key used to encrypt will also be used to decrypt. You can think of it as a password to encrypt and decrypt. The keys for AES are actually generated dynamically and stored within the file itself. The actual file encryption for this ransomware uses this AES encryption.
+RSA is the asymmetric part of this process—the pre-generated and embedded part. It is there to hide the AES key (password), which encrypts each file. Only the public key of the RSA pair is inside of this malware because it is only doing the encryption portion. In ransomware, it is actually very common to see this combination of symmetric/asymmetric encryption being used.
+Main encryption function
+The sample we analyzed was:
+408a97ac8fb82398187ffe6d4c5937d7
+After skipping past initialization and the portion of the malware that enumerates the files in the drive, (as this is quite standard and does not need any extra explanation), we get to the main encryption function below called crtp(string path).
+
+This function is called from the main directory enumeration loop, and as such, it will be called separately for each file it finds. It is the only function in the program that calls any cryptographic APIs or random number generators. Off the bat, this tells us that it is likely that a unique key will be used to encrypt each file.
+I want to add one note. As stated earlier, the main encryption keys are generated offline and embedded into the malware by its author. In contrast, if this were the type of ransomware that generates the main keys locally, then we would definitely be seeing crypto functions being called before the directory search loop, outside of the crpt function. Again, this is not the case here, which is why we skipped the initialization code of this malware.
+Let’s walk through the details of the crtp function:
+
+The encryption process starts off by calling: string text = Program.CreateSalt(32);
+This is a user-defined function that simply calls a standard encryption API to generate an array of 32 random numbers. This function is actually quite important because the random byte array here is used later as the (password) AES key for encryption. It will give each file on the victim’s computer a unique encryption because a new key is generated for each file. So, even if two files are identical on the user’s system, they will have different ciphertext.
+Details of the CreateSalt function
+
+//FUNCTION PROGRAM.CREATESALT() {
+RNGCryptoServiceProvider rNGCryptoServiceProvider = new RNGCryptoServiceProvider();
+byte[] array = new byte[size];
+rNGCryptoServiceProvider.GetBytes(array);
+return Convert.ToBase64String(array);
+
+This really is the most important number generated in this entire malware because it is what the purchased key from the ransomware will allow you to access in order to decrypt each file.
+
+Random number generator
+Before continuing on, I want to mention briefly some details about the RNG (random number generator).
+RNGCryptoServiceProvider is the default implementation of a security standard compliant random number generator. It is a stronger cryptographically random number. A weak alternative to this is System.Random. It is a simpler calculation, and can be much more easily replicated by a hacker, or in our case, a malware analyst. Still, there are some malware authors who use System.Random, and in those cases, there is a possibility for decryption. The RNG is something as an analyst you should be paying attention to, which is why I thought it deserved mention here.
+We concluded that this sample is using a strong RNG, so we can continue on.
+We will now skip the details of the next section of code, which simply filters what file types the ransomware wants to encrypt. It is easy to understand and plays no role in the actual encryption process itself.
+
+This now brings us to the next code block, which creates another random array using the same RNG internal functions as before:
+byte[] array = Program.GenerateRandomSalt();
+I am not including the details of the GenerateRandomSalt() function because it is not much different from the previous code. This array will be used as salt for the main file encryption, which will be explained later on in the code flow.
+Next, the ransomware takes the first number that was generated at the beginning of the array (text variable), and calls a function to encrypt it for storage:
+string s = Program.Encryption(text)
+As stated above, that set of numbers will actually be used as the AES key going forward. To be clear, the text variable is used as a key in its plain text form, but is then encrypted and tacked on to the end of the file for storage. The flowchart above illustrates this point.
+Encryption functionality
+Here’s how the encryption works during the attack. The ransomware:
+
+Generates RSA public and private keys (either locally or pre-generated offline).
+Generates a random number as input (password) for generating the AES key.
+Encrypts files using the newly-created AES key.
+Encrypts the AES key with RSA public key.
+Appends the encrypted AES key within the encrypted file.
+
+Here’s how threat actors decrypt the file after the ransom has been paid. They:
+
+Find the encrypted file.
+Search the file for the encrypted AES password.
+Read into memory for the encrypted password seed for the AES key.
+Use the RSA private key to decrypt the AES password.
+Use this plaintext password as input for AES decrypt.
+
+The details of the Encryption(text) function are shown below.
+[The highlighted line is where the ransomware is pulling the embedded public key.]
+
+The ransomware starts by taking the public key, which is embedded in the executable itself, and uses that to encrypt the passed in random number (text AKA, AES key password) using RSA 2048.
+NOTE: This function has nothing to do with the actual file encryption. It is simply used by the ransomware to hide its AES key to the user. In practice, this function could be completely skipped and would have no effect on the functionality of the actual file encryptor.
+The important thing to take away from this is that the public key was embedded into the malware. This means that the RSA keys were not generated dynamically, implying that the RSA public and private key pair were generated on the malware server side, so only the author has access to the decryption key.
+
+Performing the encryption
+At this point, the ransomware has everything it needs to perform the unique encryption for the current file.  The encryption used in this particular case is AES in CBC mode (cipher block chaining). What this means is that it will loop through the data of the original file to be encrypted and the file’s data will be encrypted in chunks, or blocks. Each iteration of the loop is encrypting a sequential block of data from the original file.
+
+for (i = 0; i &amp;amp;amp;amp;amp;lt; num; i += array3.Length)
+{
+int len = fileStream.Read(array2, 0, array2.Length);
+array3 = Program.AES_(array2, bytes, array, len);
+fileStream.Seek((long)i, SeekOrigin.Begin);
+fileStream.Write(array3, 0, array3.Length);
+}
+
+Lets go deeper into this function: array3 = Program.AES_(array2, bytes, array, len); as this will be the function that actually performs the file encryption.
+
+Going over the parameters to AES_ function, array2 is the original file data, bytes is the “password” random number generated at the beginning with Program.CreateSalt(32); and array is the second random array generated as salt for the encryption process created with Program.GenerateRandomSalt(); Of course, len is the length of the data from the file to be encrypted.
+
+As you can see here, the method for actually encrypting the file is AES. The algorithm uses salt to further randomize the “passwordBytes” (AES KEY) passed in. This is standard for AES. AES CBC mode requires an initialization vector as spoken of earlier, and you can see it here in the code. The function of generateIV() is simply another random number generator. It then performs the AES encryption, block by block, on the original file data. Each block that is encrypted actually uses a different IV. This will be tacked on to the end of that block’s encrypted bytes. This is important because the decryption algorithm needs to know what IV was used for the current block.
+Now in the final stage of the crypt function, after the file has been fully encrypted, the ransomware starts out by writing the salt value into the file. Then it writes out the RSA encrypted AES password, and finally, the actual encrypted file data (ciphertext). Again, this ciphertext includes the salt values for each block.
+
+When the decryptor software runs, it will cycle each file and read in the salt value. It will then decrypt the AES key using the RSA private key, which will be embedded into the decryptor. Finally, it will read in the encrypted file data and IVs. It now has everything it needs to reverse the encryption.
+Conclusion
+In this case study, we covered the detailed functionality of a standard file encryptor. Tune in for part three of the Encryption 101 series, where we will be covering weaknesses in encryption, analyzing an example of ransomware implementing weak encryption, and discussing how to create a file decryptor.

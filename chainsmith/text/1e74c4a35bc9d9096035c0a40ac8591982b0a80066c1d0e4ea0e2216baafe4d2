@@ -1,0 +1,174 @@
+Case study: the TDSS rootkit
+2009-05-01
+
+Alisa Shevchenko
+eSage Lab
+,
+Russia
+Editor:
+Helen
+
+Martin
+Abstract
+The TDSS modular downloader is known for its ability to bypass active protection, for its outstanding persistence and its rootkit functions. Alisa Shevchenko presents a detailed case study.
+Copyright © 2009 Virus Bulletin
+
+This article is a case study of the TDSS malware, also known as Tidserv, TDSServ and Alureon. Some of its components are detected as Trojan.Win32.DNSChanger and Trojan.FakeAlert.
+There are several reasons for conducting a detailed study of this malware:
+Disinfection of TDSS seems to be problematic for modern anti-malware solutions. At the time of writing this article, a Google search for the malware [1] results in a considerable number of forum posts from desperate users whose anti-virus solutions have detected the malware, but failed to remove it.
+Detailed descriptions of this malware are not available publicly.
+TDSS is not rocket science! Despite being quite advanced and posing problems for anti-malware solutions, it does not engage any outstanding new techniques.
+TDSS is actively spreading in the wild and developing into a wide and mighty botnet. According to Kaspersky Lab [2], between 100 and 300 signature detections are being added per day for new/modified TDSS components.
+Thus, TDSS is a borderline type of threat: sufficiently advanced to cause problems for AV, or even to defeat it completely, but not sufficiently critical to trigger a detailed study; widespread enough to cause numerous user issues, but not serious enough to trigger a full epidemic alert.
+
+Family overview
+TDSS is known for its ability to bypass active protection/HIPS, for its outstanding persistence and its rootkit functions. Users with all kinds of anti-malware solutions have reported problems disinfecting their systems. Observable activity typically includes website redirects, ad popups and the blocking of AV updating/loading activities. Its functionality can vary widely though, since TDSS is designed as a modular unit and additional components can be downloaded and installed to provide extra features.
+The first TDSS infection reports date back to the middle of 2008. Even at that time the malware showed extraordinary persistence, causing problems for users and demonstrating the ability to bypass anti-malware protection. Given that the malware’s creators have managed to keep this advanced functionality up to date for almost a year now, and given the malware’s code architecture and skilful implementation, we can assume that TDSS is being developed with a clear vision by a team of proficient engineers.
+TDSS itself is a very advanced modular downloader. Its main goal is to persist in a system and to provide a means for remote control (via a downloaded configuration file) and a framework for downloading/installing modules for additional functionality.
+TDSS is delivered to a PC through a wide and elaborate distribution network. Known attack vectors include website iframe attacks [3], [4] and bundling the malware with pseudo-legitimate video codecs [5], as well as legitimate software [6] and cracks [7] distributed via p2p networks.
+
+Family traits
+The original name of TDSS (assigned by its creators) is ‘TDL’. The most recent samples call themselves ‘TDL2’.
+The trojan files are protected from binary analysis using code obfuscation and encryption.
+Some files contain a fake Microsoft version stamp.
+TDSS is installed when the msiexec.exe (Microsoft Installer) service loads a legitimate, but maliciously patched DLL [8].
+After installation, the trojan effectively prevents anti-virus software from launching or updating.
+The trojan is persistent through a variety of techniques. For example, some of the family members survive Safe Boot. This is achieved by registering the trojan’s driver in the HKLM\SYSTEM\ControlSet001\Control\SafeBoot\Minimal and HKLM\SYSTEM\ControlSet001\Control\SafeBoot\Network registry keys.
+The trojan creates a (hidden) registry key to store its configuration information, such as the AV modules that are to be denied Internet access, and the malicious modules that are to be injected into browsers.
+The trojan hides its files and registry values by means of several system hooks.
+The trojan uses the hooked function ZwFlushInstructionCache as a communication gateway to its own kernel driver.
+
+Family divergence & recent updates
+Back in 2008, the presence of TDSS was marked by a driver named TDSSserv.sys (after which the malware was named). Since then, malware-related file names have changed several times, and have included clbdriver.sys, seneka*.sys, UACd*.sys, gaopdx*.sys, tdlserv.sys and others.
+Another change is that recent samples patch msi.dll for their installation, while the early samples used to patch advapi32.dll. This is probably a reaction to the behavioural heuristics that have recently been added to security solutions.
+In the most recent samples the code protection is designed to make the trojan look like a regular system file or a device-supporting utility. The unpacker stub is a big piece of regular code, which means there is no extra entropy throughout the file’s byte array (which is an easy-to-spot sign of a packed file). Furthermore, the code is enriched by random pseudo-legitimate ASCII strings and random API calls designed to fool a hasty analyst into thinking it is a legitimate piece of code.
+The code protection itself is trivial: an easily removed envelope with normal code inside.
+Most recent samples of TDSS contain worm functionality. The malware tries to distribute itself to removable drives by copying its own body into all available drives as a hidden *.com file in the hidden RECYCLER directory, and by creating the file autorun.inf, with the file reference on the same drive.
+Most recent TDSS samples change systems’ DNS addresses, thus causing all the hostname requests to filter through a malicious service. This is a brilliant solution, probably inspired by the much-talked-about DNS root server vulnerability and the Evilgrade proof of concept [9]. Distributing a spoofed DNS provider throughout the network by means of a DHCP service gives an attacker control of the entire network’s web traffic, even as far as delivering malware to clean machines under the guise of a legitimate software update.
+
+Sample analysis
+For analysis, I took a fairly recent sample, dated March/April 2009 (MD5: 1DE66FC07C7B5893F5F83B397AC38 F3D). It is a specimen of the TDSS variety quoted by Symantec Russia as being one of the most notable at the end of March [10], [11].
+The general execution flow of an average TDSS specimen has already been described [9], [12] as have its basic mechanisms in userland [4]. A summary of the high-level functions of this particular sample is available from any public sandbox [13]. I will be focusing on the trojan’s most important features and driver functionality.
+
+Trojan installation and protection bypassing
+The trojan’s initial installation routine is notable, since it allows behavioural protection/firewalls to be bypassed. The idea is to force a legitimate service to load a legitimate, but maliciously patched DLL. This is achieved via the modification of the msi.dll file in the \knowndlls directory, followed by a regular launch of the Microsoft Installer service:
+NtCreateSection(..”\knowndlls\dll.dll”..) // new section for a malicious dll
+CopyFile(..”msi.dll”, <temporary_file>..) // preparing the dll to patch
+WriteFile(..<temporary_file>, <malicious_code_injection>..) // patching
+The injected code will call LoadLibrary, which will invoke the malicious dll mapped into the \knowndlls\dll.dll section. The shellcode is quite elegant:
+push 7c906cbc ; pointer to ‘dll.dll’ – really this is a calculated pointer to the last part of the
+‘ntdll.dll’ name in the regularly mapped ntdll.dll
+
+call $+5 ; call next instruction so that its address is on the stack
+
+sub dword ptr [esp], 0a ; now the first dword on the stack points to the first shellcode instruction, meaning that LoadLibrary will return there. Shellcode will be replaced by original code by then.
+
+mov eax, LoadLibrary
+
+jmp eax ; call LoadLibrary (‘dll.dll’)
+
+Once the infected dll has been prepared, the \knowndlls\msi.dll section is recreated to point to an infected dll, and the msiexec.exe service is started to force the now infected library to be loaded:
+
+NtOpenSection(..”\knowndlls\msi.dll”..)
+
+NtMakeTemporaryObject(..) // clear the OBJ_PERMANENT flag from section
+
+CloseHandle(..)
+
+NtCreateSection(..”\knowndlls\msi.dll”, .. <temporary_file>..) //recreate the msi.dll section, now pointing to the infected msi.dll library in
+<temp filename>
+
+..
+
+StartService (..”Windows Installer”..)
+The main idea of this technique is that, since it is executed in the context of the Windows Installer, the malicious code will have all the necessary privileges to download and install anything. It downloads and installs a fresh build of the TDSS kernel component.
+Another advantage of the technique is that no obviously malicious behaviour is exhibited, so a HIPS will fail here until it ‘learns’ this particular trick.
+The dll.dll functionality itself is quite simple, as can be seen in the flowchart shown in Figure 1.
+Figure 1. IDA-generated flowchart of the dll.dll.
+
+The driver
+TDSS does not have its own userland executable file. All core functions are provided by a driver, which is loaded automatically at startup. High-level functions are provided by additional DLL module(s) injected into processes.
+Core functions provided by the driver include:
+Hiding the trojan
+Providing a gateway into the kernel
+Distributing spoofed DNS servers to network services
+Blocking anti-virus solutions (listed in a configuration key) from loading
+Injecting a DLL into browser executables
+Installing new DLL modules.
+
+Rootkit functionality
+The trojan hooks the following functions in the kernel:
+IofCallDriver
+IofCompleteReq
+NtFlushInstructionCache
+NtQueryValueKey
+NtEnumerateKey
+The latter three hooks are implemented via SDT modification. The NtEnumerateKey hook is used to hide all the TDSS registry keys listed in the trojan’s configuration key (‘gaopdx*’ in this case), except for trusted processes. The NtQueryValueKey hook is used to spoof DNS addresses without modifying the registry (and therefore without triggering a HIPS registry alert), via a substitution of ‘DhcpNameServer’ and ‘NameServer’ [14] registry values.
+Hooks to IofCallDriver and IofCompleteRequest are implemented by splicing the kernel code in ntkrnlpa.exe in memory. They are used to hide the trojan’s files and probably its network TCP activity.
+A hook to IofCallDriver is used to infiltrate all the IRPs system wide, which allows the trojan to hide its own files (beginning with the string ‘gaopdx*’ in this case) when it catches an IRP to a file system driver:
+If ( FsRtlIsNameInExpression (..”*\\gaopdx*” or “*\\TEMP\\gaopdx*”..) )
+
+Then return (STATUS_TOO_MANY_SECRETS)
+IofCompleteRequest has a similar functionality.
+
+Ring0 communication gateway
+The NtFlushInstructionCache hook is slightly more interesting, providing a non-typical communication gateway to the driver. To make use of the gateway, one should call the NtFlushInstructionCache API as follows:
+push 0    ; argument to the command
+
+push ‘VERG’  ; 4-byte command, allowing to prove the hook is in place
+
+push ‘TDL2’ ; a magic value which leads execution to the command processor and not to the
+original API
+
+call ds:ZwFlushInstructionCache ; this is a piece of code from the dll.dll component, checking
+for the presence of the core driver.
+The scope of available commands is very limited and, in contrast to some security drivers, will not allow control to be taken of the driver. Available commands include passing trojan-related variables from the kernel to userland, inserting a termination job (via a kernel APC) into a given process or thread, and maintaining installation of new DLL modules.
+
+Persistent functionality
+The driver engages ExQueueWorkItem to launch a number of kernel threads. The execution flow of the work items is looped to provide periodic execution. The three work items provide periodic renaming and re-registering of the trojan’s driver (‘\registry\machine\system\currentcontrolset\services\gaopdxserv.sys’), disabling of a system firewall (‘\registry\machine\system\currentcontrolset\services\sharedaccess\parameters\firewallpolicy\’) and other functions.
+
+Blocking security solutions
+The driver installs, via PsSetLoadImageNotifyRoutine, a system-wide callback for newly loaded modules. In the hook, a check is performed as to whether the module being loaded is included in the ‘disallowed’ list in the trojan’s configuration registry key. The driver will prevent a disallowed module from loading.
+
+Manual disinfection
+Manual disinfection of TDSS is trivial. The following instructions are for a generic method that will completely remove any specimen of the TDSS family. This removal method is suitable for any end-user, since it is very simple and requires neither special skills nor specific tools:
+Go to Device Manager and turn off and delete any inappropriate ‘Non PnP driver’ there.
+You can search for a specific name (quadraserv.sys in this case, or gaopdx*/TDSS*/clbdriver/seneka/etc .sys in the case of a typical TDSS family member), but the name is subject to change, so it is best not to rely on it.
+After this manipulation, the worm’s files and registry values that were hidden become visible, and thus possible to be removed by hand.
+Note: An anti-rootkit can be used reliably to locate the trojan’s core files. GMER or RkU are the best choices; Avira Antirootkit also copes with the task.
+Remove the file corresponding to the device just deleted. If there is no such file, try sorting system32/drivers and system32/ files by creation date and remove whatever looks suspicious according to its name and content. TDSS core files consist of a .sys and one or more .dlls.
+Search throughout the registry using the malicious device and file name strings found in steps 1 and 2. Delete all the relevant keys.
+Remove all the <drive letter>://autorun.inf and <drive letter>://RECYCLER/*.com files, if any.
+Reboot.
+Launch your AV, and let it clean the rest (TMP files etc.)
+Note that steps 1–4 must be carried out manually, without any anti-malware, because if an anti-malware product lacks a single signature for a trojan’s core file, the file will not be removed and the malware will return after reboot.
+
+Conclusions
+The success of TDSS proves that the bypassing of protection mechanisms is a straightforward task, for which no kind of advanced invention is necessary.
+Malware writers continue to explore unobtrusive ways of bypassing protection [15]. In the case of TDSS, the skilful utilization of a whitelisted application to download and install malware is observed.
+Bundling malware together with legitimate software is an effective technique (though not new). The idea is that if a user is intentionally launching an application, s/he will probably skip any security alerts, including driver installation alerts (which are quite normal, for example, in the case of a video codec installation [5]) and UAC. Furthermore, some behavioural protection solutions might be fooled by the visible application window.
+Redirecting a whole network’s DNS traffic to an attacker’s service is an extremely important innovation, since it allows for the transparent delivery of malware to clean machines, as well as serving malicious redirects. It’s almost like a new kind of worm functionality.
+Behavioural protection/HIPS developers should consider keeping an eye on the behaviours/actions that allow TDSS to succeed:
+NtOpenSection, NtMakeTemporaryObject and other functions allowing tampering with system sections.
+Accessing a system DLL file.
+LoadLibraryEx with a parameter of DONT_RESOLVE_DLL_REFERENCES, which is used by dll.dll to load the original msi.dll.
+Tampering with system DNS and DHCP configuration.
+PsSetLoadImageNotifyRoutine. Though a protection may be turned off by the time this API call is made, it may not be.
+Although most of these actions are not malicious by themselves, they clearly pose a minor threat and thus should be considered in combination, supplied with reasonable threat weights, and within a particular process execution context.
+
+Bibliography
+[1] http://www.google.com/search?q=tdss+%7C+tidserv+%7C+tdsserv+daterange:01012009-26042009+inurl:forum.
+[2] http://www.kaspersky.com/viruswatchlite?search_virus=TDSS.
+[3] http://ddanchev.blogspot.com/2009/01/embassy-of-india-in-spain-serving.html.
+[4] http://mad.internetpol.fr/archives/3-Etude-de-cas-Infection-rootkit-TDSS.html.
+[5] http://www.threatexpert.com/report.aspx?md5=2c5c874235a73fc50a69780c7ad1488a.
+[6] http://www.threatexpert.com/report.aspx?md5=d2ada2dba8e036d37726ebddbcc9e9d6.
+[7] http://www.threatexpert.com/report.aspx?md5=b17d76537ef5d94547fc4ca8851b35da.
+[12] http://www.f-secure.com/v-descs/backdoor_w32_tdss.shtml.
+[8] http://www.symantec.com/security_response/writeup.jsp?docid=2008-091809-0911-99.
+[10] http://www.symantec.com/security_response/writeup.jsp?docid=2009-032211-2952-99.
+[11] http://www.anti-malware.ru/node/1250.
+[13] http://www.virustotal.com/analisis/122e4ade1c0fa88cbab02880a3b2ed98.
+[9] http://www.infobyte.com.ar/down/isr-evilgrade-Readme.txt.
+[14] http://technet.microsoft.com/en-us/library/cc962470.aspx.
+[15] Shevchenko, A. Advancing malware techniques 2008. VirusBulletin Magazine, January 2009. http://www.virusbtn.com/pdf/magazine/2009/200901.pdf.

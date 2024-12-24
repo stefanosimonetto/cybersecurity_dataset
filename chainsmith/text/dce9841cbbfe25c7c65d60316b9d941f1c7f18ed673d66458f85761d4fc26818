@@ -1,0 +1,123 @@
+Protecting Web Surfing from Prying Wireless Eyes
+
+Get link
+
+Facebook
+
+Twitter
+
+Pinterest
+
+Email
+
+Other Apps
+
+August 08, 2004
+
+Well here I am at USENIX Security 2004, on the Town and Country Hotel's wireless network.  I received an authorization code from the concierge, and no other instructions.  This code wasn't a SSID since the guy after me received a different code.  When I got to my hotel room, I fired up dstumbler to see what networks were available.
+
+dstumbler wi0 -o
+
+I found several LodgeNet access points, so I figured I'd try associating with those:
+
+ifconfig wi0 ssid LodgeNet up
+
+This got me associated:
+
+ifconfig wi0
+wi0: flags=8843 mtu 1500
+ether 00:04:e2:29:3b:ba
+media: IEEE 802.11 Wireless Ethernet autoselect (DS/2Mbps)
+status: associated
+ssid LodgeNet 1:LodgeNet
+stationname "FreeBSD WaveLAN/IEEE node"
+channel 6 authmode OPEN powersavemode OFF powersavesleep 100
+wepmode OFF weptxkey 1
+
+Next I needed an IP address:
+
+dhclient wi0
+ifconfig wi0
+wi0: flags=8843 mtu 1500
+inet 10.2.2.3 netmask 0xffffff00 broadcast 10.2.2.255
+ether 00:04:e2:29:3b:ba
+media: IEEE 802.11 Wireless Ethernet autoselect (DS/11Mbps)
+status: associated
+ssid LodgeNet 1:LodgeNet
+stationname "FreeBSD WaveLAN/IEEE node"
+channel 11 authmode OPEN powersavemode OFF powersavesleep 100
+wepmode OFF weptxkey 1
+
+cat /etc/resolv.conf
+search 0012209.lodgenet.net
+nameserver 10.2.2.254
+
+This got me my IP and DNS settings.  I was able to fire up my browser and found myself and a login screen, where I entered my super secret code.  Notice there is no encryption of any kind.  Wheee... watch out for driftnet...
+
+Note: Skip to the end of this post to see a much simpler way to accomplish the same goal.  Read on to see how I used to shield my Web browsing.
+
+At this point I wanted to access sites that don't offer HTTPS-enabled logins, like Blogger and elsewhere.  I turned to my SSH-based port-forwarding and tinyproxy system set up for my home network.  My gateway at home has www/tinyproxy running, listening on port 8888 TCP:
+
+moog:/root# sockstat -4 | grep 8888
+nobody   tinyprox 43195    6 tcp4   172.27.20.1:8888      *:*
+nobody   tinyprox   163    6 tcp4   172.27.20.1:8888      *:*
+...truncated...
+
+The /usr/local/etc/tinyproxy/tinyproxy.conf looks like this:
+
+User nobody
+Group nogroup
+
+Port 8888
+Listen 172.27.20.1
+
+Timeout 600
+Logfile "/var/log/tinyproxy.log"
+LogLevel Info
+PidFile "/var/run/tinyproxy.pid"
+MaxClients 100
+MinSpareServers 5
+MaxSpareServers 20
+StartServers 10
+
+MaxRequestsPerChild 0
+
+Allow 127.0.0.1
+#List other networks allowed here, like local RFC 1918 space
+
+ConnectPort 443
+ConnectPort 563
+
+This allows me to use this gateway as an HTTP and HTTPS proxy, but how can I access it from the hotel network?  Using SSH port forwarding is the answer!
+
+ssh -f -N -L 8888:proxy:8888 user@homegateway.com
+
+-f says go to the background; -N says don't execute a remote command; -L says bind port 8888 TCP to the localhost, and port 8888 TCP on the proxy.  Now I set up my Firefox connection settings with my "Manual Proxy Configuration" pointing to port 8888 TCP on localhost for HTTP and SSL (which takes care of HTTPS, apparently).
+
+What is the point of this?  Now when I visit a Web site, I connect through my SSH tunnel to my home gateway.  The home gateway makes the necessary DNS and Web page requests.  (A visit to a site like checkip.dyndns.org will show the IP of your proxy, not your workstation.)  I get the results back from the proxy through the SSH tunnel.  Although my HTTP traffic is still in the clear between my home proxy and the end Web site, no one on the local wireless hotel network can see where I'm going or what credentials I may be passing.
+
+The main disadvantage of this setup is I'm sending all of my Web requests and receiving responses clear across the country, since I'm in San Diego now and my home gateway is in northern Virginia.  I think it's worth it to keep people from sniffing my Blogger credentials though.
+
+Update:  Thanks to a very helpful suggestion from Jim O'Gorman, I learned I don't need to bother with Tinyproxy.  I missed out on the addition of native support in ssh for a SOCKS proxy and dynamic port forwarding.  All that needs to be done is this:
+
+ssh -v -D 8888 user@homegateway.com
+
+In your Firefox Preferences -> Connection Settings, select "Manual Proxy Configuration" and "SOCKS host" localhost, and port 8888.  Click the SOCKS 4 radio button.  Now, when you connect to a Web site like checkip.dyndns.org, you'll see this in your SSH terminal:
+
+debug1: Connection to port 8888 forwarding to socks4 port 0 requested.
+debug1: channel 2: new [dynamic-tcpip]
+debug1: channel 2: dynamic request: socks4 host 63.209.15.212 port 80 command 1
+debug1: channel 2: open confirm rwindow 131072 rmax 32768
+...edited...
+debug1: channel_free: channel 2: direct-tcpip: listening port
+8888 for 63.209.15.212 port 80, connect from 127.0.0.1 port
+62510, nchannels 3
+
+This is beautiful because it also works for HTTPS:
+
+debug1: channel 2: new [dynamic-tcpip]
+debug1: channel 2: dynamic request: socks4 host 216.239.51.107 port 443 command 1
+debug1: channel 2: open confirm rwindow 131072 rmax 32768
+...truncated...
+
+This makes life much easier and eliminates the need to add a proxy to your gateway.  Thanks Jim!
